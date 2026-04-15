@@ -40,8 +40,8 @@ class Transaction:
     date: str
 
 
-def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=_PACKAGE)
     parser.add_argument(
         "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
     )
@@ -53,8 +53,8 @@ def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None, *, prog: str = _PACKAGE) -> int:
-    args = build_parser(prog=prog).parse_args(argv)
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
     for_real: bool = args.for_real

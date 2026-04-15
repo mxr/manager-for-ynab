@@ -19,9 +19,9 @@ _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab zero-out"
 
 
-def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog=prog,
+        prog=_PACKAGE,
         description="Zero out planned amount for a category from a start year-month through the end month.",
     )
     parser.add_argument(
@@ -169,8 +169,8 @@ async def _run_updates(
                 print(f"Failed to update month {month_str}: {err}")
 
 
-def main(argv: Sequence[str] | None = None, *, prog: str = _PACKAGE) -> int:
-    args = build_parser(prog=prog).parse_args(argv)
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     token = os.environ.get(_ENV_TOKEN)
     if not token:

@@ -41,34 +41,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_reconciler(argv: Sequence[str]) -> int:
-    return reconciler_main.main(argv, prog="manager-for-ynab reconciler")
+    return reconciler_main.main(argv)
 
 
 def _run_pending_income(argv: Sequence[str]) -> int:
-    return pending_income.main(argv, prog="manager-for-ynab pending-income")
+    return pending_income.main(argv)
 
 
 def _run_zero_out(argv: Sequence[str]) -> int:
-    return zero_out.main(argv, prog="manager-for-ynab zero-out")
+    return zero_out.main(argv)
 
 
 def main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
-<<<<<<< HEAD
     if argv[0] == "reconciler":
         return _run_reconciler(argv[1:])
     if argv[0] == "pending-income":
         return _run_pending_income(argv[1:])
     if argv[0] == "zero-out":
-=======
-    if argv and argv[0] == "reconciler":
-        return _run_reconciler(argv[1:])
-    if argv and argv[0] == "pending-income":
-        return _run_pending_income(argv[1:])
-    if argv and argv[0] == "zero-out":
->>>>>>> e7bb582 (Refine reconciler CLI help and versioning)
         return _run_zero_out(argv[1:])
 
     parser = build_parser()
