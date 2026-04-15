@@ -9,6 +9,7 @@ import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
+from manager_for_ynab.reconciler import _prompt_interactive_batch_inputs
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
@@ -161,6 +162,20 @@ def test_run_mode_batch_rejects_single_targeting_params():
     assert "--mode batch" in str(excinfo.value)
 
 
+def test_run_mode_interactive_batch_rejects_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(
+            (
+                "--mode",
+                "interactive-batch",
+                "--account-target-pairs",
+                "Checking=500",
+            )
+        )
+
+    assert "--mode interactive-batch" in str(excinfo.value)
+
+
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 def test_run_mode_batch(sync, db, monkeypatch):
@@ -258,6 +273,46 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 
     assert account_likes == ["%2045%", "Credit%"]
     assert raw_targets == [Decimal("410"), Decimal("290")]
+
+
+def test_prompt_interactive_batch_inputs_wraps_non_wildcard_patterns(monkeypatch):
+    responses = iter(("Checking 'Credit Card'", "430 290"))
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+
+    account_likes, raw_targets = _prompt_interactive_batch_inputs()
+
+    assert account_likes == ["%Checking%", "%Credit Card%"]
+    assert raw_targets == [Decimal("430"), Decimal("290")]
+
+
+def test_prompt_interactive_batch_inputs_requires_matching_target_count(monkeypatch):
+    responses = iter(("Checking Savings", "430"))
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+
+    with pytest.raises(ValueError) as excinfo:
+        _prompt_interactive_batch_inputs()
+
+    assert "requires 2 target balances" in str(excinfo.value)
+
+
+@patch("manager_for_ynab.reconciler.sync")
+@pytest.mark.usefixtures(db.__name__)
+def test_run_mode_interactive_batch(sync, db, monkeypatch):
+    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+    responses = iter(("Checking Credit", "430 290"))
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+
+    ret = run(
+        (
+            "--mode",
+            "interactive-batch",
+            "--sqlite-export-for-ynab-db",
+            db,
+        )
+    )
+
+    sync.assert_called()
+    assert ret == 0
 
 
 @pytest.mark.asyncio

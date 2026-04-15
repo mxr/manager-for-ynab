@@ -3,6 +3,7 @@ import asyncio
 import itertools
 import os
 import re
+import shlex
 import sqlite3
 from dataclasses import dataclass
 from dataclasses import field
@@ -60,9 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=_PACKAGE, description=_DESCRIPTION)
     parser.add_argument(
         "--mode",
-        choices=("single", "batch"),
+        choices=("single", "batch", "interactive-batch"),
         default="single",
-        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs.",
+        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs. `interactive-batch` prompts for account patterns and targets.",
     )
     parser.add_argument(
         "--account-like",
@@ -120,8 +121,7 @@ async def async_run(
             )
         account_likes = [_normalize_account_like(account_like)]
         raw_targets = [raw_target]
-    else:
-        assert mode == "batch"
+    elif mode == "batch":
         if account_like is not None or raw_target is not None:
             raise ValueError(
                 "`--mode batch` cannot be used with `--account-like` or `--target`; use `--account-target-pairs` instead."
@@ -129,6 +129,13 @@ async def async_run(
         if not account_target_pairs:
             raise ValueError("`--mode batch` requires `--account-target-pairs`.")
         account_likes, raw_targets = _parse_account_targets(account_target_pairs)
+    else:
+        assert mode == "interactive-batch"
+        if account_like is not None or raw_target is not None or account_target_pairs:
+            raise ValueError(
+                "`--mode interactive-batch` cannot be used with `--account-like`, `--target`, or `--account-target-pairs`."
+            )
+        account_likes, raw_targets = _prompt_interactive_batch_inputs()
 
     token = resolve_token(token_override)
 
@@ -178,6 +185,29 @@ def _parse_account_targets(
         account_likes.append(_normalize_account_like(account_like))
         raw_targets.append(Decimal(re.sub("[,$]", "", target)))
     return account_likes, raw_targets
+
+
+def _prompt_interactive_batch_inputs() -> tuple[list[str], list[Decimal]]:
+    raw_account_likes = shlex.split(
+        input("Account LIKE patterns separated by spaces: ").strip()
+    )
+    if not raw_account_likes:
+        raise ValueError(
+            "`--mode interactive-batch` requires at least one account LIKE pattern."
+        )
+
+    raw_targets = shlex.split(
+        input("Target balances in matching order, separated by spaces: ").strip()
+    )
+    if len(raw_targets) != len(raw_account_likes):
+        raise ValueError(
+            f"`--mode interactive-batch` requires {len(raw_account_likes)} target balances, but got {len(raw_targets)}."
+        )
+
+    return (
+        [_normalize_account_like(account_like) for account_like in raw_account_likes],
+        [Decimal(re.sub("[,$]", "", target)) for target in raw_targets],
+    )
 
 
 def _normalize_account_like(account_like: str) -> str:
