@@ -6,7 +6,13 @@ Manager for YNAB.
 
 ## What This Does
 
-Scaffolding.
+This repo is a single CLI for YNAB-focused tools.
+
+- `reconciler`: find unreconciled transactions that match a target balance
+
+Tool-specific docs:
+
+- [Reconciler](tools/reconciler/README.md)
 
 ## Installation
 
@@ -16,4 +22,7 @@ $ pip install manager-for-ynab
 
 ## Usage
 
-Implementation pending.
+```console
+$ manager-for-ynab --help
+$ manager-for-ynab reconciler --help
+```

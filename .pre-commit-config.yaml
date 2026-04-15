@@ -40,4 +40,4 @@ repos:
   hooks:
   - id: mypy
     language_version: python3.14
-    additional_dependencies: [sqlite-export-for-ynab]
+    additional_dependencies: [aiohttp, Babel, sqlite-export-for-ynab>=2, tldm]
