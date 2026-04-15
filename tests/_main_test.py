@@ -43,9 +43,28 @@ def test_main_pending_income_help(capsys):
     assert "--for-real" in out
 
 
+def test_main_dispatches_zero_out(monkeypatch):
+    called: dict[str, object] = {}
+
+    def fake_main(argv, *, prog):
+        called["argv"] = argv
+        called["prog"] = prog
+        return 0
+
+    monkeypatch.setattr("manager_for_ynab._main.zero_out.main", fake_main)
+
+    ret = main(("zero-out", "--category-name", "Stuff", "--start", "2025-01"))
+
+    assert ret == 0
+    assert called == {
+        "argv": ["--category-name", "Stuff", "--start", "2025-01"],
+        "prog": "manager-for-ynab zero-out",
+    }
+
+
 def test_build_parser_registers_expected_subcommands():
     parser = build_parser()
     actions = [action for action in parser._actions if action.dest == "command"]
     assert len(actions) == 1
     assert actions[0].choices is not None
-    assert set(actions[0].choices) == {"pending-income", "reconciler"}
+    assert set(actions[0].choices) == {"pending-income", "reconciler", "zero-out"}

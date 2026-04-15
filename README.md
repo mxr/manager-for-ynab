@@ -10,11 +10,13 @@ This repo is a single CLI for YNAB-focused tools.
 
 - `reconciler`: find and automatically reconciles unreconciled transactions
 - `pending-income`: move pending income transactions to today
+- `zero-out`: set a category's planned amount to zero across a month range
 
 Tool-specific docs:
 
 - [Reconciler](tools/reconciler/README.md)
 - [Pending Income](tools/pending-income/README.md)
+- [Zero Out](tools/zero-out/README.md)
 
 ## Installation
 
@@ -28,4 +30,5 @@ $ pip install manager-for-ynab
 $ manager-for-ynab --help
 $ manager-for-ynab reconciler --help
 $ manager-for-ynab pending-income --help
+$ manager-for-ynab zero-out --help
 ```
