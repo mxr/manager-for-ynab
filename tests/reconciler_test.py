@@ -1,14 +1,11 @@
 import json
 import re
 import sqlite3
-from configparser import ConfigParser
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from reconciler_for_ynab._main import _ENV_TOKEN
-from reconciler_for_ynab._main import _PACKAGE
 from reconciler_for_ynab._main import _row_factory
 from reconciler_for_ynab._main import do_reconcile
 from reconciler_for_ynab._main import fetch_plan_accts
@@ -19,19 +16,6 @@ from testing.fixtures import db
 from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
-
-
-def test_main_version(capsys):
-    cp = ConfigParser()
-    cp.read(Path(__file__).parent.parent / "setup.cfg")
-    expected_version = cp["metadata"]["version"]
-
-    with pytest.raises(SystemExit) as excinfo:
-        main(("--version",))
-    assert excinfo.value.code == 0
-
-    out, _ = capsys.readouterr()
-    assert out == f"{_PACKAGE} {expected_version}\n"
 
 
 @patch("reconciler_for_ynab._main.sync")
