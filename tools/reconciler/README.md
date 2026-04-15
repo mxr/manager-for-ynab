@@ -38,4 +38,11 @@ Account LIKE patterns separated by spaces: Checking "Credit Card"
 Target balances in matching order, separated by spaces: 500 290
 ```
 
+Provide the account patterns on the command line and only enter balances interactively:
+
+```console
+$ manager-for-ynab reconciler --mode interactive-batch --account-likes Checking "Credit Card" --for-real
+Target balances in matching order, separated by spaces: 500 290
+```
+
 Bare `--account-like` values are treated as substring matches. Include `%` or `_` yourself when you want explicit SQL `LIKE` wildcard behavior.

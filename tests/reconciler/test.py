@@ -148,6 +148,13 @@ def test_run_mode_single_rejects_batch_targeting_params():
     assert "--account-target-pairs" in str(excinfo.value)
 
 
+def test_run_mode_single_rejects_interactive_batch_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--account-likes", "Checking"))
+
+    assert "--account-likes" in str(excinfo.value)
+
+
 def test_run_mode_batch_requires_account_target_pairs():
     with pytest.raises(ValueError) as excinfo:
         run(("--mode", "batch"))
@@ -162,6 +169,13 @@ def test_run_mode_batch_rejects_single_targeting_params():
     assert "--mode batch" in str(excinfo.value)
 
 
+def test_run_mode_batch_rejects_interactive_batch_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--mode", "batch", "--account-likes", "Checking"))
+
+    assert "--account-likes" in str(excinfo.value)
+
+
 def test_run_mode_interactive_batch_rejects_targeting_params():
     with pytest.raises(ValueError) as excinfo:
         run(
@@ -174,6 +188,13 @@ def test_run_mode_interactive_batch_rejects_targeting_params():
         )
 
     assert "--mode interactive-batch" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_rejects_single_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--mode", "interactive-batch", "--account-like", "Checking"))
+
+    assert "--account-like" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.reconciler.sync")
@@ -269,20 +290,20 @@ def test_run_not_one_account(sync, db, monkeypatch, account_like, substr):
 
 
 def test_parse_account_targets_wraps_non_wildcard_patterns():
-    account_likes, raw_targets = _parse_account_targets(["2045=410", "Credit%=290"])
+    target_set = _parse_account_targets(["2045=410", "Credit%=290"])
 
-    assert account_likes == ["%2045%", "Credit%"]
-    assert raw_targets == [Decimal("410"), Decimal("290")]
+    assert target_set.account_likes == ["%2045%", "Credit%"]
+    assert target_set.raw_targets == [Decimal("410"), Decimal("290")]
 
 
 def test_prompt_interactive_batch_inputs_wraps_non_wildcard_patterns(monkeypatch):
     responses = iter(("Checking 'Credit Card'", "430 290"))
     monkeypatch.setattr("builtins.input", lambda _: next(responses))
 
-    account_likes, raw_targets = _prompt_interactive_batch_inputs()
+    target_set = _prompt_interactive_batch_inputs()
 
-    assert account_likes == ["%Checking%", "%Credit Card%"]
-    assert raw_targets == [Decimal("430"), Decimal("290")]
+    assert target_set.account_likes == ["%Checking%", "%Credit Card%"]
+    assert target_set.raw_targets == [Decimal("430"), Decimal("290")]
 
 
 def test_prompt_interactive_batch_inputs_requires_matching_target_count(monkeypatch):
@@ -306,6 +327,28 @@ def test_run_mode_interactive_batch(sync, db, monkeypatch):
         (
             "--mode",
             "interactive-batch",
+            "--sqlite-export-for-ynab-db",
+            db,
+        )
+    )
+
+    sync.assert_called()
+    assert ret == 0
+
+
+@patch("manager_for_ynab.reconciler.sync")
+@pytest.mark.usefixtures(db.__name__)
+def test_run_mode_interactive_batch_with_account_likes(sync, db, monkeypatch):
+    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+    monkeypatch.setattr("builtins.input", lambda _: "430 290")
+
+    ret = run(
+        (
+            "--mode",
+            "interactive-batch",
+            "--account-likes",
+            "Checking",
+            "Credit",
             "--sqlite-export-for-ynab-db",
             db,
         )
