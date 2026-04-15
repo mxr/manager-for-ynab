@@ -17,8 +17,6 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
-from manager_for_ynab._version import get_version
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -47,9 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
     parser.add_argument("--for-real", action="store_true")
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {get_version()}"
-    )
     return parser
 
 

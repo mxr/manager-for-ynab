@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING
 
 import ynab
 
-from manager_for_ynab._version import get_version
-
 if TYPE_CHECKING:
     from collections.abc import Generator
     from collections.abc import Sequence
@@ -48,9 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--for-real",
         action="store_true",
         help="Apply the updates instead of only previewing them.",
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {get_version()}"
     )
     return parser
 

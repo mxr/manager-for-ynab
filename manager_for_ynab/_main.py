@@ -56,12 +56,13 @@ def main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
-    if argv[0] == "reconciler":
-        return _run_reconciler(argv[1:])
-    if argv[0] == "pending-income":
-        return _run_pending_income(argv[1:])
-    if argv[0] == "zero-out":
-        return _run_zero_out(argv[1:])
+    match argv[0]:
+        case "reconciler":
+            return _run_reconciler(argv[1:])
+        case "pending-income":
+            return _run_pending_income(argv[1:])
+        case "zero-out":
+            return _run_zero_out(argv[1:])
 
     parser = build_parser()
     parser.parse_args(argv)
