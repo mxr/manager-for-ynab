@@ -2,6 +2,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from manager_for_ynab import pending_income
+from manager_for_ynab import zero_out
 from manager_for_ynab._version import get_version
 from reconciler_for_ynab import _main as reconciler_main
 
@@ -30,25 +31,38 @@ def build_parser() -> argparse.ArgumentParser:
         "pending-income", help="Move pending income transactions to today."
     )
     pending_income_parser.set_defaults(func=_run_pending_income)
+
+    zero_out_parser = subparsers.add_parser(
+        "zero-out",
+        help="Set a category's budgeted amount to zero across a month range.",
+    )
+    zero_out_parser.set_defaults(func=_run_zero_out)
     return parser
 
 
 def _run_reconciler(argv: Sequence[str]) -> int:
-    return reconciler_main.main(argv, prog="manager-for-ynab reconciler")
+    return reconciler_main.main(argv)
 
 
 def _run_pending_income(argv: Sequence[str]) -> int:
-    return pending_income.main(argv, prog="manager-for-ynab pending-income")
+    return pending_income.main(argv)
+
+
+def _run_zero_out(argv: Sequence[str]) -> int:
+    return zero_out.main(argv)
 
 
 def main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
-    if argv[0] == "reconciler":
-        return _run_reconciler(argv[1:])
-    if argv[0] == "pending-income":
-        return _run_pending_income(argv[1:])
+    match argv[0]:
+        case "reconciler":
+            return _run_reconciler(argv[1:])
+        case "pending-income":
+            return _run_pending_income(argv[1:])
+        case "zero-out":
+            return _run_zero_out(argv[1:])
 
     parser = build_parser()
     parser.parse_args(argv)

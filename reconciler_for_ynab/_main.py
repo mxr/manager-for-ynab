@@ -57,8 +57,8 @@ class PlanAccount:
     currency: str
 
 
-def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, description=_DESCRIPTION)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=_PACKAGE, description=_DESCRIPTION)
     parser.add_argument(
         "--mode",
         choices=("single", "batch"),
@@ -98,8 +98,8 @@ def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
     return parser
 
 
-async def async_main(argv: Sequence[str] | None = None, *, prog: str = _PACKAGE) -> int:
-    args = build_parser(prog=prog).parse_args(argv)
+async def async_main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     mode: str = args.mode
     account_name_regex: str | None = args.account_name_regex
     raw_target: Decimal | None = args.target
@@ -429,5 +429,5 @@ class YnabClient:
         pbar.update(len(transaction_ids))
 
 
-def main(argv: Sequence[str] | None = None, *, prog: str = _PACKAGE) -> int:
-    return asyncio.run(async_main(argv, prog=prog))
+def main(argv: Sequence[str] | None = None) -> int:
+    return asyncio.run(async_main(argv))

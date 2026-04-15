@@ -20,6 +20,7 @@ def test_main_without_args_prints_help(capsys):
     assert "usage: manager-for-ynab" in out
     assert "reconciler" in out
     assert "pending-income" in out
+    assert "zero-out" in out
 
 
 def test_main_reconciler_help(capsys):
@@ -43,9 +44,19 @@ def test_main_pending_income_help(capsys):
     assert "--for-real" in out
 
 
+def test_main_zero_out_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("zero-out", "--help"))
+
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab zero-out" in out
+    assert "--for-real" in out
+
+
 def test_build_parser_registers_expected_subcommands():
     parser = build_parser()
     actions = [action for action in parser._actions if action.dest == "command"]
     assert len(actions) == 1
     assert actions[0].choices is not None
-    assert set(actions[0].choices) == {"pending-income", "reconciler"}
+    assert set(actions[0].choices) == {"pending-income", "reconciler", "zero-out"}
