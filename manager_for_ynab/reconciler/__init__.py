@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 from typing import Never
 from typing import TYPE_CHECKING
 
@@ -63,11 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("single", "batch"),
         default="single",
-        help="Reconciliation mode. `single` uses --account-name-regex/--target. `batch` uses --account-target-pairs.",
+        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs.",
     )
     parser.add_argument(
-        "--account-name-regex",
-        help="Regex to match account name (must match exactly one account)",
+        "--account-like",
+        help="SQL LIKE pattern to match account name (must match exactly one account)",
     )
     parser.add_argument(
         "--target",
@@ -77,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--account-target-pairs",
         nargs="+",
-        help="Batch mode only. Account regex/target pairs in `ACCOUNT_NAME_REGEX=TARGET` format (example: `Checking=500.30`).",
+        help="Batch mode only. Account pattern/target pairs in `ACCOUNT_LIKE=TARGET` format (example: `Checking%%=500.30`).",
     )
     parser.add_argument(
         "--for-real",
@@ -103,7 +102,7 @@ async def async_run(
 ) -> int:
     args = build_parser().parse_args(argv)
     mode: str = args.mode
-    account_name_regex: str | None = args.account_name_regex
+    account_like: str | None = args.account_like
     raw_target: Decimal | None = args.target
     account_target_pairs: list[str] | None = args.account_target_pairs
     for_real: bool = args.for_real
@@ -115,21 +114,21 @@ async def async_run(
             raise ValueError(
                 "`--account-target-pairs` is only valid when `--mode batch` is selected."
             )
-        if account_name_regex is None or raw_target is None:
+        if account_like is None or raw_target is None:
             raise ValueError(
-                "`--mode single` requires both `--account-name-regex` and `--target`."
+                "`--mode single` requires both `--account-like` and `--target`."
             )
-        account_name_regexes = [account_name_regex]
+        account_likes = [_normalize_account_like(account_like)]
         raw_targets = [raw_target]
     else:
         assert mode == "batch"
-        if account_name_regex is not None or raw_target is not None:
+        if account_like is not None or raw_target is not None:
             raise ValueError(
-                "`--mode batch` cannot be used with `--account-name-regex` or `--target`; use `--account-target-pairs` instead."
+                "`--mode batch` cannot be used with `--account-like` or `--target`; use `--account-target-pairs` instead."
             )
         if not account_target_pairs:
             raise ValueError("`--mode batch` requires `--account-target-pairs`.")
-        account_name_regexes, raw_targets = _parse_account_targets(account_target_pairs)
+        account_likes, raw_targets = _parse_account_targets(account_target_pairs)
 
     token = resolve_token(token_override)
 
@@ -138,14 +137,11 @@ async def async_run(
     print("** Done **")
 
     with sqlite3.connect(db) as con:
-        con.create_function(
-            "REGEXP", 2, lambda x, y: bool(re.search(y, x, re.IGNORECASE))
-        )
-        con.row_factory = _row_factory
+        con.row_factory = sqlite3.Row
 
         cur = con.cursor()
 
-        plan_accts = fetch_plan_accts(cur, account_name_regexes)
+        plan_accts = fetch_plan_accts(cur, account_likes)
         transactions = fetch_transactions(cur, plan_accts)
 
     rets = list(
@@ -175,13 +171,20 @@ async def async_run(
 def _parse_account_targets(
     account_target_pairs: list[str],
 ) -> tuple[list[str], list[Decimal]]:
-    account_name_regexes: list[str] = []
+    account_likes: list[str] = []
     raw_targets: list[Decimal] = []
     for pair in account_target_pairs:
-        regex, _, target = pair.partition("=")
-        account_name_regexes.append(regex)
+        account_like, _, target = pair.partition("=")
+        account_likes.append(_normalize_account_like(account_like))
         raw_targets.append(Decimal(re.sub("[,$]", "", target)))
-    return account_name_regexes, raw_targets
+    return account_likes, raw_targets
+
+
+def _normalize_account_like(account_like: str) -> str:
+    if "%" in account_like or "_" in account_like:
+        return account_like
+
+    return f"%{account_like}%"
 
 
 async def _reconcile_account(
@@ -231,7 +234,7 @@ async def _reconcile_account(
 
 
 def fetch_plan_accts(
-    cur: sqlite3.Cursor, account_name_regexes: list[str]
+    cur: sqlite3.Cursor, account_likes: list[str]
 ) -> list[PlanAccount]:
     plan_accts = cur.execute(
         f"""
@@ -251,18 +254,18 @@ def fetch_plan_accts(
                 TRUE
                 AND NOT deleted
                 AND NOT closed
-                AND ({" OR ".join("REGEXP(accounts.name, ?)" for _ in account_name_regexes)})
+                AND ({" OR ".join("accounts.name LIKE ?" for _ in account_likes)})
             ORDER BY
                 CASE
-                    {" ".join(f"WHEN REGEXP(accounts.name, ?) THEN {i}" for i, _ in enumerate(account_name_regexes))}
+                    {" ".join(f"WHEN accounts.name LIKE ? THEN {i}" for i, _ in enumerate(account_likes))}
                 END
             """,
-        (*account_name_regexes, *account_name_regexes),
+        (*account_likes, *account_likes),
     ).fetchall()
 
-    if len(plan_accts) != len(account_name_regexes):
+    if len(plan_accts) != len(account_likes):
         raise ValueError(
-            f"\n❌ Must have {len(account_name_regexes)} total account matches for the supplied pairs, but instead found: {_pretty(plan_accts)}\nChange account regexes to be more precise and try again."
+            f"\n❌ Must have {len(account_likes)} total account matches for the supplied pairs, but instead found: {_pretty(plan_accts)}\nChange account LIKE patterns to be more precise and try again."
         )
 
     return [
@@ -278,7 +281,7 @@ def fetch_plan_accts(
     ]
 
 
-def _pretty(plan_accts: list[dict[str, Any]]) -> str:
+def _pretty(plan_accts: list[sqlite3.Row]) -> str:
     if not plan_accts:
         return "nothing!"
 
@@ -384,10 +387,6 @@ def partition[T](
         else:
             falses.append(i)
     return trues, falses
-
-
-def _row_factory(c: sqlite3.Cursor, row: tuple[Any, ...]) -> dict[str, Any]:
-    return {d[0]: r for d, r in zip(c.description, row, strict=True)}
 
 
 class Error4034(Exception):

@@ -15,13 +15,13 @@ $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
 Preview a single account reconciliation:
 
 ```console
-$ manager-for-ynab reconciler --account-name-regex 1234 --target 500.30
+$ manager-for-ynab reconciler --account-like 1234 --target 500.30
 ```
 
 Apply it:
 
 ```console
-$ manager-for-ynab reconciler --account-name-regex 1234 --target 500.30 --for-real
+$ manager-for-ynab reconciler --account-like 1234 --target 500.30 --for-real
 ```
 
 Run batch mode:
@@ -29,3 +29,5 @@ Run batch mode:
 ```console
 $ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking=500' 'Credit=290' --for-real
 ```
+
+Bare `--account-like` values are treated as substring matches. Include `%` or `_` yourself when you want explicit SQL `LIKE` wildcard behavior.
