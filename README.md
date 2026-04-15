@@ -8,7 +8,7 @@ Manager for YNAB.
 
 This repo is a single CLI for YNAB-focused tools.
 
-- `reconciler`: find unreconciled transactions that match a target balance
+- `reconciler`: find and automatically reconciles unreconciled transactions
 - `pending-income`: move pending income transactions to today
 
 Tool-specific docs:

@@ -4,6 +4,15 @@ from manager_for_ynab._main import build_parser
 from manager_for_ynab._main import main
 
 
+def test_main_version(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("--version",))
+
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert out == "manager-for-ynab 1.0.0\n"
+
+
 def test_main_requires_subcommand():
     with pytest.raises(SystemExit) as excinfo:
         main(())
@@ -11,42 +20,25 @@ def test_main_requires_subcommand():
     assert excinfo.value.code == 2
 
 
-def test_main_dispatches_reconciler(monkeypatch):
-    called: dict[str, object] = {}
+def test_main_reconciler_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("reconciler", "--help"))
 
-    def fake_main(argv, *, prog):
-        called["argv"] = argv
-        called["prog"] = prog
-        return 0
-
-    monkeypatch.setattr("manager_for_ynab._main.reconciler_main.main", fake_main)
-
-    ret = main(("reconciler", "--for-real", "--target", "500"))
-
-    assert ret == 0
-    assert called == {
-        "argv": ["--for-real", "--target", "500"],
-        "prog": "manager-for-ynab reconciler",
-    }
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab reconciler" in out
+    assert "Find and automatically reconciles unreconciled transactions." in out
+    assert "--for-real" in out
 
 
-def test_main_dispatches_pending_income(monkeypatch):
-    called: dict[str, object] = {}
+def test_main_pending_income_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("pending-income", "--help"))
 
-    def fake_main(argv, *, prog):
-        called["argv"] = argv
-        called["prog"] = prog
-        return 0
-
-    monkeypatch.setattr("manager_for_ynab._main.pending_income.main", fake_main)
-
-    ret = main(("pending-income", "--for-real"))
-
-    assert ret == 0
-    assert called == {
-        "argv": ["--for-real"],
-        "prog": "manager-for-ynab pending-income",
-    }
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab pending-income" in out
+    assert "--for-real" in out
 
 
 def test_build_parser_registers_expected_subcommands():

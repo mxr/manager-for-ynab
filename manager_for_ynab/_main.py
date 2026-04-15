@@ -2,19 +2,27 @@ import argparse
 from typing import TYPE_CHECKING
 
 from manager_for_ynab import pending_income
+from manager_for_ynab._version import get_version
 from reconciler_for_ynab import _main as reconciler_main
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+_RECONCILER_HELP = "Find and automatically reconciles unreconciled transactions."
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="manager-for-ynab")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {get_version()}"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     reconciler_parser = subparsers.add_parser(
         "reconciler",
-        help="Find transactions that reconcile an account to a target balance.",
+        help=_RECONCILER_HELP,
+        description=_RECONCILER_HELP,
     )
     reconciler_parser.set_defaults(func=_run_reconciler)
 
@@ -35,6 +43,11 @@ def _run_pending_income(argv: Sequence[str]) -> int:
 
 
 def main(argv: Sequence[str] = ()) -> int:
+    if argv and argv[0] == "reconciler":
+        return _run_reconciler(argv[1:])
+    if argv and argv[0] == "pending-income":
+        return _run_pending_income(argv[1:])
+
     parser = build_parser()
-    args, remaining = parser.parse_known_args(argv)
-    return args.func(remaining)
+    parser.parse_args(argv)
+    raise AssertionError("subcommand parser should have exited")

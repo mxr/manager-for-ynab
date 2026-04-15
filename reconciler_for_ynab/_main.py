@@ -18,8 +18,6 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
-from manager_for_ynab._version import get_version
-
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Iterable
@@ -33,6 +31,7 @@ _PACKAGE = "manager-for-ynab reconciler"
 _NEG_BAL_ACCT_TYPES = frozenset(("checking", "savings", "cash"))
 
 _LOCALE_EN_US = "en_US"
+_DESCRIPTION = "Find and automatically reconciles unreconciled transactions."
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,7 @@ class PlanAccount:
 
 
 def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog)
+    parser = argparse.ArgumentParser(prog=prog, description=_DESCRIPTION)
     parser.add_argument(
         "--mode",
         choices=("single", "batch"),
@@ -95,9 +94,6 @@ def build_parser(*, prog: str = _PACKAGE) -> argparse.ArgumentParser:
         "--sqlite-export-for-ynab-full-refresh",
         action="store_true",
         help="Whether to **DROP ALL TABLES** and fetch all plan data again. If unset, this tool only does an incremental refresh",
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {get_version()}"
     )
     return parser
 

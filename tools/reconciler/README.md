@@ -2,7 +2,7 @@
 
 ## What This Does
 
-`manager-for-ynab reconciler` finds the set of unreconciled YNAB transactions that will bring an account to a target balance. It can either preview the matching transactions or reconcile them through the YNAB API.
+`manager-for-ynab reconciler` finds and automatically reconciles the set of unreconciled YNAB transactions that will bring an account to a target balance. It can either preview the matching transactions or reconcile them through the YNAB API.
 
 ## Usage
 
