@@ -9,10 +9,12 @@ Manager for YNAB.
 This repo is a single CLI for YNAB-focused tools.
 
 - `reconciler`: find and automatically reconciles unreconciled transactions
+- `pending-income`: move pending income transactions to today
 
 Tool-specific docs:
 
 - [Reconciler](tools/reconciler/README.md)
+- [Pending Income](tools/pending-income/README.md)
 
 ## Installation
 
@@ -25,4 +27,5 @@ $ pip install manager-for-ynab
 ```console
 $ manager-for-ynab --help
 $ manager-for-ynab reconciler --help
+$ manager-for-ynab pending-income --help
 ```
