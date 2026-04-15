@@ -1,12 +1,14 @@
 import json
 import re
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.reconciler import _parse_account_targets
 from manager_for_ynab.reconciler import _row_factory
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
@@ -43,7 +45,7 @@ def test_run(sync, db, monkeypatch, capsys, target, expected, substr):
 
     ret = run(
         (
-            "--account-name-regex",
+            "--account-like",
             "Checking",
             "--target",
             str(target),
@@ -68,7 +70,7 @@ def test_run_nothing_to_do(sync, db, monkeypatch):
 
     ret = run(
         (
-            "--account-name-regex",
+            "--account-like",
             "Checking",
             "--target",
             "430",
@@ -88,7 +90,7 @@ def test_run_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
 
     ret = run(
         (
-            "--account-name-regex",
+            "--account-like",
             "Checking",
             "--target",
             "500",
@@ -106,7 +108,7 @@ def test_run_no_token(monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-name-regex", "checking.+123", "--target", "410.50"))
+        run(("--account-like", "checking%123", "--target", "410.50"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -118,7 +120,7 @@ def test_run_uses_token_override(sync, db, monkeypatch):
 
     ret = run(
         (
-            "--account-name-regex",
+            "--account-like",
             "Checking",
             "--target",
             "500",
@@ -155,7 +157,7 @@ def test_run_mode_batch_requires_account_target_pairs():
 
 def test_run_mode_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch", "--account-name-regex", "Checking", "--target", "500"))
+        run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
 
     assert "--mode batch" in str(excinfo.value)
 
@@ -227,20 +229,20 @@ def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
-    ("regex", "substr"),
+    ("account_like", "substr"),
     (
-        pytest.param("c", "My Plan", id="more than 1"),
+        pytest.param("%c%", "My Plan", id="more than 1"),
         pytest.param("foo", "nothing!", id="none"),
     ),
 )
-def test_run_not_one_account(sync, db, monkeypatch, regex, substr):
+def test_run_not_one_account(sync, db, monkeypatch, account_like, substr):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     with pytest.raises(ValueError) as excinfo:
         run(
             (
-                "--account-name-regex",
-                regex,
+                "--account-like",
+                account_like,
                 "--target",
                 "500",
                 "--sqlite-export-for-ynab-db",
@@ -252,20 +254,24 @@ def test_run_not_one_account(sync, db, monkeypatch, regex, substr):
     assert substr in str(excinfo.value)
 
 
+def test_parse_account_targets_wraps_non_wildcard_patterns():
+    account_likes, raw_targets = _parse_account_targets(["2045=410", "Credit%=290"])
+
+    assert account_likes == ["%2045%", "Credit%"]
+    assert raw_targets == [Decimal("410"), Decimal("290")]
+
+
 @pytest.mark.asyncio
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
-        con.create_function(
-            "REGEXP", 2, lambda x, y: bool(re.search(y, x, re.IGNORECASE))
-        )
         con.row_factory = _row_factory
 
         cur = con.cursor()
 
-        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["checking"]))[0]
+        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%checking%"]))[0]
 
     mock_aioresponses.patch(
         re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
@@ -289,14 +295,11 @@ async def test_run_do_reconcile(sync, db, mock_aioresponses):
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
-        con.create_function(
-            "REGEXP", 2, lambda x, y: bool(re.search(y, x, re.IGNORECASE))
-        )
         con.row_factory = _row_factory
 
         cur = con.cursor()
 
-        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["checking"]))[0]
+        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%checking%"]))[0]
 
     mock_aioresponses.patch(
         re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
