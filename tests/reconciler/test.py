@@ -37,7 +37,7 @@ from testing.fixtures import TOKEN
         ),
     ),
 )
-def test_main(sync, db, monkeypatch, capsys, target, expected, substr):
+def test_run(sync, db, monkeypatch, capsys, target, expected, substr):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     ret = run(
@@ -57,7 +57,7 @@ def test_main(sync, db, monkeypatch, capsys, target, expected, substr):
 
 
 @patch("manager_for_ynab.reconciler.sync")
-def test_main_nothing_to_do(sync, db, monkeypatch):
+def test_run_nothing_to_do(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     with sqlite3.connect(db) as con:
@@ -82,7 +82,7 @@ def test_main_nothing_to_do(sync, db, monkeypatch):
 @patch("manager_for_ynab.reconciler.sync")
 @patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
-def test_main_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
+def test_run_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     ret = run(
@@ -101,7 +101,7 @@ def test_main_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
     reconcile.assert_called()
 
 
-def test_main_no_token(monkeypatch):
+def test_run_no_token(monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
@@ -110,28 +110,28 @@ def test_main_no_token(monkeypatch):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-def test_main_mode_single_requires_single_targeting_params():
+def test_run_mode_single_requires_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
         run(())
 
     assert "--mode single" in str(excinfo.value)
 
 
-def test_main_mode_single_rejects_batch_targeting_params():
+def test_run_mode_single_rejects_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
         run(("--account-target-pairs", "Checking=500"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
-def test_main_mode_batch_requires_account_target_pairs():
+def test_run_mode_batch_requires_account_target_pairs():
     with pytest.raises(ValueError) as excinfo:
         run(("--mode", "batch"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
-def test_main_mode_batch_rejects_single_targeting_params():
+def test_run_mode_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
         run(("--mode", "batch", "--account-name-regex", "Checking", "--target", "500"))
 
@@ -140,7 +140,7 @@ def test_main_mode_batch_rejects_single_targeting_params():
 
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_main_mode_batch(sync, db, monkeypatch):
+def test_run_mode_batch(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
     with sqlite3.connect(db) as con:
         con.execute(
@@ -169,7 +169,7 @@ def test_main_mode_batch(sync, db, monkeypatch):
 
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_main_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
+def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
     with sqlite3.connect(db) as con:
         con.execute(
@@ -211,7 +211,7 @@ def test_main_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
         pytest.param("foo", "nothing!", id="none"),
     ),
 )
-def test_main_not_one_account(sync, db, monkeypatch, regex, substr):
+def test_run_not_one_account(sync, db, monkeypatch, regex, substr):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     with pytest.raises(ValueError) as excinfo:
@@ -234,7 +234,7 @@ def test_main_not_one_account(sync, db, monkeypatch, regex, substr):
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
-async def test_main_do_reconcile(sync, db, mock_aioresponses):
+async def test_run_do_reconcile(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
         con.create_function(
             "REGEXP", 2, lambda x, y: bool(re.search(y, x, re.IGNORECASE))
@@ -265,7 +265,7 @@ async def test_main_do_reconcile(sync, db, mock_aioresponses):
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
-async def test_main_do_reconcile_error_4034(sync, db, mock_aioresponses):
+async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
         con.create_function(
             "REGEXP", 2, lambda x, y: bool(re.search(y, x, re.IGNORECASE))

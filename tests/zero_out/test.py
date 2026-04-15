@@ -160,7 +160,7 @@ async def test_run_updates_prints_success_and_failure(monkeypatch, capsys):
     assert "Failed to update month 2025-02: boom" in out
 
 
-def test_main_requires_token(monkeypatch):
+def test_run_requires_token(monkeypatch):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
@@ -169,7 +169,7 @@ def test_main_requires_token(monkeypatch):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-def test_main_dry_run_prints_preview(monkeypatch, capsys):
+def test_run_dry_run_prints_preview(monkeypatch, capsys):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
 
     class FakeApiClient:
@@ -231,7 +231,7 @@ def test_main_dry_run_prints_preview(monkeypatch, capsys):
     assert "Use --for-real to actually update categories." in out
 
 
-def test_main_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
+def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
 
     class FakeApiClient:
@@ -267,7 +267,7 @@ def test_main_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
     assert "bad plan" in out
 
 
-def test_main_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
+def test_run_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
 
     class FakeApiClient:
@@ -306,7 +306,7 @@ def test_main_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
     assert "No months selected." in out
 
 
-def test_main_uses_current_month_when_end_omitted(monkeypatch, capsys):
+def test_run_uses_current_month_when_end_omitted(monkeypatch, capsys):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
 
     class FakeApiClient:
@@ -349,7 +349,7 @@ def test_main_uses_current_month_when_end_omitted(monkeypatch, capsys):
     assert "Months to update: 2025-04" in out
 
 
-def test_main_for_real_runs_updates(monkeypatch):
+def test_run_for_real_runs_updates(monkeypatch):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
 
     class FakeApiClient:

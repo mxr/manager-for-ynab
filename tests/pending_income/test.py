@@ -167,7 +167,7 @@ def test_build_updates_groups_by_plan():
     )
 
 
-def test_main_requires_token(monkeypatch):
+def test_run_requires_token(monkeypatch):
     monkeypatch.setenv(pending_income._ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
@@ -177,7 +177,7 @@ def test_main_requires_token(monkeypatch):
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
@@ -199,7 +199,7 @@ def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, 
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
@@ -216,9 +216,7 @@ def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_for_real_updates_transactions_grouped_by_plan(
-    sync, monkeypatch, tmp_path
-):
+def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
