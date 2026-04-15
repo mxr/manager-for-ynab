@@ -30,9 +30,28 @@ def test_main_dispatches_reconciler(monkeypatch):
     }
 
 
+def test_main_dispatches_pending_income(monkeypatch):
+    called: dict[str, object] = {}
+
+    def fake_main(argv, *, prog):
+        called["argv"] = argv
+        called["prog"] = prog
+        return 0
+
+    monkeypatch.setattr("manager_for_ynab._main.pending_income.main", fake_main)
+
+    ret = main(("pending-income", "--for-real"))
+
+    assert ret == 0
+    assert called == {
+        "argv": ["--for-real"],
+        "prog": "manager-for-ynab pending-income",
+    }
+
+
 def test_build_parser_registers_expected_subcommands():
     parser = build_parser()
     actions = [action for action in parser._actions if action.dest == "command"]
     assert len(actions) == 1
     assert actions[0].choices is not None
-    assert set(actions[0].choices) == {"reconciler"}
+    assert set(actions[0].choices) == {"pending-income", "reconciler"}
