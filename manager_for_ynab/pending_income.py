@@ -5,6 +5,7 @@ import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+from importlib.resources import files
 from pathlib import Path
 from typing import Never
 from typing import TYPE_CHECKING
@@ -24,6 +25,9 @@ if TYPE_CHECKING:
 
 _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab pending-income"
+_PENDING_INCOME_SQL = (
+    files("manager_for_ynab").joinpath("pending_income.sql").read_text()
+)
 
 
 @dataclass(frozen=True)
@@ -110,35 +114,7 @@ def build_updates(
 
 
 def fetch_pending_income(cur: sqlite3.Cursor) -> dict[str, list[Transaction]]:
-    txns = cur.execute(
-        """
-        SELECT
-            id
-            , plan_id
-            , account_name
-            , payee_name
-            , amount_formatted
-            , date
-        FROM transactions
-        WHERE
-            TRUE
-            AND cleared = 'uncleared'
-            AND `date` < date('now', 'localtime')
-            AND amount > 0
-            AND NOT deleted
-            AND SUBSTR(`date`, 6, 2) = SUBSTR(date(), 6, 2)
-            AND id NOT IN (
-                SELECT transfer_transaction_id
-                FROM subtransactions
-                WHERE
-                    transfer_transaction_id IS NOT NULL
-                    AND NOT deleted
-            )
-        ORDER BY date, account_name, payee_name
-        ;
-        """,
-        (),
-    ).fetchall()
+    txns = cur.execute(_PENDING_INCOME_SQL).fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:

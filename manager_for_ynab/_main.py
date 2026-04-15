@@ -30,7 +30,6 @@ def build_parser() -> argparse.ArgumentParser:
         "pending-income", help="Move pending income transactions to today."
     )
     pending_income_parser.set_defaults(func=_run_pending_income)
-
     return parser
 
 
@@ -46,9 +45,9 @@ def main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
-    if argv and argv[0] == "reconciler":
+    if argv[0] == "reconciler":
         return _run_reconciler(argv[1:])
-    if argv and argv[0] == "pending-income":
+    if argv[0] == "pending-income":
         return _run_pending_income(argv[1:])
 
     parser = build_parser()
