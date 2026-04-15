@@ -1,19 +1,19 @@
 import argparse
 import asyncio
 import datetime
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 import ynab
 
+from manager_for_ynab._auth import resolve_token
+
 if TYPE_CHECKING:
     from collections.abc import Generator
     from collections.abc import Sequence
 
 
-_ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab zero-out"
 
 
@@ -164,14 +164,10 @@ async def _run_updates(
                 print(f"Failed to update month {month_str}: {err}")
 
 
-def run(argv: Sequence[str] | None = None) -> int:
+def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    token = os.environ.get(_ENV_TOKEN)
-    if not token:
-        raise ValueError(
-            "Must set YNAB access token as `YNAB_PERSONAL_ACCESS_TOKEN` environment variable. See https://api.ynab.com/#personal-access-tokens"
-        )
+    token = resolve_token(token_override)
 
     configuration = ynab.Configuration(access_token=token)
 

@@ -1,11 +1,12 @@
 import json
 import re
 import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from manager_for_ynab.reconciler import _ENV_TOKEN
+from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _row_factory
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
@@ -108,6 +109,27 @@ def test_run_no_token(monkeypatch):
         run(("--account-name-regex", "checking.+123", "--target", "410.50"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
+
+
+@patch("manager_for_ynab.reconciler.sync")
+@pytest.mark.usefixtures(db.__name__)
+def test_run_uses_token_override(sync, db, monkeypatch):
+    monkeypatch.delenv(_ENV_TOKEN, raising=False)
+
+    ret = run(
+        (
+            "--account-name-regex",
+            "Checking",
+            "--target",
+            "500",
+            "--sqlite-export-for-ynab-db",
+            db,
+        ),
+        token_override=TOKEN,
+    )
+
+    sync.assert_called_once_with(TOKEN, Path(db), False)
+    assert ret == 0
 
 
 def test_run_mode_single_requires_single_targeting_params():

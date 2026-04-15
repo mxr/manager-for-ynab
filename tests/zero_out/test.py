@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 import manager_for_ynab.zero_out as zero_out
+from manager_for_ynab._auth import _ENV_TOKEN
 
 
 def test_month_range_is_inclusive():
@@ -161,7 +162,7 @@ async def test_run_updates_prints_success_and_failure(monkeypatch, capsys):
 
 
 def test_run_requires_token(monkeypatch):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "")
+    monkeypatch.setenv(_ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
         zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
@@ -169,8 +170,76 @@ def test_run_requires_token(monkeypatch):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
+def test_run_uses_token_override(monkeypatch, capsys):
+    monkeypatch.delenv(_ENV_TOKEN, raising=False)
+    captured: dict[str, str] = {}
+
+    class FakeApiClient:
+        def __init__(self, configuration):
+            self.configuration = configuration
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    plans = [
+        SimpleNamespace(
+            id="plan-2", name="New", last_modified_on=datetime.datetime(2025, 2, 1)
+        )
+    ]
+    categories = [SimpleNamespace(id="cat-1", name="Rent")]
+
+    def fake_configuration(access_token):
+        captured["token"] = access_token
+        return SimpleNamespace(access_token=access_token)
+
+    monkeypatch.setattr(
+        zero_out.ynab,
+        "Configuration",
+        fake_configuration,
+    )
+    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
+    monkeypatch.setattr(
+        zero_out.ynab,
+        "PlansApi",
+        lambda client: SimpleNamespace(
+            get_plans=lambda: SimpleNamespace(data=SimpleNamespace(plans=plans))
+        ),
+    )
+    monkeypatch.setattr(
+        zero_out.ynab,
+        "CategoriesApi",
+        lambda client: SimpleNamespace(
+            get_categories=lambda plan_id: SimpleNamespace(
+                data=SimpleNamespace(
+                    category_groups=[SimpleNamespace(categories=categories)]
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        zero_out,
+        "_run_updates",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("_run_updates should not run during dry-run")
+        ),
+    )
+
+    ret = zero_out.run(
+        ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02"),
+        token_override="override-token",
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    assert captured["token"] == "override-token"
+    assert "Using plan: New (plan-2)" in out
+
+
 def test_run_dry_run_prints_preview(monkeypatch, capsys):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     class FakeApiClient:
         def __init__(self, configuration):
@@ -232,7 +301,7 @@ def test_run_dry_run_prints_preview(monkeypatch, capsys):
 
 
 def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     class FakeApiClient:
         def __init__(self, configuration):
@@ -268,7 +337,7 @@ def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
 
 
 def test_run_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     class FakeApiClient:
         def __init__(self, configuration):
@@ -307,7 +376,7 @@ def test_run_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
 
 
 def test_run_uses_current_month_when_end_omitted(monkeypatch, capsys):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     class FakeApiClient:
         def __init__(self, configuration):
@@ -350,7 +419,7 @@ def test_run_uses_current_month_when_end_omitted(monkeypatch, capsys):
 
 
 def test_run_for_real_runs_updates(monkeypatch):
-    monkeypatch.setenv(zero_out._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     class FakeApiClient:
         def __init__(self, configuration):
