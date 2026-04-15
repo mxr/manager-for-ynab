@@ -1,4 +1,5 @@
 import argparse
+import sys
 from typing import TYPE_CHECKING
 
 from manager_for_ynab import pending_income
@@ -53,6 +54,7 @@ def _run_zero_out(argv: Sequence[str]) -> int:
 
 
 def main(argv: Sequence[str] = ()) -> int:
+    argv = argv or sys.argv[1:]
     if not argv:
         build_parser().print_help()
         return 0
