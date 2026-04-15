@@ -9,6 +9,7 @@ import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
+from manager_for_ynab.reconciler import _row_factory
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
@@ -266,7 +267,7 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
+        con.row_factory = _row_factory
 
         cur = con.cursor()
 
@@ -294,7 +295,7 @@ async def test_run_do_reconcile(sync, db, mock_aioresponses):
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
     with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
+        con.row_factory = _row_factory
 
         cur = con.cursor()
 

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from typing import Never
 from typing import TYPE_CHECKING
 
@@ -137,7 +138,7 @@ async def async_run(
     print("** Done **")
 
     with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
+        con.row_factory = _row_factory
 
         cur = con.cursor()
 
@@ -281,7 +282,7 @@ def fetch_plan_accts(
     ]
 
 
-def _pretty(plan_accts: list[sqlite3.Row]) -> str:
+def _pretty(plan_accts: list[dict[str, Any]]) -> str:
     if not plan_accts:
         return "nothing!"
 
@@ -387,6 +388,10 @@ def partition[T](
         else:
             falses.append(i)
     return trues, falses
+
+
+def _row_factory(c: sqlite3.Cursor, row: tuple[Any, ...]) -> dict[str, Any]:
+    return {d[0]: r for d, r in zip(c.description, row, strict=True)}
 
 
 class Error4034(Exception):
