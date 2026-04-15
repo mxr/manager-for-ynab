@@ -43,6 +43,9 @@ def _run_pending_income(argv: Sequence[str]) -> int:
 
 
 def main(argv: Sequence[str] = ()) -> int:
+    if not argv:
+        build_parser().print_help()
+        return 0
     if argv and argv[0] == "reconciler":
         return _run_reconciler(argv[1:])
     if argv and argv[0] == "pending-income":

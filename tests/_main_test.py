@@ -13,11 +13,13 @@ def test_main_version(capsys):
     assert out == "manager-for-ynab 1.0.0\n"
 
 
-def test_main_requires_subcommand():
-    with pytest.raises(SystemExit) as excinfo:
-        main(())
+def test_main_without_args_prints_help(capsys):
+    assert main(()) == 0
 
-    assert excinfo.value.code == 2
+    out, _ = capsys.readouterr()
+    assert "usage: manager-for-ynab" in out
+    assert "reconciler" in out
+    assert "pending-income" in out
 
 
 def test_main_reconciler_help(capsys):

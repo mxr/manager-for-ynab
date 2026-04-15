@@ -182,16 +182,12 @@ def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, 
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
 
-    transactions_api_calls: list[tuple[str, Any]] = []
+    def unexpected_transactions_api(*args, **kwargs):
+        raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    class FakeTransactionsApi:
-        def __init__(self, client):
-            self.client = client
-
-        def update_transactions(self, plan_id, wrapper):
-            transactions_api_calls.append((plan_id, wrapper))
-
-    monkeypatch.setattr(pending_income.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(
+        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
+    )
 
     ret = pending_income.main(("--sqlite-export-for-ynab-db", str(db_path)))
 
@@ -200,7 +196,23 @@ def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, 
     sync.assert_called_once()
     assert "Found 2 income transaction(s) to update." in out
     assert "Use --for-real to actually update transactions." in out
-    assert transactions_api_calls == []
+
+
+@patch("manager_for_ynab.pending_income.sync")
+def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "pending.sqlite"
+    _create_pending_income_db(db_path)
+    monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
+
+    with sqlite3.connect(db_path) as con:
+        con.execute("UPDATE transactions SET cleared = 'cleared'")
+
+    ret = pending_income.main(("--sqlite-export-for-ynab-db", str(db_path)))
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once()
+    assert "Found 0 income transaction(s) to update." in out
 
 
 @patch("manager_for_ynab.pending_income.sync")
