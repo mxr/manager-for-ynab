@@ -1,5 +1,10 @@
+from configparser import ConfigParser
+from importlib.metadata import PackageNotFoundError
+from pathlib import Path
+
 import pytest
 
+from manager_for_ynab import _version
 from manager_for_ynab._main import build_parser
 from manager_for_ynab._main import main
 
@@ -71,3 +76,23 @@ def test_build_parser_registers_expected_subcommands():
     assert len(actions) == 1
     assert actions[0].choices is not None
     assert set(actions[0].choices) == {"pending-income", "reconciler", "zero-out"}
+
+
+def test_get_version_from_installed_metadata(monkeypatch):
+    monkeypatch.setattr(
+        _version, "version", lambda distribution: f"{distribution}-version"
+    )
+
+    assert _version.get_version("custom-dist") == "custom-dist-version"
+
+
+def test_get_version_falls_back_to_setup_cfg(monkeypatch):
+    def raising_version(distribution):
+        raise PackageNotFoundError(distribution)
+
+    monkeypatch.setattr(_version, "version", raising_version)
+
+    config = ConfigParser()
+    config.read(Path(__file__).parents[2] / "setup.cfg")
+
+    assert _version.get_version() == config["metadata"]["version"]

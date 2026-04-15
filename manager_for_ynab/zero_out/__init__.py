@@ -164,7 +164,7 @@ async def _run_updates(
                 print(f"Failed to update month {month_str}: {err}")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def run(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     token = os.environ.get(_ENV_TOKEN)
@@ -212,3 +212,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print("Done.")
     return 0
+
+
+__all__ = [run.__name__]

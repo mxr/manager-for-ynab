@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def async_main(argv: Sequence[str] | None = None) -> int:
+async def async_run(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     mode: str = args.mode
     account_name_regex: str | None = args.account_name_regex
@@ -429,5 +429,8 @@ class YnabClient:
         pbar.update(len(transaction_ids))
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    return asyncio.run(async_main(argv))
+def run(argv: Sequence[str] | None = None) -> int:
+    return asyncio.run(async_run(argv))
+
+
+__all__ = [default_db_path.__name__, run.__name__, sync.__name__]

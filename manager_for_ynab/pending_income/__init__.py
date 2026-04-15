@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab pending-income"
 _PENDING_INCOME_SQL = (
-    files("manager_for_ynab").joinpath("pending_income.sql").read_text()
+    files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
 )
 
 
@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def run(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
@@ -140,3 +140,6 @@ def print_found_txns(found_txns: list[Transaction]) -> None:
         )
 
     rich.print(table)
+
+
+__all__ = [run.__name__]

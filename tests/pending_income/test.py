@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from manager_for_ynab import pending_income
+import manager_for_ynab.pending_income as pending_income
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -167,17 +167,17 @@ def test_build_updates_groups_by_plan():
     )
 
 
-def test_main_requires_token(monkeypatch):
+def test_run_requires_token(monkeypatch):
     monkeypatch.setenv(pending_income._ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
-        pending_income.main(())
+        pending_income.run(())
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
@@ -189,7 +189,7 @@ def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, 
         pending_income.ynab, "TransactionsApi", unexpected_transactions_api
     )
 
-    ret = pending_income.main(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -199,7 +199,7 @@ def test_main_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, 
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
@@ -207,7 +207,7 @@ def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     with sqlite3.connect(db_path) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
 
-    ret = pending_income.main(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -216,9 +216,7 @@ def test_main_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_main_for_real_updates_transactions_grouped_by_plan(
-    sync, monkeypatch, tmp_path
-):
+def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
@@ -242,7 +240,7 @@ def test_main_for_real_updates_transactions_grouped_by_plan(
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    ret = pending_income.main(
+    ret = pending_income.run(
         ("--sqlite-export-for-ynab-db", str(db_path), "--for-real")
     )
 
