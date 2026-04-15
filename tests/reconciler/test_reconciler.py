@@ -5,20 +5,20 @@ from unittest.mock import patch
 
 import pytest
 
-from reconciler_for_ynab._main import _ENV_TOKEN
-from reconciler_for_ynab._main import _row_factory
-from reconciler_for_ynab._main import do_reconcile
-from reconciler_for_ynab._main import fetch_plan_accts
-from reconciler_for_ynab._main import fetch_transactions
-from reconciler_for_ynab._main import main
-from reconciler_for_ynab._main import YnabClient
+from manager_for_ynab.reconciler._main import _ENV_TOKEN
+from manager_for_ynab.reconciler._main import _row_factory
+from manager_for_ynab.reconciler._main import do_reconcile
+from manager_for_ynab.reconciler._main import fetch_plan_accts
+from manager_for_ynab.reconciler._main import fetch_transactions
+from manager_for_ynab.reconciler._main import main
+from manager_for_ynab.reconciler._main import YnabClient
 from testing.fixtures import db
 from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
     ("target", "expected", "substr"),
@@ -56,7 +56,7 @@ def test_main(sync, db, monkeypatch, capsys, target, expected, substr):
     assert substr in out
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 def test_main_nothing_to_do(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
@@ -79,7 +79,7 @@ def test_main_nothing_to_do(sync, db, monkeypatch):
     assert ret == 0
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
 def test_main_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
@@ -138,7 +138,7 @@ def test_main_mode_batch_rejects_single_targeting_params():
     assert "--mode batch" in str(excinfo.value)
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 def test_main_mode_batch(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
@@ -167,7 +167,7 @@ def test_main_mode_batch(sync, db, monkeypatch):
     assert ret == 0
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 def test_main_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
@@ -202,7 +202,7 @@ def test_main_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
     assert "[Credit Card] Balance already reconciled to target" in out
 
 
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
     ("regex", "substr"),
@@ -231,7 +231,7 @@ def test_main_not_one_account(sync, db, monkeypatch, regex, substr):
 
 
 @pytest.mark.asyncio
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_main_do_reconcile(sync, db, mock_aioresponses):
@@ -262,7 +262,7 @@ async def test_main_do_reconcile(sync, db, mock_aioresponses):
 
 
 @pytest.mark.asyncio
-@patch("reconciler_for_ynab._main.sync")
+@patch("manager_for_ynab.reconciler._main.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_main_do_reconcile_error_4034(sync, db, mock_aioresponses):

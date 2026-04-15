@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab pending-income"
 _PENDING_INCOME_SQL = (
-    files("manager_for_ynab").joinpath("pending_income.sql").read_text()
+    files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
 )
 
 

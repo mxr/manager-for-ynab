@@ -20,6 +20,6 @@ def test_get_version_falls_back_to_setup_cfg(monkeypatch):
     monkeypatch.setattr(_version, "version", raising_version)
 
     config = ConfigParser()
-    config.read(Path(__file__).parent.parent / "setup.cfg")
+    config.read(Path(__file__).parents[2] / "setup.cfg")
 
     assert _version.get_version() == config["metadata"]["version"]

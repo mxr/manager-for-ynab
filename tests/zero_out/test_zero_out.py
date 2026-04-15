@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from manager_for_ynab import zero_out
+from manager_for_ynab.zero_out import _main as zero_out
 
 
 def test_month_range_is_inclusive():
