@@ -20,6 +20,7 @@ def test_main_without_args_prints_help(capsys):
     assert "usage: manager-for-ynab" in out
     assert "reconciler" in out
     assert "pending-income" in out
+    assert "zero-out" in out
 
 
 def test_main_reconciler_help(capsys):
@@ -43,23 +44,14 @@ def test_main_pending_income_help(capsys):
     assert "--for-real" in out
 
 
-def test_main_dispatches_zero_out(monkeypatch):
-    called: dict[str, object] = {}
+def test_main_zero_out_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("zero-out", "--help"))
 
-    def fake_main(argv, *, prog):
-        called["argv"] = argv
-        called["prog"] = prog
-        return 0
-
-    monkeypatch.setattr("manager_for_ynab._main.zero_out.main", fake_main)
-
-    ret = main(("zero-out", "--category-name", "Stuff", "--start", "2025-01"))
-
-    assert ret == 0
-    assert called == {
-        "argv": ["--category-name", "Stuff", "--start", "2025-01"],
-        "prog": "manager-for-ynab zero-out",
-    }
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab zero-out" in out
+    assert "--for-real" in out
 
 
 def test_build_parser_registers_expected_subcommands():

@@ -56,11 +56,19 @@ def main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
+<<<<<<< HEAD
     if argv[0] == "reconciler":
         return _run_reconciler(argv[1:])
     if argv[0] == "pending-income":
         return _run_pending_income(argv[1:])
     if argv[0] == "zero-out":
+=======
+    if argv and argv[0] == "reconciler":
+        return _run_reconciler(argv[1:])
+    if argv and argv[0] == "pending-income":
+        return _run_pending_income(argv[1:])
+    if argv and argv[0] == "zero-out":
+>>>>>>> e7bb582 (Refine reconciler CLI help and versioning)
         return _run_zero_out(argv[1:])
 
     parser = build_parser()
