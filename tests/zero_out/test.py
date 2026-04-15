@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from manager_for_ynab.zero_out import _main as zero_out
+import manager_for_ynab.zero_out as zero_out
 
 
 def test_month_range_is_inclusive():
@@ -164,7 +164,7 @@ def test_main_requires_token(monkeypatch):
     monkeypatch.setenv(zero_out._ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
-        zero_out.main(("--category-name", "Rent", "--start", "2025-01"))
+        zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -219,7 +219,7 @@ def test_main_dry_run_prints_preview(monkeypatch, capsys):
 
     monkeypatch.setattr(zero_out, "_run_updates", fake_run_updates)
 
-    ret = zero_out.main(
+    ret = zero_out.run(
         ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02")
     )
 
@@ -260,7 +260,7 @@ def test_main_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
         lambda plans_api, plan_id: (_ for _ in ()).throw(RuntimeError("bad plan")),
     )
 
-    ret = zero_out.main(("--category-name", "Rent", "--start", "2025-01"))
+    ret = zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
 
     out, _ = capsys.readouterr()
     assert ret == 1
@@ -297,7 +297,7 @@ def test_main_returns_zero_when_month_range_is_empty(monkeypatch, capsys):
         lambda categories_api, plan_id, category_name: ("cat-1", "Rent"),
     )
 
-    ret = zero_out.main(
+    ret = zero_out.run(
         ("--category-name", "Rent", "--start", "2025-03", "--end", "2025-02")
     )
 
@@ -342,7 +342,7 @@ def test_main_uses_current_month_when_end_omitted(monkeypatch, capsys):
     )
     monkeypatch.setattr(zero_out.datetime, "date", FakeDate)
 
-    ret = zero_out.main(("--category-name", "Rent", "--start", "2025-04"))
+    ret = zero_out.run(("--category-name", "Rent", "--start", "2025-04"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -395,7 +395,7 @@ def test_main_for_real_runs_updates(monkeypatch):
 
     monkeypatch.setattr(zero_out.asyncio, "run", fake_asyncio_run)
 
-    ret = zero_out.main(
+    ret = zero_out.run(
         (
             "--category-name",
             "Rent",
