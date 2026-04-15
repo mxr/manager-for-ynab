@@ -18,13 +18,13 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
+from manager_for_ynab._auth import resolve_token
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Iterable
     from collections.abc import Sequence
 
-
-_ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 
 _PACKAGE = "manager-for-ynab reconciler"
 
@@ -98,7 +98,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def async_run(argv: Sequence[str] | None = None) -> int:
+async def async_run(
+    argv: Sequence[str] | None = None, *, token_override: str | None = None
+) -> int:
     args = build_parser().parse_args(argv)
     mode: str = args.mode
     account_name_regex: str | None = args.account_name_regex
@@ -129,11 +131,7 @@ async def async_run(argv: Sequence[str] | None = None) -> int:
             raise ValueError("`--mode batch` requires `--account-target-pairs`.")
         account_name_regexes, raw_targets = _parse_account_targets(account_target_pairs)
 
-    token = os.environ.get(_ENV_TOKEN)
-    if not token:
-        raise ValueError(
-            f"Must set YNAB access token as {_ENV_TOKEN!r} environment variable. See https://api.ynab.com/#personal-access-tokens"
-        )
+    token = resolve_token(token_override)
 
     print("** Refreshing SQLite DB **")
     await sync(token, db, full_refresh)
@@ -429,8 +427,8 @@ class YnabClient:
         pbar.update(len(transaction_ids))
 
 
-def run(argv: Sequence[str] | None = None) -> int:
-    return asyncio.run(async_run(argv))
+def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
+    return asyncio.run(async_run(argv, token_override=token_override))
 
 
 __all__ = [default_db_path.__name__, run.__name__, sync.__name__]

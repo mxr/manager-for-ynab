@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import os
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
@@ -17,11 +16,12 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
+from manager_for_ynab._auth import resolve_token
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-_ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 _PACKAGE = "manager-for-ynab pending-income"
 _PENDING_INCOME_SQL = (
     files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
@@ -48,17 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(argv: Sequence[str] | None = None) -> int:
+def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
     args = build_parser().parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
     for_real: bool = args.for_real
 
-    token = os.environ.get(_ENV_TOKEN)
-    if not token:
-        raise ValueError(
-            "Must set YNAB access token as `YNAB_PERSONAL_ACCESS_TOKEN` environment variable. See https://api.ynab.com/#personal-access-tokens"
-        )
+    token = resolve_token(token_override)
 
     print("** Refreshing SQLite DB **")
     asyncio.run(sync(token, db, full_refresh))

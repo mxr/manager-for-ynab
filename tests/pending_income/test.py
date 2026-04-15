@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 import manager_for_ynab.pending_income as pending_income
+from manager_for_ynab._auth import _ENV_TOKEN
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -168,7 +169,7 @@ def test_build_updates_groups_by_plan():
 
 
 def test_run_requires_token(monkeypatch):
-    monkeypatch.setenv(pending_income._ENV_TOKEN, "")
+    monkeypatch.setenv(_ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
         pending_income.run(())
@@ -177,10 +178,33 @@ def test_run_requires_token(monkeypatch):
 
 
 @patch("manager_for_ynab.pending_income.sync")
+def test_run_uses_token_override(sync, monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "pending.sqlite"
+    _create_pending_income_db(db_path)
+    monkeypatch.delenv(_ENV_TOKEN, raising=False)
+
+    def unexpected_transactions_api(*args, **kwargs):
+        raise AssertionError("TransactionsApi should not be constructed during dry-run")
+
+    monkeypatch.setattr(
+        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
+    )
+
+    ret = pending_income.run(
+        ("--sqlite-export-for-ynab-db", str(db_path)), token_override="override-token"
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once_with("override-token", db_path, False)
+    assert "Found 2 income transaction(s) to update." in out
+
+
+@patch("manager_for_ynab.pending_income.sync")
 def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
-    monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
@@ -202,7 +226,7 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
 def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
-    monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     with sqlite3.connect(db_path) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
@@ -219,7 +243,7 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
-    monkeypatch.setenv(pending_income._ENV_TOKEN, "token")
+    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     updates: list[tuple[str, Any]] = []
 
