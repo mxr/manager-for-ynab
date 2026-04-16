@@ -203,6 +203,23 @@ def test_run_mode_interactive_batch_requires_account_likes():
     assert "--account-likes" in str(excinfo.value)
 
 
+def test_run_mode_interactive_batch_requires_matching_target_count(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda _: "430")
+
+    with pytest.raises(ValueError) as excinfo:
+        run(
+            (
+                "--mode",
+                "interactive-batch",
+                "--account-likes",
+                "Checking",
+                "Credit",
+            )
+        )
+
+    assert "requires 2 target balances" in str(excinfo.value)
+
+
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 def test_run_mode_batch(sync, db, monkeypatch):
