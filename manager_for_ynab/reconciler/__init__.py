@@ -91,20 +91,12 @@ class ReconcileCliRequest:
         ]
         if missing_args:
             raise ValueError(
-                f"`--mode {self.mode}` requires {self._join_required_args(missing_args)}."
+                f"`--mode {self.mode}` requires {' ,'.join(missing_args)}."
             )
 
     @staticmethod
     def _format_arg_name(arg_name: str) -> str:
         return f"`--{arg_name.replace('_', '-')}`"
-
-    @staticmethod
-    def _join_required_args(arg_names: list[str]) -> str:
-        if len(arg_names) == 1:
-            return arg_names[0]
-        if len(arg_names) == 2:
-            return f"{arg_names[0]} and {arg_names[1]}"
-        return f"{', '.join(arg_names[:-1])}, and {arg_names[-1]}"
 
 
 def build_parser() -> argparse.ArgumentParser:
