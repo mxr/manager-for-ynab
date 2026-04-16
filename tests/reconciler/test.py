@@ -293,7 +293,7 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     target_set = _parse_account_targets(["2045=410", "Credit%=290"])
 
     assert target_set.account_likes == ["%2045%", "Credit%"]
-    assert target_set.raw_targets == [Decimal("410"), Decimal("290")]
+    assert target_set.targets == [Decimal("410"), Decimal("290")]
 
 
 def test_prompt_interactive_batch_inputs_wraps_non_wildcard_patterns(monkeypatch):
@@ -303,7 +303,7 @@ def test_prompt_interactive_batch_inputs_wraps_non_wildcard_patterns(monkeypatch
     target_set = _prompt_interactive_batch_inputs()
 
     assert target_set.account_likes == ["%Checking%", "%Credit Card%"]
-    assert target_set.raw_targets == [Decimal("430"), Decimal("290")]
+    assert target_set.targets == [Decimal("430"), Decimal("290")]
 
 
 def test_prompt_interactive_batch_inputs_requires_matching_target_count(monkeypatch):

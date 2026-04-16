@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
-from typing import Never
+from typing import Any, Never
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -60,16 +60,16 @@ class PlanAccount:
 @dataclass(frozen=True)
 class ReconcileTargetSet:
     account_likes: list[str]
-    raw_targets: list[Decimal]
+    targets: list[Decimal]
 
 
 @dataclass(frozen=True)
 class ReconcileCliRequest:
     mode: str
     account_like: str | None
-    account_likes: list[str] | None
-    raw_target: Decimal | None
+    raw_target: str | None
     account_target_pairs: list[str] | None
+    account_likes: list[str] | None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -129,13 +129,13 @@ async def async_run(
         ReconcileCliRequest(
             mode=args.mode,
             account_like=args.account_like,
-            account_likes=args.account_likes,
             raw_target=args.target,
             account_target_pairs=args.account_target_pairs,
+            account_likes=args.account_likes,
         )
     )
     account_likes = target_set.account_likes
-    raw_targets = target_set.raw_targets
+    raw_targets = target_set.targets
 
     token = resolve_token(token_override)
 
@@ -175,16 +175,14 @@ async def async_run(
     return max(rets)
 
 
-def _parse_account_targets(
-    account_target_pairs: list[str],
-) -> ReconcileTargetSet:
+def _parse_account_targets( account_target_pairs: list[str] ) -> ReconcileTargetSet:
     account_likes: list[str] = []
-    raw_targets: list[Decimal] = []
+    targets: list[Decimal] = []
     for pair in account_target_pairs:
-        account_like, _, target = pair.partition("=")
+        account_like, _, raw_target = pair.partition("=")
         account_likes.append(_normalize_account_like(account_like))
-        raw_targets.append(_parse_target(target))
-    return ReconcileTargetSet(account_likes=account_likes, raw_targets=raw_targets)
+        targets.append(_parse_target(raw_target))
+    return ReconcileTargetSet(account_likes=account_likes, targets=targets)
 
 
 def _parse_target(target: str) -> Decimal:
@@ -205,7 +203,7 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
             )
         return ReconcileTargetSet(
             account_likes=[_normalize_account_like(request.account_like)],
-            raw_targets=[request.raw_target],
+            targets=[_parse_target(request.raw_target)],
         )
 
     if mode == "batch":
@@ -226,14 +224,16 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
         raw_target=request.raw_target,
         account_target_pairs=request.account_target_pairs,
     )
+    if not request.account_likes:
+        raise ValueError("`--mode interactive-batch` requires `--account-likes`.")
     return _resolve_interactive_batch_target_set(request.account_likes)
 
 
-def _assert_mode_only(mode: str, **kwargs: object) -> None:
+def _assert_mode_only(mode: str, **kwargs: Any) -> None:
     present_args = sorted(
         f"`--{name.replace('_', '-')}`"
         for name, value in kwargs.items()
-        if value is not None and value != []
+        if value
     )
     if present_args:
         raise ValueError(
@@ -242,31 +242,19 @@ def _assert_mode_only(mode: str, **kwargs: object) -> None:
 
 
 def _resolve_interactive_batch_target_set(
-    account_likes: list[str] | None,
+    raw_account_likes: list[str],
 ) -> ReconcileTargetSet:
-    raw_account_likes = account_likes or _prompt_account_likes()
     raw_targets = _prompt_targets(len(raw_account_likes))
     return ReconcileTargetSet(
         account_likes=[
             _normalize_account_like(account_like) for account_like in raw_account_likes
         ],
-        raw_targets=[_parse_target(target) for target in raw_targets],
+        targets=[_parse_target(target) for target in raw_targets],
     )
 
 
-def _prompt_interactive_batch_inputs() -> ReconcileTargetSet:
-    return _resolve_interactive_batch_target_set(None)
 
 
-def _prompt_account_likes() -> list[str]:
-    raw_account_likes = shlex.split(
-        input("Account LIKE patterns separated by spaces: ").strip()
-    )
-    if not raw_account_likes:
-        raise ValueError(
-            "`--mode interactive-batch` requires at least one account LIKE pattern."
-        )
-    return raw_account_likes
 
 
 def _prompt_targets(target_count: int) -> list[str]:
