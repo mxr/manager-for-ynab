@@ -9,7 +9,6 @@ import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
-from manager_for_ynab.reconciler import _prompt_interactive_batch_inputs
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
@@ -294,26 +293,6 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 
     assert target_set.account_likes == ["%2045%", "Credit%"]
     assert target_set.targets == [Decimal("410"), Decimal("290")]
-
-
-def test_prompt_interactive_batch_inputs_wraps_non_wildcard_patterns(monkeypatch):
-    responses = iter(("Checking 'Credit Card'", "430 290"))
-    monkeypatch.setattr("builtins.input", lambda _: next(responses))
-
-    target_set = _prompt_interactive_batch_inputs()
-
-    assert target_set.account_likes == ["%Checking%", "%Credit Card%"]
-    assert target_set.targets == [Decimal("430"), Decimal("290")]
-
-
-def test_prompt_interactive_batch_inputs_requires_matching_target_count(monkeypatch):
-    responses = iter(("Checking Savings", "430"))
-    monkeypatch.setattr("builtins.input", lambda _: next(responses))
-
-    with pytest.raises(ValueError) as excinfo:
-        _prompt_interactive_batch_inputs()
-
-    assert "requires 2 target balances" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.reconciler.sync")

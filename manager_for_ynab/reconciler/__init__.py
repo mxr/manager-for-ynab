@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Never
+from typing import Any
+from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -175,7 +176,7 @@ async def async_run(
     return max(rets)
 
 
-def _parse_account_targets( account_target_pairs: list[str] ) -> ReconcileTargetSet:
+def _parse_account_targets(account_target_pairs: list[str]) -> ReconcileTargetSet:
     account_likes: list[str] = []
     targets: list[Decimal] = []
     for pair in account_target_pairs:
@@ -231,9 +232,7 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
 
 def _assert_mode_only(mode: str, **kwargs: Any) -> None:
     present_args = sorted(
-        f"`--{name.replace('_', '-')}`"
-        for name, value in kwargs.items()
-        if value
+        f"`--{name.replace('_', '-')}`" for name, value in kwargs.items() if value
     )
     if present_args:
         raise ValueError(
@@ -251,10 +250,6 @@ def _resolve_interactive_batch_target_set(
         ],
         targets=[_parse_target(target) for target in raw_targets],
     )
-
-
-
-
 
 
 def _prompt_targets(target_count: int) -> list[str]:
