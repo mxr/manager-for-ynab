@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import date
 from datetime import timedelta
@@ -223,6 +224,47 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
 
 
 @patch("manager_for_ynab.pending_income.sync")
+def test_run_json_dry_run_outputs_transactions(sync, monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "pending.sqlite"
+    _create_pending_income_db(db_path)
+    monkeypatch.setenv(_ENV_TOKEN, "token")
+
+    def unexpected_transactions_api(*args, **kwargs):
+        raise AssertionError("TransactionsApi should not be constructed during dry-run")
+
+    monkeypatch.setattr(
+        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
+    )
+
+    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path), "--json"))
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once()
+    assert json.loads(out) == {
+        "transactions": [
+            {
+                "id": "keep-1",
+                "plan_id": "plan-1",
+                "account_name": "Checking",
+                "payee_name": "Employer",
+                "amount_formatted": "$100.00",
+                "date": (date.today() - timedelta(days=1)).isoformat(),
+            },
+            {
+                "id": "keep-2",
+                "plan_id": "plan-2",
+                "account_name": "Savings",
+                "payee_name": "Employer",
+                "amount_formatted": "$55.00",
+                "date": (date.today() - timedelta(days=1)).isoformat(),
+            },
+        ],
+        "updated_count": 0,
+    }
+
+
+@patch("manager_for_ynab.pending_income.sync")
 def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
@@ -237,6 +279,23 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     assert ret == 0
     sync.assert_called_once()
     assert "Found 0 income transaction(s) to update." in out
+
+
+@patch("manager_for_ynab.pending_income.sync")
+def test_run_json_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "pending.sqlite"
+    _create_pending_income_db(db_path)
+    monkeypatch.setenv(_ENV_TOKEN, "token")
+
+    with sqlite3.connect(db_path) as con:
+        con.execute("UPDATE transactions SET cleared = 'cleared'")
+
+    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path), "--json"))
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once()
+    assert json.loads(out) == {"transactions": [], "updated_count": 0}
 
 
 @patch("manager_for_ynab.pending_income.sync")
@@ -273,3 +332,59 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert updates[1][1].transactions[0].id == "keep-2"
+
+
+@patch("manager_for_ynab.pending_income.sync")
+def test_run_json_for_real_outputs_updated_count(sync, monkeypatch, tmp_path, capsys):
+    db_path = tmp_path / "pending.sqlite"
+    _create_pending_income_db(db_path)
+    monkeypatch.setenv(_ENV_TOKEN, "token")
+
+    updates: list[tuple[str, Any]] = []
+
+    class FakeTransactionsApi:
+        def __init__(self, client):
+            self.client = client
+
+        def update_transactions(self, plan_id, wrapper):
+            updates.append((plan_id, wrapper))
+
+    monkeypatch.setattr(pending_income.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(
+        pending_income.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
+    )
+    monkeypatch.setattr(
+        pending_income.ynab,
+        "Configuration",
+        lambda access_token: SimpleNamespace(access_token=access_token),
+    )
+
+    ret = pending_income.run(
+        ("--sqlite-export-for-ynab-db", str(db_path), "--for-real", "--json")
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once()
+    assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
+    assert json.loads(out) == {
+        "transactions": [
+            {
+                "id": "keep-1",
+                "plan_id": "plan-1",
+                "account_name": "Checking",
+                "payee_name": "Employer",
+                "amount_formatted": "$100.00",
+                "date": (date.today() - timedelta(days=1)).isoformat(),
+            },
+            {
+                "id": "keep-2",
+                "plan_id": "plan-2",
+                "account_name": "Savings",
+                "payee_name": "Employer",
+                "amount_formatted": "$55.00",
+                "date": (date.today() - timedelta(days=1)).isoformat(),
+            },
+        ],
+        "updated_count": 2,
+    }
