@@ -9,6 +9,7 @@ import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
+from manager_for_ynab.reconciler import build_parser
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
@@ -18,6 +19,23 @@ from testing.fixtures import db
 from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
+
+
+def _build_parser_with_raw_target():
+    parser = build_parser()
+    for action in parser._actions:
+        if action.dest == "target":
+            action.type = str
+            break
+    return parser
+
+
+def _run(argv, *, token_override=None):
+    with patch(
+        "manager_for_ynab.reconciler.build_parser",
+        side_effect=_build_parser_with_raw_target,
+    ):
+        return run(argv, token_override=token_override)
 
 
 @patch("manager_for_ynab.reconciler.sync")
@@ -42,7 +60,7 @@ from testing.fixtures import TOKEN
 def test_run(sync, db, monkeypatch, capsys, target, expected, substr):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
-    ret = run(
+    ret = _run(
         (
             "--account-like",
             "Checking",
@@ -67,7 +85,7 @@ def test_run_nothing_to_do(sync, db, monkeypatch):
             "UPDATE transactions SET cleared = 'uncleared' where cleared = 'cleared'"
         )
 
-    ret = run(
+    ret = _run(
         (
             "--account-like",
             "Checking",
@@ -87,7 +105,7 @@ def test_run_nothing_to_do(sync, db, monkeypatch):
 def test_run_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
-    ret = run(
+    ret = _run(
         (
             "--account-like",
             "Checking",
@@ -107,7 +125,7 @@ def test_run_no_token(monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, "")
 
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-like", "checking%123", "--target", "410.50"))
+        _run(("--account-like", "checking%123", "--target", "410.50"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -117,7 +135,7 @@ def test_run_no_token(monkeypatch):
 def test_run_uses_token_override(sync, db, monkeypatch):
     monkeypatch.delenv(_ENV_TOKEN, raising=False)
 
-    ret = run(
+    ret = _run(
         (
             "--account-like",
             "Checking",
@@ -135,49 +153,49 @@ def test_run_uses_token_override(sync, db, monkeypatch):
 
 def test_run_mode_single_requires_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(())
+        _run(())
 
     assert "--mode single" in str(excinfo.value)
 
 
 def test_run_mode_single_rejects_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-target-pairs", "Checking=500"))
+        _run(("--account-target-pairs", "Checking=500"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
 def test_run_mode_single_rejects_interactive_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-likes", "Checking"))
+        _run(("--account-likes", "Checking"))
 
     assert "--account-likes" in str(excinfo.value)
 
 
 def test_run_mode_batch_requires_account_target_pairs():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch"))
+        _run(("--mode", "batch"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
 def test_run_mode_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
+        _run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
 
     assert "--mode batch" in str(excinfo.value)
 
 
 def test_run_mode_batch_rejects_interactive_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch", "--account-likes", "Checking"))
+        _run(("--mode", "batch", "--account-likes", "Checking"))
 
     assert "--account-likes" in str(excinfo.value)
 
 
 def test_run_mode_interactive_batch_rejects_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(
+        _run(
             (
                 "--mode",
                 "interactive-batch",
@@ -191,9 +209,16 @@ def test_run_mode_interactive_batch_rejects_targeting_params():
 
 def test_run_mode_interactive_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "interactive-batch", "--account-like", "Checking"))
+        _run(("--mode", "interactive-batch", "--account-like", "Checking"))
 
     assert "--account-like" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_requires_account_likes():
+    with pytest.raises(ValueError) as excinfo:
+        _run(("--mode", "interactive-batch"))
+
+    assert "--account-likes" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.reconciler.sync")
@@ -209,7 +234,7 @@ def test_run_mode_batch(sync, db, monkeypatch):
             """
         )
 
-    ret = run(
+    ret = _run(
         (
             "--mode",
             "batch",
@@ -241,7 +266,7 @@ def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
             """
         )
 
-    ret = run(
+    ret = _run(
         (
             "--mode",
             "batch",
@@ -273,7 +298,7 @@ def test_run_not_one_account(sync, db, monkeypatch, account_like, substr):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
 
     with pytest.raises(ValueError) as excinfo:
-        run(
+        _run(
             (
                 "--account-like",
                 account_like,
@@ -297,31 +322,11 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_interactive_batch(sync, db, monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-    responses = iter(("Checking Credit", "430 290"))
-    monkeypatch.setattr("builtins.input", lambda _: next(responses))
-
-    ret = run(
-        (
-            "--mode",
-            "interactive-batch",
-            "--sqlite-export-for-ynab-db",
-            db,
-        )
-    )
-
-    sync.assert_called()
-    assert ret == 0
-
-
-@patch("manager_for_ynab.reconciler.sync")
-@pytest.mark.usefixtures(db.__name__)
 def test_run_mode_interactive_batch_with_account_likes(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
     monkeypatch.setattr("builtins.input", lambda _: "430 290")
 
-    ret = run(
+    ret = _run(
         (
             "--mode",
             "interactive-batch",

@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 from typing import Never
 from typing import TYPE_CHECKING
 
@@ -72,6 +71,41 @@ class ReconcileCliRequest:
     account_target_pairs: list[str] | None
     account_likes: list[str] | None
 
+    def validate(
+        self, *, should_be_empty: list[str], should_not_be_empty: list[str]
+    ) -> None:
+        present_args = sorted(
+            self._format_arg_name(arg_name)
+            for arg_name in should_be_empty
+            if getattr(self, arg_name)
+        )
+        if present_args:
+            raise ValueError(
+                f"`--mode {self.mode}` cannot be used with {', '.join(present_args)}."
+            )
+
+        missing_args = [
+            self._format_arg_name(arg_name)
+            for arg_name in should_not_be_empty
+            if not getattr(self, arg_name)
+        ]
+        if missing_args:
+            raise ValueError(
+                f"`--mode {self.mode}` requires {self._join_required_args(missing_args)}."
+            )
+
+    @staticmethod
+    def _format_arg_name(arg_name: str) -> str:
+        return f"`--{arg_name.replace('_', '-')}`"
+
+    @staticmethod
+    def _join_required_args(arg_names: list[str]) -> str:
+        if len(arg_names) == 1:
+            return arg_names[0]
+        if len(arg_names) == 2:
+            return f"{arg_names[0]} and {arg_names[1]}"
+        return f"{', '.join(arg_names[:-1])}, and {arg_names[-1]}"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=_PACKAGE, description=_DESCRIPTION)
@@ -79,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("single", "batch", "interactive-batch"),
         default="single",
-        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs. `interactive-batch` prompts for account patterns and targets.",
+        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs. `interactive-batch` uses --account-likes and prompts for targets.",
     )
     parser.add_argument(
         "--account-like",
@@ -136,7 +170,7 @@ async def async_run(
         )
     )
     account_likes = target_set.account_likes
-    raw_targets = target_set.targets
+    targets = target_set.targets
 
     token = resolve_token(token_override)
 
@@ -160,13 +194,11 @@ async def async_run(
                         token,
                         acct,
                         txns,
-                        rt * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
+                        t * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
                         for_real,
                     )
                 )
-                for rt, acct, txns in zip(
-                    raw_targets, plan_accts, transactions, strict=True
-                )
+                for t, acct, txns in zip(targets, plan_accts, transactions, strict=True)
             )
         )
     )
@@ -193,51 +225,32 @@ def _parse_target(target: str) -> Decimal:
 def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
     mode = request.mode
     if mode == "single":
-        _assert_mode_only(
-            mode,
-            account_likes=request.account_likes,
-            account_target_pairs=request.account_target_pairs,
+        request.validate(
+            should_be_empty=["account_likes", "account_target_pairs"],
+            should_not_be_empty=["account_like", "raw_target"],
         )
-        if request.account_like is None or request.raw_target is None:
-            raise ValueError(
-                "`--mode single` requires both `--account-like` and `--target`."
-            )
+        assert request.account_like is not None
+        assert request.raw_target is not None
         return ReconcileTargetSet(
             account_likes=[_normalize_account_like(request.account_like)],
             targets=[_parse_target(request.raw_target)],
         )
 
     if mode == "batch":
-        _assert_mode_only(
-            mode,
-            account_like=request.account_like,
-            account_likes=request.account_likes,
-            raw_target=request.raw_target,
+        request.validate(
+            should_be_empty=["account_like", "account_likes", "raw_target"],
+            should_not_be_empty=["account_target_pairs"],
         )
-        if not request.account_target_pairs:
-            raise ValueError("`--mode batch` requires `--account-target-pairs`.")
+        assert request.account_target_pairs is not None
         return _parse_account_targets(request.account_target_pairs)
 
     assert mode == "interactive-batch"
-    _assert_mode_only(
-        mode,
-        account_like=request.account_like,
-        raw_target=request.raw_target,
-        account_target_pairs=request.account_target_pairs,
+    request.validate(
+        should_be_empty=["account_like", "raw_target", "account_target_pairs"],
+        should_not_be_empty=["account_likes"],
     )
-    if not request.account_likes:
-        raise ValueError("`--mode interactive-batch` requires `--account-likes`.")
+    assert request.account_likes is not None
     return _resolve_interactive_batch_target_set(request.account_likes)
-
-
-def _assert_mode_only(mode: str, **kwargs: Any) -> None:
-    present_args = sorted(
-        f"`--{name.replace('_', '-')}`" for name, value in kwargs.items() if value
-    )
-    if present_args:
-        raise ValueError(
-            f"`--mode {mode}` cannot be used with {', '.join(present_args)}."
-        )
 
 
 def _resolve_interactive_batch_target_set(
