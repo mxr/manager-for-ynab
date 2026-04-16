@@ -67,7 +67,7 @@ class ReconcileTargetSet:
 class ReconcileCliRequest:
     mode: str
     account_like: str | None
-    raw_target: str | None
+    target: Decimal | None
     account_target_pairs: list[str] | None
     account_likes: list[str] | None
 
@@ -91,7 +91,7 @@ class ReconcileCliRequest:
         ]
         if missing_args:
             raise ValueError(
-                f"`--mode {self.mode}` requires {' ,'.join(missing_args)}."
+                f"`--mode {self.mode}` requires {' and '.join(missing_args)}."
             )
 
     @staticmethod
@@ -156,7 +156,7 @@ async def async_run(
         ReconcileCliRequest(
             mode=args.mode,
             account_like=args.account_like,
-            raw_target=args.target,
+            target=args.target,
             account_target_pairs=args.account_target_pairs,
             account_likes=args.account_likes,
         )
@@ -219,18 +219,18 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
     if mode == "single":
         request.validate(
             should_be_empty=["account_likes", "account_target_pairs"],
-            should_not_be_empty=["account_like", "raw_target"],
+            should_not_be_empty=["account_like", "target"],
         )
         assert request.account_like is not None
-        assert request.raw_target is not None
+        assert request.target is not None
         return ReconcileTargetSet(
             account_likes=[_normalize_account_like(request.account_like)],
-            targets=[_parse_target(request.raw_target)],
+            targets=[request.target],
         )
 
     if mode == "batch":
         request.validate(
-            should_be_empty=["account_like", "account_likes", "raw_target"],
+            should_be_empty=["account_like", "account_likes", "target"],
             should_not_be_empty=["account_target_pairs"],
         )
         assert request.account_target_pairs is not None
@@ -238,20 +238,15 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
 
     assert mode == "interactive-batch"
     request.validate(
-        should_be_empty=["account_like", "raw_target", "account_target_pairs"],
+        should_be_empty=["account_like", "target", "account_target_pairs"],
         should_not_be_empty=["account_likes"],
     )
     assert request.account_likes is not None
-    return _resolve_interactive_batch_target_set(request.account_likes)
-
-
-def _resolve_interactive_batch_target_set(
-    raw_account_likes: list[str],
-) -> ReconcileTargetSet:
-    raw_targets = _prompt_targets(len(raw_account_likes))
+    raw_targets = _prompt_targets(len(request.account_likes))
     return ReconcileTargetSet(
         account_likes=[
-            _normalize_account_like(account_like) for account_like in raw_account_likes
+            _normalize_account_like(account_like)
+            for account_like in request.account_likes
         ],
         targets=[_parse_target(target) for target in raw_targets],
     )
