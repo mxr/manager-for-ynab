@@ -3,6 +3,7 @@ import asyncio
 import itertools
 import os
 import re
+import shlex
 import sqlite3
 from dataclasses import dataclass
 from dataclasses import field
@@ -56,21 +57,68 @@ class PlanAccount:
     currency: str
 
 
+@dataclass(frozen=True)
+class ReconcileTargetSet:
+    account_likes: list[str]
+    targets: list[Decimal]
+
+
+@dataclass(frozen=True)
+class ReconcileCliRequest:
+    mode: str
+    account_like: str | None
+    target: Decimal | None
+    account_target_pairs: list[str] | None
+    account_likes: list[str] | None
+
+    def validate(
+        self, *, should_be_empty: list[str], should_not_be_empty: list[str]
+    ) -> None:
+        present_args = sorted(
+            self._format_arg_name(arg_name)
+            for arg_name in should_be_empty
+            if getattr(self, arg_name)
+        )
+        if present_args:
+            raise ValueError(
+                f"`--mode {self.mode}` cannot be used with {', '.join(present_args)}."
+            )
+
+        missing_args = [
+            self._format_arg_name(arg_name)
+            for arg_name in should_not_be_empty
+            if not getattr(self, arg_name)
+        ]
+        if missing_args:
+            raise ValueError(
+                f"`--mode {self.mode}` requires {' and '.join(missing_args)}."
+            )
+
+    @staticmethod
+    def _format_arg_name(arg_name: str) -> str:
+        return f"`--{arg_name.replace('_', '-')}`"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=_PACKAGE, description=_DESCRIPTION)
     parser.add_argument(
         "--mode",
-        choices=("single", "batch"),
+        choices=("single", "batch", "interactive-batch"),
         default="single",
-        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs.",
+        help="Reconciliation mode. `single` uses --account-like/--target. `batch` uses --account-target-pairs. `interactive-batch` uses --account-likes and prompts for targets.",
     )
     parser.add_argument(
         "--account-like",
         help="SQL LIKE pattern to match account name (must match exactly one account)",
     )
     parser.add_argument(
+        "--account-likes",
+        nargs="+",
+        help="Interactive batch mode only. Space-separated SQL LIKE patterns to match account names before prompting for target balances.",
+    )
+    parser.add_argument(
         "--target",
-        type=lambda s: Decimal(re.sub("[,$]", "", s)),
+        type=_parse_target,
         help="Target balance to match towards for reconciliation",
     )
     parser.add_argument(
@@ -101,34 +149,20 @@ async def async_run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    mode: str = args.mode
-    account_like: str | None = args.account_like
-    raw_target: Decimal | None = args.target
-    account_target_pairs: list[str] | None = args.account_target_pairs
     for_real: bool = args.for_real
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
-
-    if mode == "single":
-        if account_target_pairs:
-            raise ValueError(
-                "`--account-target-pairs` is only valid when `--mode batch` is selected."
-            )
-        if account_like is None or raw_target is None:
-            raise ValueError(
-                "`--mode single` requires both `--account-like` and `--target`."
-            )
-        account_likes = [_normalize_account_like(account_like)]
-        raw_targets = [raw_target]
-    else:
-        assert mode == "batch"
-        if account_like is not None or raw_target is not None:
-            raise ValueError(
-                "`--mode batch` cannot be used with `--account-like` or `--target`; use `--account-target-pairs` instead."
-            )
-        if not account_target_pairs:
-            raise ValueError("`--mode batch` requires `--account-target-pairs`.")
-        account_likes, raw_targets = _parse_account_targets(account_target_pairs)
+    target_set = _resolve_target_set(
+        ReconcileCliRequest(
+            mode=args.mode,
+            account_like=args.account_like,
+            target=args.target,
+            account_target_pairs=args.account_target_pairs,
+            account_likes=args.account_likes,
+        )
+    )
+    account_likes = target_set.account_likes
+    targets = target_set.targets
 
     token = resolve_token(token_override)
 
@@ -152,13 +186,11 @@ async def async_run(
                         token,
                         acct,
                         txns,
-                        rt * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
+                        t * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
                         for_real,
                     )
                 )
-                for rt, acct, txns in zip(
-                    raw_targets, plan_accts, transactions, strict=True
-                )
+                for t, acct, txns in zip(targets, plan_accts, transactions, strict=True)
             )
         )
     )
@@ -168,16 +200,67 @@ async def async_run(
     return max(rets)
 
 
-def _parse_account_targets(
-    account_target_pairs: list[str],
-) -> tuple[list[str], list[Decimal]]:
+def _parse_account_targets(account_target_pairs: list[str]) -> ReconcileTargetSet:
     account_likes: list[str] = []
-    raw_targets: list[Decimal] = []
+    targets: list[Decimal] = []
     for pair in account_target_pairs:
-        account_like, _, target = pair.partition("=")
+        account_like, _, raw_target = pair.partition("=")
         account_likes.append(_normalize_account_like(account_like))
-        raw_targets.append(Decimal(re.sub("[,$]", "", target)))
-    return account_likes, raw_targets
+        targets.append(_parse_target(raw_target))
+    return ReconcileTargetSet(account_likes=account_likes, targets=targets)
+
+
+def _parse_target(target: str) -> Decimal:
+    return Decimal(re.sub("[,$]", "", target))
+
+
+def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
+    mode = request.mode
+    if mode == "single":
+        request.validate(
+            should_be_empty=["account_likes", "account_target_pairs"],
+            should_not_be_empty=["account_like", "target"],
+        )
+        assert request.account_like is not None
+        assert request.target is not None
+        return ReconcileTargetSet(
+            account_likes=[_normalize_account_like(request.account_like)],
+            targets=[request.target],
+        )
+
+    if mode == "batch":
+        request.validate(
+            should_be_empty=["account_like", "account_likes", "target"],
+            should_not_be_empty=["account_target_pairs"],
+        )
+        assert request.account_target_pairs is not None
+        return _parse_account_targets(request.account_target_pairs)
+
+    assert mode == "interactive-batch"
+    request.validate(
+        should_be_empty=["account_like", "target", "account_target_pairs"],
+        should_not_be_empty=["account_likes"],
+    )
+    assert request.account_likes is not None
+    raw_targets = _prompt_targets(len(request.account_likes))
+    return ReconcileTargetSet(
+        account_likes=[
+            _normalize_account_like(account_like)
+            for account_like in request.account_likes
+        ],
+        targets=[_parse_target(target) for target in raw_targets],
+    )
+
+
+def _prompt_targets(target_count: int) -> list[str]:
+    raw_targets = shlex.split(
+        input("Target balances in matching order, separated by spaces: ").strip()
+    )
+    if len(raw_targets) != target_count:
+        raise ValueError(
+            f"`--mode interactive-batch` requires {target_count} target balances, but got {len(raw_targets)}."
+        )
+    return raw_targets
 
 
 def _normalize_account_like(account_like: str) -> str:
