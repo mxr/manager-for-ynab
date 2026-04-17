@@ -80,40 +80,30 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     grouped = build_updates(txns_by_plan, date.today())
 
-    if not for_real:
-        if json_mode:
-            print(
-                json.dumps(
-                    {
-                        "transactions": [asdict(txn) for txn in found_txns],
-                        "updated_count": 0,
-                    }
+    if for_real:
+        api_client = ynab.TransactionsApi(
+            ynab.ApiClient(ynab.Configuration(access_token=token))
+        )
+
+        with tldm[Never](
+            total=total_txns,
+            desc=f"Updating {total_txns} transaction(s)",
+            disable=json_mode,
+        ) as progress:
+            for plan_id, txns in grouped.items():
+                api_client.update_transactions(
+                    plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
                 )
-            )
+                progress.update(len(txns))
+    else:
         print("Use --for-real to actually update transactions.")
-        return 0
-
-    api_client = ynab.TransactionsApi(
-        ynab.ApiClient(ynab.Configuration(access_token=token))
-    )
-
-    with tldm[Never](
-        total=total_txns,
-        desc=f"Updating {total_txns} transaction(s)",
-        disable=json_mode,
-    ) as progress:
-        for plan_id, txns in grouped.items():
-            api_client.update_transactions(
-                plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
-            )
-            progress.update(len(txns))
 
     if json_mode:
         print(
             json.dumps(
                 {
                     "transactions": [asdict(txn) for txn in found_txns],
-                    "updated_count": total_txns,
+                    "updated_count": total_txns if for_real else 0,
                 }
             )
         )
