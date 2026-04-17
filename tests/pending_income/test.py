@@ -138,6 +138,13 @@ def _json_output_line(output: str) -> str:
     raise AssertionError(f"No JSON output found in: {output!r}")
 
 
+def test_json_output_line_skips_non_json_lines():
+    assert (
+        _json_output_line('{"transactions":[],"updated_count":0}\nnoise')
+        == '{"transactions":[],"updated_count":0}'
+    )
+
+
 def test_fetch_pending_income_filters_expected_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
@@ -206,7 +213,9 @@ def test_run_uses_token_override(sync, monkeypatch, tmp_path, capsys):
     out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_called_once_with("override-token", db_path, False, quiet=False)
-    assert "Found 2 income transaction(s) to update." in out
+    assert "** Refreshing SQLite DB **" in out
+    assert "Pending Income Transactions" in out
+    assert "Use --for-real to actually update transactions." in out
 
 
 @patch("manager_for_ynab.pending_income.sync")
@@ -227,7 +236,7 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
     out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_called_once_with("token", db_path, False, quiet=False)
-    assert "Found 2 income transaction(s) to update." in out
+    assert "Pending Income Transactions" in out
     assert "Use --for-real to actually update transactions." in out
 
 
@@ -286,7 +295,7 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_called_once_with("token", db_path, False, quiet=False)
-    assert "Found 0 income transaction(s) to update." in out
+    assert "No pending income found." in out
 
 
 @patch("manager_for_ynab.pending_income.sync")
@@ -310,7 +319,9 @@ def test_run_json_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
+def test_run_for_real_updates_transactions_grouped_by_plan(
+    sync, monkeypatch, tmp_path, capsys
+):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(_ENV_TOKEN, "token")
@@ -338,11 +349,13 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
         ("--sqlite-export-for-ynab-db", str(db_path), "--for-real")
     )
 
+    out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_called_once_with("token", db_path, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert updates[1][1].transactions[0].id == "keep-2"
+    assert "Updated 2 transaction(s)." in out
 
 
 @patch("manager_for_ynab.pending_income.sync")
