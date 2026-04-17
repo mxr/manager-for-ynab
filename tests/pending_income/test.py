@@ -130,6 +130,14 @@ def _create_pending_income_db(path: Path) -> None:
         con.execute("INSERT INTO subtransactions VALUES (?, ?)", ("transfer", 0))
 
 
+def _json_output_line(output: str) -> str:
+    for line in reversed(output.strip().splitlines()):
+        if line.startswith("{"):
+            return line
+
+    raise AssertionError(f"No JSON output found in: {output!r}")
+
+
 def test_fetch_pending_income_filters_expected_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
@@ -197,7 +205,7 @@ def test_run_uses_token_override(sync, monkeypatch, tmp_path, capsys):
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("override-token", db_path, False)
+    sync.assert_called_once_with("override-token", db_path, False, quiet=False)
     assert "Found 2 income transaction(s) to update." in out
 
 
@@ -218,7 +226,7 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
+    sync.assert_called_once_with("token", db_path, False, quiet=False)
     assert "Found 2 income transaction(s) to update." in out
     assert "Use --for-real to actually update transactions." in out
 
@@ -240,8 +248,8 @@ def test_run_json_dry_run_outputs_transactions(sync, monkeypatch, tmp_path, caps
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
-    assert json.loads(out) == {
+    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    assert json.loads(_json_output_line(out)) == {
         "transactions": [
             {
                 "id": "keep-1",
@@ -277,7 +285,7 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
+    sync.assert_called_once_with("token", db_path, False, quiet=False)
     assert "Found 0 income transaction(s) to update." in out
 
 
@@ -294,8 +302,11 @@ def test_run_json_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
-    assert json.loads(out) == {"transactions": [], "updated_count": 0}
+    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    assert json.loads(_json_output_line(out)) == {
+        "transactions": [],
+        "updated_count": 0,
+    }
 
 
 @patch("manager_for_ynab.pending_income.sync")
@@ -328,7 +339,7 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
     )
 
     assert ret == 0
-    sync.assert_called_once()
+    sync.assert_called_once_with("token", db_path, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert updates[1][1].transactions[0].id == "keep-2"
@@ -365,9 +376,9 @@ def test_run_json_for_real_outputs_updated_count(sync, monkeypatch, tmp_path, ca
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
+    sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
-    assert json.loads(out) == {
+    assert json.loads(_json_output_line(out)) == {
         "transactions": [
             {
                 "id": "keep-1",

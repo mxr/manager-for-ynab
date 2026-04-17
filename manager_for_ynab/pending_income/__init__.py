@@ -60,11 +60,9 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     token = resolve_token(token_override)
 
-    if not json_mode:
-        print("** Refreshing SQLite DB **")
-    asyncio.run(sync(token, db, full_refresh))
-    if not json_mode:
-        print("** Done **")
+    print("** Refreshing SQLite DB **")
+    asyncio.run(sync(token, db, full_refresh, quiet=json_mode))
+    print("** Done **")
 
     with sqlite3.connect(db) as con:
         con.row_factory = sqlite3.Row
@@ -72,15 +70,13 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = sum(len(txns) for txns in txns_by_plan.values())
-    if not json_mode:
-        print(f"Found {total_txns} income transaction(s) to update.")
+    print(f"Found {total_txns} income transaction(s) to update.")
     if total_txns == 0:
         if json_mode:
             print(json.dumps({"transactions": [], "updated_count": 0}))
         return 0
 
-    if not json_mode:
-        print_found_txns(found_txns)
+    print_found_txns(found_txns)
 
     grouped = build_updates(txns_by_plan, date.today())
 
@@ -94,28 +90,23 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
                     }
                 )
             )
-        else:
-            print("Use --for-real to actually update transactions.")
+        print("Use --for-real to actually update transactions.")
         return 0
 
     api_client = ynab.TransactionsApi(
         ynab.ApiClient(ynab.Configuration(access_token=token))
     )
 
-    if json_mode:
+    with tldm[Never](
+        total=total_txns,
+        desc=f"Updating {total_txns} transaction(s)",
+        disable=json_mode,
+    ) as progress:
         for plan_id, txns in grouped.items():
             api_client.update_transactions(
                 plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
             )
-    else:
-        with tldm[Never](
-            total=total_txns, desc=f"Updating {total_txns} transaction(s)"
-        ) as progress:
-            for plan_id, txns in grouped.items():
-                api_client.update_transactions(
-                    plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
-                )
-                progress.update(len(txns))
+            progress.update(len(txns))
 
     if json_mode:
         print(
