@@ -60,9 +60,11 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     token = resolve_token(token_override)
 
-    print("** Refreshing SQLite DB **")
+    if not json_mode:
+        print("** Refreshing SQLite DB **")
     asyncio.run(sync(token, db, full_refresh, quiet=json_mode))
-    print("** Done **")
+    if not json_mode:
+        print("** Done **")
 
     with sqlite3.connect(db) as con:
         con.row_factory = sqlite3.Row
@@ -70,15 +72,18 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = sum(len(txns) for txns in txns_by_plan.values())
-    print(f"Found {total_txns} income transaction(s) to update.")
     if total_txns == 0:
-        if json_mode:
-            print(json.dumps({"transactions": [], "updated_count": 0}))
+        print(
+            json.dumps({"transactions": [], "updated_count": 0})
+            if json_mode
+            else "No pending income found."
+        )
         return 0
 
-    print_found_txns(found_txns)
-
     grouped = build_updates(txns_by_plan, date.today())
+
+    if not json_mode:
+        print_found_txns(found_txns)
 
     if for_real:
         api_client = ynab.TransactionsApi(
@@ -95,18 +100,20 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
                     plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
                 )
                 progress.update(len(txns))
-    else:
+        if not json_mode:
+            print(f"Updated {total_txns} transaction(s).")
+    elif not json_mode:
         print("Use --for-real to actually update transactions.")
+        return 0
 
-    if json_mode:
-        print(
-            json.dumps(
-                {
-                    "transactions": [asdict(txn) for txn in found_txns],
-                    "updated_count": total_txns if for_real else 0,
-                }
-            )
+    print(
+        json.dumps(
+            {
+                "transactions": [asdict(txn) for txn in found_txns],
+                "updated_count": total_txns if for_real else 0,
+            }
         )
+    )
 
     return 0
 
