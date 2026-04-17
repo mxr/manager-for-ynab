@@ -30,4 +30,11 @@ Run batch mode:
 $ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking=500' 'Credit=290' --for-real
 ```
 
+Run interactive batch mode:
+
+```console
+$ manager-for-ynab reconciler --mode interactive-batch --account-likes Checking "Credit Card" --for-real
+Target balances in matching order, separated by spaces: 500 290
+```
+
 Bare `--account-like` values are treated as substring matches. Include `%` or `_` yourself when you want explicit SQL `LIKE` wildcard behavior.

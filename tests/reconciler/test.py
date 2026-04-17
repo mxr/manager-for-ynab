@@ -147,6 +147,13 @@ def test_run_mode_single_rejects_batch_targeting_params():
     assert "--account-target-pairs" in str(excinfo.value)
 
 
+def test_run_mode_single_rejects_interactive_batch_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--account-likes", "Checking"))
+
+    assert "--account-likes" in str(excinfo.value)
+
+
 def test_run_mode_batch_requires_account_target_pairs():
     with pytest.raises(ValueError) as excinfo:
         run(("--mode", "batch"))
@@ -159,6 +166,58 @@ def test_run_mode_batch_rejects_single_targeting_params():
         run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
 
     assert "--mode batch" in str(excinfo.value)
+
+
+def test_run_mode_batch_rejects_interactive_batch_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--mode", "batch", "--account-likes", "Checking"))
+
+    assert "--account-likes" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_rejects_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(
+            (
+                "--mode",
+                "interactive-batch",
+                "--account-target-pairs",
+                "Checking=500",
+            )
+        )
+
+    assert "--mode interactive-batch" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_rejects_single_targeting_params():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--mode", "interactive-batch", "--account-like", "Checking"))
+
+    assert "--account-like" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_requires_account_likes():
+    with pytest.raises(ValueError) as excinfo:
+        run(("--mode", "interactive-batch"))
+
+    assert "--account-likes" in str(excinfo.value)
+
+
+def test_run_mode_interactive_batch_requires_matching_target_count(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda _: "430")
+
+    with pytest.raises(ValueError) as excinfo:
+        run(
+            (
+                "--mode",
+                "interactive-batch",
+                "--account-likes",
+                "Checking",
+                "Credit",
+            )
+        )
+
+    assert "requires 2 target balances" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.reconciler.sync")
@@ -254,10 +313,32 @@ def test_run_not_one_account(sync, db, monkeypatch, account_like, substr):
 
 
 def test_parse_account_targets_wraps_non_wildcard_patterns():
-    account_likes, raw_targets = _parse_account_targets(["2045=410", "Credit%=290"])
+    target_set = _parse_account_targets(["2045=410", "Credit%=290"])
 
-    assert account_likes == ["%2045%", "Credit%"]
-    assert raw_targets == [Decimal("410"), Decimal("290")]
+    assert target_set.account_likes == ["%2045%", "Credit%"]
+    assert target_set.targets == [Decimal("410"), Decimal("290")]
+
+
+@patch("manager_for_ynab.reconciler.sync")
+@pytest.mark.usefixtures(db.__name__)
+def test_run_mode_interactive_batch_with_account_likes(sync, db, monkeypatch):
+    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+    monkeypatch.setattr("builtins.input", lambda _: "430 290")
+
+    ret = run(
+        (
+            "--mode",
+            "interactive-batch",
+            "--account-likes",
+            "Checking",
+            "Credit",
+            "--sqlite-export-for-ynab-db",
+            db,
+        )
+    )
+
+    sync.assert_called()
+    assert ret == 0
 
 
 @pytest.mark.asyncio
