@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 
 _PACKAGE = "manager-for-ynab pending-income"
+_DEFAULT_DB_PATH = default_db_path()
 _PENDING_INCOME_SQL = (
     files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
 )
@@ -38,59 +39,97 @@ class Transaction:
     date: str
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=_PACKAGE)
-    parser.add_argument(
-        "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
-    )
-    parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
-    parser.add_argument("--for-real", action="store_true")
-    return parser
+@dataclass(frozen=True)
+class PendingIncomeResult:
+    transactions: list[Transaction]
+    updated_count: int
 
 
 def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = argparse.ArgumentParser(prog=_PACKAGE)
+    parser.add_argument(
+        "--sqlite-export-for-ynab-db", type=Path, default=_DEFAULT_DB_PATH
+    )
+    parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
+    parser.add_argument("--for-real", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
+
+    args = parser.parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
     for_real: bool = args.for_real
+    quiet: bool = args.quiet
 
+    result = pending_income(
+        db=db,
+        full_refresh=full_refresh,
+        for_real=for_real,
+        token_override=token_override,
+        quiet=quiet,
+    )
+
+    total_txns = len(result.transactions)
+    _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
+    if total_txns == 0:
+        return 0
+
+    if not quiet:
+        print_found_txns(result.transactions)
+
+    if not for_real:
+        _print("Use --for-real to actually update transactions.", quiet=quiet)
+        return 0
+
+    return 0
+
+
+def pending_income(
+    *,
+    db: Path = _DEFAULT_DB_PATH,
+    full_refresh: bool = False,
+    for_real: bool = False,
+    token_override: str | None = None,
+    quiet: bool = True,
+) -> PendingIncomeResult:
     token = resolve_token(token_override)
 
-    print("** Refreshing SQLite DB **")
-    asyncio.run(sync(token, db, full_refresh))
-    print("** Done **")
+    _print("** Refreshing SQLite DB **", quiet=quiet)
+    asyncio.run(sync(token, db, full_refresh, quiet=quiet))
+    _print("** Done **", quiet=quiet)
 
     with sqlite3.connect(db) as con:
         con.row_factory = sqlite3.Row
         txns_by_plan = fetch_pending_income(con.cursor())
 
-    total_txns = sum(len(txns) for txns in txns_by_plan.values())
-    print(f"Found {total_txns} income transaction(s) to update.")
-    if total_txns == 0:
-        return 0
+    found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
+    total_txns = len(found_txns)
 
-    print_found_txns([txn for txns in txns_by_plan.values() for txn in txns])
+    if for_real:
+        grouped = build_updates(txns_by_plan, date.today())
+        api_client = ynab.TransactionsApi(
+            ynab.ApiClient(ynab.Configuration(access_token=token))
+        )
 
-    grouped = build_updates(txns_by_plan, date.today())
+        with tldm[Never](
+            total=total_txns,
+            desc=f"Updating {total_txns} transaction(s)",
+            disable=quiet,
+        ) as progress:
+            for plan_id, txns in grouped.items():
+                api_client.update_transactions(
+                    plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
+                )
+                progress.update(len(txns))
 
-    if not for_real:
-        print("Use --for-real to actually update transactions.")
-        return 0
-
-    api_client = ynab.TransactionsApi(
-        ynab.ApiClient(ynab.Configuration(access_token=token))
+    return PendingIncomeResult(
+        transactions=found_txns,
+        updated_count=total_txns if for_real else 0,
     )
 
-    with tldm[Never](
-        total=total_txns, desc=f"Updating {total_txns} transaction(s)"
-    ) as progress:
-        for plan_id, txns in grouped.items():
-            api_client.update_transactions(
-                plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
-            )
-            progress.update(len(txns))
 
-    return 0
+def _print(message: str, *, quiet: bool) -> None:
+    if not quiet:
+        print(message)
 
 
 def build_updates(
@@ -138,4 +177,4 @@ def print_found_txns(found_txns: list[Transaction]) -> None:
     rich.print(table)
 
 
-__all__ = [run.__name__]
+__all__ = [PendingIncomeResult.__name__, pending_income.__name__, run.__name__]
