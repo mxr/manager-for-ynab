@@ -15,7 +15,7 @@ def test_main_version(capsys):
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
-    assert out == "manager-for-ynab 1.0.0\n"
+    assert out == f"manager-for-ynab {_version.get_version()}\n"
 
 
 def test_main_without_args_prints_help(capsys, monkeypatch):
