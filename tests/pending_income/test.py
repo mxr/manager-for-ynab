@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import date
 from datetime import timedelta
@@ -129,6 +130,56 @@ def _create_pending_income_db(path: Path) -> None:
         con.execute("INSERT INTO subtransactions VALUES (?, ?)", ("transfer", 0))
 
 
+def _json_output_line(output: str) -> str:
+    for line in reversed(output.strip().splitlines()):
+        if line.startswith("{"):
+            return line
+
+    raise AssertionError(f"No JSON output found in: {output!r}")
+
+
+def _expected_transactions_payload() -> dict[str, object]:
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    return {
+        "transactions": [
+            {
+                "id": "keep-1",
+                "plan_id": "plan-1",
+                "account_name": "Checking",
+                "payee_name": "Employer",
+                "amount_formatted": "$100.00",
+                "date": yesterday,
+            },
+            {
+                "id": "keep-2",
+                "plan_id": "plan-2",
+                "account_name": "Savings",
+                "payee_name": "Employer",
+                "amount_formatted": "$55.00",
+                "date": yesterday,
+            },
+        ]
+    }
+
+
+def _fake_transactions_api_factory(updates: list[tuple[str, Any]]) -> type[Any]:
+    class FakeTransactionsApi:
+        def __init__(self, client):
+            self.client = client
+
+        def update_transactions(self, plan_id, wrapper):
+            updates.append((plan_id, wrapper))
+
+    return FakeTransactionsApi
+
+
+def test_json_output_line_skips_non_json_lines():
+    assert (
+        _json_output_line('{"transactions":[],"updated_count":0}\nnoise')
+        == '{"transactions":[],"updated_count":0}'
+    )
+
+
 def test_fetch_pending_income_filters_expected_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
@@ -177,11 +228,20 @@ def test_run_requires_token(monkeypatch):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    ("token_override", "expected_token"),
+    (("override-token", "override-token"), (None, "token")),
+)
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_uses_token_override(sync, monkeypatch, tmp_path, capsys):
+def test_run_dry_run_uses_expected_token_and_output(
+    sync, monkeypatch, tmp_path, capsys, token_override, expected_token
+):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
-    monkeypatch.delenv(_ENV_TOKEN, raising=False)
+    if token_override is None:
+        monkeypatch.setenv(_ENV_TOKEN, "token")
+    else:
+        monkeypatch.delenv(_ENV_TOKEN, raising=False)
 
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
@@ -191,17 +251,19 @@ def test_run_uses_token_override(sync, monkeypatch, tmp_path, capsys):
     )
 
     ret = pending_income.run(
-        ("--sqlite-export-for-ynab-db", str(db_path)), token_override="override-token"
+        ("--sqlite-export-for-ynab-db", str(db_path)), token_override=token_override
     )
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("override-token", db_path, False)
-    assert "Found 2 income transaction(s) to update." in out
+    sync.assert_called_once_with(expected_token, db_path, False, quiet=False)
+    assert "** Refreshing SQLite DB **" in out
+    assert "Pending Income Transactions" in out
+    assert "Use --for-real to actually update transactions." in out
 
 
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_json_dry_run_outputs_transactions(sync, monkeypatch, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(_ENV_TOKEN, "token")
@@ -213,48 +275,58 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
         pending_income.ynab, "TransactionsApi", unexpected_transactions_api
     )
 
-    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path), "--json"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
-    assert "Found 2 income transaction(s) to update." in out
-    assert "Use --for-real to actually update transactions." in out
+    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    assert json.loads(_json_output_line(out)) == {
+        **_expected_transactions_payload(),
+        "updated_count": 0,
+    }
 
 
+@pytest.mark.parametrize("json_mode", (False, True))
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys, json_mode):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(_ENV_TOKEN, "token")
+
+    argv = ["--sqlite-export-for-ynab-db", str(db_path)]
+    if json_mode:
+        argv.append("--json")
 
     with sqlite3.connect(db_path) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
 
-    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = pending_income.run(argv)
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
-    assert "Found 0 income transaction(s) to update." in out
+    sync.assert_called_once_with("token", db_path, False, quiet=json_mode)
+    if json_mode:
+        assert json.loads(_json_output_line(out)) == {
+            "transactions": [],
+            "updated_count": 0,
+        }
+    else:
+        assert "No pending income found." in out
 
 
+@pytest.mark.parametrize("json_mode", (False, True))
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
+def test_run_for_real_updates_transactions(
+    sync, monkeypatch, tmp_path, capsys, json_mode
+):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
     monkeypatch.setenv(_ENV_TOKEN, "token")
-
     updates: list[tuple[str, Any]] = []
 
-    class FakeTransactionsApi:
-        def __init__(self, client):
-            self.client = client
-
-        def update_transactions(self, plan_id, wrapper):
-            updates.append((plan_id, wrapper))
-
-    monkeypatch.setattr(pending_income.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(
+        pending_income.ynab, "TransactionsApi", _fake_transactions_api_factory(updates)
+    )
     monkeypatch.setattr(
         pending_income.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
     )
@@ -264,12 +336,22 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    ret = pending_income.run(
-        ("--sqlite-export-for-ynab-db", str(db_path), "--for-real")
-    )
+    argv = ["--sqlite-export-for-ynab-db", str(db_path), "--for-real"]
+    if json_mode:
+        argv.append("--json")
 
+    ret = pending_income.run(argv)
+
+    out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once()
+    sync.assert_called_once_with("token", db_path, False, quiet=json_mode)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert updates[1][1].transactions[0].id == "keep-2"
+    if json_mode:
+        assert json.loads(_json_output_line(out)) == {
+            **_expected_transactions_payload(),
+            "updated_count": 2,
+        }
+    else:
+        assert "Updated 2 transaction(s)." in out
