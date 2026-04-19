@@ -14,16 +14,13 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 from babel.numbers import format_currency
+from prompt_toolkit import prompt
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
-try:
-    import gnureadline as readline  # noqa: F401
-except ImportError:
-    import pyreadline3 as readline  # noqa: F401
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -259,7 +256,7 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
 
 def _prompt_targets(target_count: int) -> list[str]:
     raw_targets = shlex.split(
-        input("Target balances in matching order, separated by spaces: ").strip()
+        prompt("Target balances in matching order, separated by spaces: ").strip()
     )
     if len(raw_targets) != target_count:
         raise ValueError(
