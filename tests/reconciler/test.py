@@ -1,6 +1,7 @@
 import json
 import re
 import sqlite3
+from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -209,7 +210,8 @@ def test_run_mode_interactive_batch_requires_account_likes():
     "manager_for_ynab.reconciler.PromptSession",
     return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430")),
 )
-def test_run_mode_interactive_batch_requires_matching_target_count(_):
+@patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
+def test_run_mode_interactive_batch_requires_matching_target_count(_, __):
     with pytest.raises(ValueError) as excinfo:
         run(
             (
@@ -328,8 +330,9 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     "manager_for_ynab.reconciler.PromptSession",
     return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430 290")),
 )
+@patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_interactive_batch_with_account_likes(_, sync, db, monkeypatch):
+def test_run_mode_interactive_batch_with_account_likes(_, __, sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
     ret = run(
         (
