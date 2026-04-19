@@ -21,7 +21,6 @@ from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
-
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Iterable
