@@ -13,6 +13,7 @@ from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
+import gnureadline as readline  # noqa: F401
 from babel.numbers import format_currency
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
