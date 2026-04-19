@@ -13,13 +13,17 @@ from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
-import gnureadline as readline  # noqa: F401
 from babel.numbers import format_currency
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
+
+try:
+    import gnureadline as readline  # noqa: F401
+except ImportError:
+    import pyreadline3 as readline  # noqa: F401
 
 if TYPE_CHECKING:
     from collections.abc import Callable
