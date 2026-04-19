@@ -13,8 +13,9 @@ from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
-import gnureadline as readline  # noqa: F401
 from babel.numbers import format_currency
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 from tldm import tldm
@@ -153,7 +154,7 @@ async def async_run(
     for_real: bool = args.for_real
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
-    target_set = _resolve_target_set(
+    target_set = await _resolve_target_set(
         ReconcileCliRequest(
             mode=args.mode,
             account_like=args.account_like,
@@ -215,7 +216,7 @@ def _parse_target(target: str) -> Decimal:
     return Decimal(re.sub("[,$]", "", target))
 
 
-def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
+async def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
     mode = request.mode
     if mode == "single":
         request.validate(
@@ -243,7 +244,7 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
         should_not_be_empty=["account_likes"],
     )
     assert request.account_likes is not None
-    raw_targets = _prompt_targets(len(request.account_likes))
+    raw_targets = await _prompt_targets(len(request.account_likes))
     return ReconcileTargetSet(
         account_likes=[
             _normalize_account_like(account_like)
@@ -253,10 +254,14 @@ def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSet:
     )
 
 
-def _prompt_targets(target_count: int) -> list[str]:
-    raw_targets = shlex.split(
-        input("Target balances in matching order, separated by spaces: ").strip()
-    )
+async def _prompt_targets(target_count: int) -> list[str]:
+    session = PromptSession()
+    with patch_stdout():
+        raw_targets = shlex.split(
+            await session.prompt_async(
+                "Target balances in matching order, separated by spaces: "
+            )
+        )
     if len(raw_targets) != target_count:
         raise ValueError(
             f"`--mode interactive-batch` requires {target_count} target balances, but got {len(raw_targets)}."
