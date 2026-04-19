@@ -3,11 +3,13 @@ import re
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
 
+import manager_for_ynab.reconciler as reconciler
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
 from manager_for_ynab.reconciler import do_reconcile
@@ -204,12 +206,12 @@ def test_run_mode_interactive_batch_requires_account_likes():
     assert "--account-likes" in str(excinfo.value)
 
 
-def test_run_mode_interactive_batch_requires_matching_target_count(monkeypatch):
-    monkeypatch.setattr(
-        "manager_for_ynab.reconciler.PromptSession.prompt_async",
-        AsyncMock(return_value="430"),
-    )
-
+@patch.object(
+    reconciler,
+    "PromptSession",
+    return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430")),
+)
+def test_run_mode_interactive_batch_requires_matching_target_count(prompt_session):
     with pytest.raises(ValueError) as excinfo:
         run(
             (
@@ -324,14 +326,16 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 
 
 @patch("manager_for_ynab.reconciler.sync")
+@patch.object(
+    reconciler,
+    "PromptSession",
+    return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430 290")),
+)
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_interactive_batch_with_account_likes(sync, db, monkeypatch):
+def test_run_mode_interactive_batch_with_account_likes(
+    prompt_session, sync, db, monkeypatch
+):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-    monkeypatch.setattr(
-        "manager_for_ynab.reconciler.PromptSession.prompt_async",
-        AsyncMock(return_value="430 290"),
-    )
-
     ret = run(
         (
             "--mode",
