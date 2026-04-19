@@ -3,6 +3,7 @@ import re
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -204,7 +205,10 @@ def test_run_mode_interactive_batch_requires_account_likes():
 
 
 def test_run_mode_interactive_batch_requires_matching_target_count(monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda _: "430")
+    monkeypatch.setattr(
+        "manager_for_ynab.reconciler.PromptSession.prompt_async",
+        AsyncMock(return_value="430"),
+    )
 
     with pytest.raises(ValueError) as excinfo:
         run(
@@ -323,7 +327,10 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 @pytest.mark.usefixtures(db.__name__)
 def test_run_mode_interactive_batch_with_account_likes(sync, db, monkeypatch):
     monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-    monkeypatch.setattr("builtins.input", lambda _: "430 290")
+    monkeypatch.setattr(
+        "manager_for_ynab.reconciler.PromptSession.prompt_async",
+        AsyncMock(return_value="430 290"),
+    )
 
     ret = run(
         (
