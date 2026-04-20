@@ -98,8 +98,7 @@ def pending_income(
 
     _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
     if found_txns:
-        if not quiet:
-            print_found_txns(found_txns)
+        print_found_txns(found_txns, quiet=quiet)
 
         if for_real:
             grouped = build_updates(txns_by_plan, date.today())
@@ -160,7 +159,10 @@ def fetch_pending_income(cur: sqlite3.Cursor) -> dict[str, list[Transaction]]:
     return txns_by_plan
 
 
-def print_found_txns(found_txns: list[Transaction]) -> None:
+def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
+    if quiet:
+        return
+
     table = Table(title="Pending Income Transactions")
     table.add_column("Date")
     table.add_column("Account")
