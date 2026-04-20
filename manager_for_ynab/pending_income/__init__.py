@@ -68,15 +68,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
         quiet=quiet,
     )
 
-    total_txns = len(result.transactions)
-    _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
-    if total_txns == 0:
-        return 0
-
-    if not quiet:
-        print_found_txns(result.transactions)
-
-    if not for_real:
+    if len(result.transactions) and not for_real:
         _print("Use --for-real to actually update transactions.", quiet=quiet)
         return 0
 
@@ -104,22 +96,27 @@ def pending_income(
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
 
-    if for_real:
-        grouped = build_updates(txns_by_plan, date.today())
-        api_client = ynab.TransactionsApi(
-            ynab.ApiClient(ynab.Configuration(access_token=token))
-        )
+    _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
+    if found_txns:
+        print_found_txns(found_txns, quiet=quiet)
 
-        with tldm[Never](
-            total=total_txns,
-            desc=f"Updating {total_txns} transaction(s)",
-            disable=quiet,
-        ) as progress:
-            for plan_id, txns in grouped.items():
-                api_client.update_transactions(
-                    plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
-                )
-                progress.update(len(txns))
+        if for_real:
+            grouped = build_updates(txns_by_plan, date.today())
+            api_client = ynab.TransactionsApi(
+                ynab.ApiClient(ynab.Configuration(access_token=token))
+            )
+
+            with tldm[Never](
+                total=total_txns,
+                desc=f"Updating {total_txns} transaction(s)",
+                disable=quiet,
+            ) as progress:
+                for plan_id, txns in grouped.items():
+                    api_client.update_transactions(
+                        plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
+                    )
+                    progress.update(len(txns))
+            _print("Done", quiet=quiet)
 
     return PendingIncomeResult(
         transactions=found_txns,
@@ -162,7 +159,10 @@ def fetch_pending_income(cur: sqlite3.Cursor) -> dict[str, list[Transaction]]:
     return txns_by_plan
 
 
-def print_found_txns(found_txns: list[Transaction]) -> None:
+def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
+    if quiet:
+        return
+
     table = Table(title="Pending Income Transactions")
     table.add_column("Date")
     table.add_column("Account")
