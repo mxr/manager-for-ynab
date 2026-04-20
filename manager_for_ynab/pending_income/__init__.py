@@ -96,9 +96,8 @@ def pending_income(
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
 
+    _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
     if found_txns:
-        _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
-
         if not quiet:
             print_found_txns(found_txns)
 
