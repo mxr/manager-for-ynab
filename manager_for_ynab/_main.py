@@ -2,6 +2,7 @@ import argparse
 import sys
 from typing import TYPE_CHECKING
 
+import manager_for_ynab.auto_approve as auto_approve
 import manager_for_ynab.pending_income as pending_income
 import manager_for_ynab.reconciler as reconciler
 import manager_for_ynab.zero_out as zero_out
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 
 _RECONCILER_HELP = "Find and automatically reconciles unreconciled transactions."
+_AUTO_APPROVE_HELP = "Approve matched transactions automatically."
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pending_income_parser.set_defaults(func=_run_pending_income)
 
+    auto_approve_parser = subparsers.add_parser(
+        "auto-approve",
+        help=_AUTO_APPROVE_HELP,
+        description=_AUTO_APPROVE_HELP,
+    )
+    auto_approve_parser.set_defaults(func=_run_auto_approve)
+
     zero_out_parser = subparsers.add_parser(
         "zero-out",
         help="Set a category's budgeted amount to zero across a month range.",
@@ -49,6 +58,10 @@ def _run_pending_income(argv: Sequence[str]) -> int:
     return pending_income.run(argv)
 
 
+def _run_auto_approve(argv: Sequence[str]) -> int:
+    return auto_approve.run(argv)
+
+
 def _run_zero_out(argv: Sequence[str]) -> int:
     return zero_out.run(argv)
 
@@ -63,6 +76,8 @@ def main(argv: Sequence[str] = ()) -> int:
             return _run_reconciler(argv[1:])
         case "pending-income":
             return _run_pending_income(argv[1:])
+        case "auto-approve":
+            return _run_auto_approve(argv[1:])
         case "zero-out":
             return _run_zero_out(argv[1:])
 
