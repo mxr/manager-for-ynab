@@ -13,6 +13,7 @@ WHERE
     AND transactions.amount > 0
     AND NOT transactions.deleted
     AND SUBSTR(transactions."date", 6, 2) = SUBSTR(DATE(), 6, 2)
+    AND (:skip_matched = 0 OR transactions.matched_transaction_id IS NULL)
     AND transactions.id NOT IN (
         SELECT subtransactions.transfer_transaction_id
         FROM subtransactions
