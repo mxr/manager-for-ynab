@@ -2,15 +2,15 @@
 
 ## What This Does
 
-When YNAB imports your transactions and balances stay in sync, reconciliation is straightforward. When they do not, finding the right set of transactions to clear can be tedious. `manager-for-ynab reconciler` finds the unreconciled YNAB transactions that bring an account to a target balance, then either prints them or reconciles them through the YNAB API.
+When YNAB imports your transactions and balances stay in sync, reconciliation is straightforward. When they get out of sync, finding the right set of transactions to clear can be tedious. `manager-for-ynab reconciler` finds the unreconciled YNAB transactions that bring an account to a target balance, then either prints them or reconciles them through the YNAB API.
 
-Suppose you want to reconcile a credit card account ending in `1234` to `$1,471.32`:
+Suppose you want to reconcile a credit card account containing `1234` to `$1,471.32`:
 
 ```console
 $ manager-for-ynab reconciler --account-like 1234 --target 1471.32 --for-real
 ```
 
-By default, bare `--account-like` values are wrapped in `%...%`, so `1234` behaves like a substring match. If you want explicit SQL `LIKE` behavior, include `%` or `_` yourself.
+By default, bare account targeting strings are wrapped in `%...%`, so `1234` behaves like a substring match. If you want explicit SQL `LIKE` behavior, include `%` or `_` yourself.
 
 ## Usage
 
@@ -24,7 +24,7 @@ $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
 
 ### Quickstart
 
-Preview the transactions that would be reconciled:
+Preview the transactions that would be reconciled for a single account in *single mode* (the default):
 
 ```console
 $ manager-for-ynab reconciler --account-like 1234 --target 500.30
@@ -36,20 +36,18 @@ Run it again with `--for-real` to reconcile the account:
 $ manager-for-ynab reconciler --account-like 1234 --target 500.30 --for-real
 ```
 
-Process multiple accounts in one run with batch mode:
+Process multiple accounts in one run with *batch mode*:
 
 ```console
-$ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking%=500' 'Credit%=290' --for-real
+$ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking=500' 'Credit=290' --for-real
 ```
 
-Prompt for the targets interactively with interactive batch mode:
+Prompt for the targets interactively with *interactive batch mode* (good for storing the list of account targets in your history, without needing to delete the values when retrieving them):
 
 ```console
 $ manager-for-ynab reconciler --mode interactive-batch --account-likes Checking "Credit Card" --for-real
 Target balances in matching order, separated by spaces: 500 290
 ```
-
-`--account-likes` uses the same matching rules as `--account-like`: plain text is normalized to a substring match, while `%` and `_` keep their usual SQL `LIKE` meaning.
 
 ### All Options
 
