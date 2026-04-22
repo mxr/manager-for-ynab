@@ -14,9 +14,9 @@ This repo is a single CLI for YNAB-focused tools.
 
 Tool-specific docs:
 
-- [Reconciler](tools/reconciler/README.md)
-- [Pending Income](tools/pending-income/README.md)
-- [Zero Out](tools/zero-out/README.md)
+- [Reconciler](manager_for_ynab/reconciler/README.md)
+- [Pending Income](manager_for_ynab/pending_income/README.md)
+- [Zero Out](manager_for_ynab/zero_out/README.md)
 
 ## Installation
 
