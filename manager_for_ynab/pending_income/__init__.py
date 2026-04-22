@@ -52,18 +52,21 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     )
     parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
     parser.add_argument("--for-real", action="store_true")
+    parser.add_argument("--skip-matched", action="store_true")
     parser.add_argument("--quiet", action="store_true")
 
     args = parser.parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
     for_real: bool = args.for_real
+    skip_matched: bool = args.skip_matched
     quiet: bool = args.quiet
 
     result = pending_income(
         db=db,
         full_refresh=full_refresh,
         for_real=for_real,
+        skip_matched=skip_matched,
         token_override=token_override,
         quiet=quiet,
     )
@@ -80,6 +83,7 @@ def pending_income(
     db: Path = _DEFAULT_DB_PATH,
     full_refresh: bool = False,
     for_real: bool = False,
+    skip_matched: bool = False,
     token_override: str | None = None,
     quiet: bool = True,
 ) -> PendingIncomeResult:
@@ -91,7 +95,7 @@ def pending_income(
 
     with sqlite3.connect(db) as con:
         con.row_factory = sqlite3.Row
-        txns_by_plan = fetch_pending_income(con.cursor())
+        txns_by_plan = fetch_pending_income(con.cursor(), skip_matched=skip_matched)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
@@ -140,8 +144,12 @@ def build_updates(
     return grouped
 
 
-def fetch_pending_income(cur: sqlite3.Cursor) -> dict[str, list[Transaction]]:
-    txns = cur.execute(_PENDING_INCOME_SQL).fetchall()
+def fetch_pending_income(
+    cur: sqlite3.Cursor, *, skip_matched: bool = False
+) -> dict[str, list[Transaction]]:
+    txns = cur.execute(
+        _PENDING_INCOME_SQL, {"skip_matched": int(skip_matched)}
+    ).fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:

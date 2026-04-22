@@ -23,3 +23,9 @@ Apply the date updates:
 ```console
 $ manager-for-ynab pending-income --for-real
 ```
+
+Exclude already matched transactions (to avoid changing the date once YNAB picks up the transaction):
+
+```console
+$ manager-for-ynab pending-income --skip-matched
+```
