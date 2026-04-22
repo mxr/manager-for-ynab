@@ -114,11 +114,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="SQL LIKE pattern to match account name (must match exactly one account)",
     )
     parser.add_argument(
-        "--account-likes",
-        nargs="+",
-        help="Interactive batch mode only. Space-separated SQL LIKE patterns to match account names before prompting for target balances.",
-    )
-    parser.add_argument(
         "--target",
         type=_parse_target,
         help="Target balance to match towards for reconciliation",
@@ -126,7 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--account-target-pairs",
         nargs="+",
-        help="Batch mode only. Account pattern/target pairs in `ACCOUNT_LIKE=TARGET` format (example: `Checking%%=500.30`).",
+        help="Batch mode only. Account pattern/target pairs in `ACCOUNT_LIKE=TARGET` format (example: `Checking=500.30`).",
+    )
+    parser.add_argument(
+        "--account-likes",
+        nargs="+",
+        help="Interactive batch mode only. Space-separated SQL LIKE patterns to match account names before prompting for target balances.",
     )
     parser.add_argument(
         "--for-real",

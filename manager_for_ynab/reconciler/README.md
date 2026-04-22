@@ -52,13 +52,10 @@ Target balances in matching order, separated by spaces: 500 290
 ### All Options
 
 ```console
-$ manager-for-ynab reconciler --help
-usage: manager-for-ynab reconciler [-h]
-                                   [--mode {single,batch,interactive-batch}]
-                                   [--account-like ACCOUNT_LIKE]
-                                   [--account-likes ACCOUNT_LIKES [ACCOUNT_LIKES ...]]
-                                   [--target TARGET]
+usage: manager-for-ynab reconciler [-h] [--mode {single,batch,interactive-batch}]
+                                   [--account-like ACCOUNT_LIKE] [--target TARGET]
                                    [--account-target-pairs ACCOUNT_TARGET_PAIRS [ACCOUNT_TARGET_PAIRS ...]]
+                                   [--account-likes ACCOUNT_LIKES [ACCOUNT_LIKES ...]]
                                    [--for-real]
                                    [--sqlite-export-for-ynab-db SQLITE_EXPORT_FOR_YNAB_DB]
                                    [--sqlite-export-for-ynab-full-refresh]
@@ -68,32 +65,25 @@ Find and automatically reconciles unreconciled transactions.
 options:
   -h, --help            show this help message and exit
   --mode {single,batch,interactive-batch}
-                        Reconciliation mode. `single` uses --account-
-                        like/--target. `batch` uses --account-target-pairs.
-                        `interactive-batch` uses --account-likes and prompts
-                        for targets.
+                        Reconciliation mode. `single` uses --account-like/--target. `batch` uses
+                        --account-target-pairs. `interactive-batch` uses --account-likes and prompts for
+                        targets.
   --account-like ACCOUNT_LIKE
-                        SQL LIKE pattern to match account name (must match
-                        exactly one account)
-  --account-likes ACCOUNT_LIKES [ACCOUNT_LIKES ...]
-                        Interactive batch mode only. Space-separated SQL LIKE
-                        patterns to match account names before prompting for
-                        target balances.
+                        SQL LIKE pattern to match account name (must match exactly one account)
   --target TARGET       Target balance to match towards for reconciliation
   --account-target-pairs ACCOUNT_TARGET_PAIRS [ACCOUNT_TARGET_PAIRS ...]
-                        Batch mode only. Account pattern/target pairs in
-                        `ACCOUNT_LIKE=TARGET` format (example:
-                        `Checking%=500.30`).
-  --for-real            Whether to actually perform the reconciliation. If
-                        unset, this tool only prints the transactions that
-                        would be reconciled.
+                        Batch mode only. Account pattern/target pairs in `ACCOUNT_LIKE=TARGET` format
+                        (example: `Checking=500.30`).
+  --account-likes ACCOUNT_LIKES [ACCOUNT_LIKES ...]
+                        Interactive batch mode only. Space-separated SQL LIKE patterns to match account
+                        names before prompting for target balances.
+  --for-real            Whether to actually perform the reconciliation. If unset, this tool only prints
+                        the transactions that would be reconciled.
   --sqlite-export-for-ynab-db SQLITE_EXPORT_FOR_YNAB_DB
-                        Path to sqlite-export-for-ynab SQLite DB file
-                        (respects sqlite-export-for-ynab configuration; if
-                        unset, will be $HOME/.local/share/sqlite-export-for-
-                        ynab/db.sqlite)
+                        Path to sqlite-export-for-ynab SQLite DB file (respects sqlite-export-for-ynab
+                        configuration; if unset, will be
+                        $HOME$/.local/share/sqlite-export-for-ynab/db.sqlite)
   --sqlite-export-for-ynab-full-refresh
-                        Whether to **DROP ALL TABLES** and fetch all plan data
-                        again. If unset, this tool only does an incremental
-                        refresh
+                        Whether to **DROP ALL TABLES** and fetch all plan data again. If unset, this
+                        tool only does an incremental refresh
 ```
