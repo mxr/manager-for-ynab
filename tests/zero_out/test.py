@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 from typing import cast
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 import ynab
@@ -119,28 +120,6 @@ class FakeApiClient:
         return False
 
 
-def install_run_dependencies(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    plans: list[ynab.PlanSummary] | None = None,
-    category_groups: list[ynab.CategoryGroupWithCategories] | None = None,
-) -> None:
-    monkeypatch.setattr(zero_out.ynab, "Configuration", FakeConfiguration)
-    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
-    monkeypatch.setattr(
-        zero_out.ynab,
-        "PlansApi",
-        lambda client: FakePlansApi(response=make_plans_response(plans or [])),
-    )
-    monkeypatch.setattr(
-        zero_out.ynab,
-        "CategoriesApi",
-        lambda client: FakeCategoriesApi(
-            response=make_categories_response(category_groups or [])
-        ),
-    )
-
-
 def test_month_range_is_inclusive():
     assert tuple(zero_out.month_range(2025, 11, 2026, 2)) == (
         (2025, 11),
@@ -156,28 +135,16 @@ def test_parse_year_month_rejects_invalid_month():
 
 
 @pytest.mark.parametrize(
-    ("pattern", "expected"),
-    [
-        pytest.param("Rent", "%Rent%", id="wraps-plain-text"),
-        pytest.param("%Rent", "%Rent", id="preserves-percent"),
-        pytest.param("Rent_", "Rent_", id="preserves-underscore"),
-    ],
-)
-def test_normalize_like_pattern(pattern, expected):
-    assert zero_out._normalize_like_pattern(pattern) == expected
-
-
-@pytest.mark.parametrize(
     ("value", "pattern", "expected"),
     [
-        pytest.param("Medical", "med", True, id="implicit-substring"),
-        pytest.param("True Expenses", "true%", True, id="explicit-percent"),
-        pytest.param("Rent 2", "Rent _", True, id="explicit-underscore"),
-        pytest.param("Rent 20", "Rent _", False, id="underscore-is-single-char"),
+        pytest.param("Medical", "med", True, id="substring-search"),
+        pytest.param("True Expenses", "^true", True, id="anchored-search"),
+        pytest.param("Rent 2", r"Rent \d", True, id="digit-search"),
+        pytest.param("Rent 20", r"^Rent \d$", False, id="anchored-non-match"),
     ],
 )
-def test_like_match(value, pattern, expected):
-    assert zero_out._like_match(value, pattern) is expected
+def test_regex_search(value, pattern, expected):
+    assert zero_out._regex_search(value, pattern) is expected
 
 
 def test_get_plan_uses_latest_plan():
@@ -261,14 +228,14 @@ def test_get_plan_errors(plans_api, expected_message):
             id="substring-group-and-name",
         ),
         pytest.param(
-            "Var%",
-            "Ren_",
+            "^Var",
+            r"Ren.",
             [
                 make_category_group("Fixed", ["Rent"]),
                 make_category_group("Variable", ["Rent"]),
             ],
             ("Rent", "Variable"),
-            id="explicit-like-patterns",
+            id="explicit-regex-patterns",
         ),
     ],
 )
@@ -304,35 +271,35 @@ def test_get_category_id_matches_plan_categories(
                 make_category_group("Fixed", ["Rent"]),
                 make_category_group("Variable", ["Rent"]),
             ],
-            "Found 2 categories matching LIKE '%Rent%'",
+            "Found 2 categories matching regex 'Rent'",
             id="ambiguous-name",
         ),
         pytest.param(
             "Fixed",
             "Rent",
             [make_category_group("Fixed", ["Rent", "Rent 2"])],
-            "Found 2 categories matching LIKE '%Rent%' in group matching LIKE '%Fixed%'",
-            id="ambiguous-substring-in-group",
+            "Found 2 categories matching regex 'Rent' in group matching regex 'Fixed'",
+            id="ambiguous-regex-in-group",
         ),
         pytest.param(
             "Variable",
             "Rent",
             [make_category_group("Fixed", ["Rent"])],
-            "No category matching LIKE '%Rent%' found in group matching LIKE '%Variable%'.",
+            "No category matching regex 'Rent' found in group matching regex 'Variable'.",
             id="missing-in-group",
         ),
         pytest.param(
             None,
             "Groceries",
             [make_category_group("Fixed", ["Rent"])],
-            "No category matching LIKE '%Groceries%' found in this plan.",
+            "No category matching regex 'Groceries' found in this plan.",
             id="missing-in-plan",
         ),
         pytest.param(
             None,
             "Rent",
             [],
-            "No category matching LIKE '%Rent%' found in this plan.",
+            "No category matching regex 'Rent' found in this plan.",
             id="missing-in-empty-plan",
         ),
     ],
@@ -389,7 +356,11 @@ def test_update_month_category(update_error, expected):
 
 
 @pytest.mark.asyncio
-async def test_run_updates_prints_success_and_failure(monkeypatch, capsys):
+@patch.object(zero_out.asyncio, "get_running_loop")
+@patch.object(zero_out, "ThreadPoolExecutor")
+async def test_run_updates_prints_success_and_failure(
+    thread_pool_executor, get_running_loop, capsys
+):
     class FakeExecutor:
         def __enter__(self):
             return self
@@ -409,10 +380,8 @@ async def test_run_updates_prints_success_and_failure(monkeypatch, capsys):
             return asyncio.create_task(asyncio.sleep(0, result=result))
 
     fake_loop = FakeLoop()
-    monkeypatch.setattr(
-        zero_out, "ThreadPoolExecutor", lambda max_workers: FakeExecutor()
-    )
-    monkeypatch.setattr(zero_out.asyncio, "get_running_loop", lambda: fake_loop)
+    thread_pool_executor.side_effect = lambda max_workers: FakeExecutor()
+    get_running_loop.return_value = fake_loop
 
     await zero_out._run_updates(
         cast("Any", object()), "plan-1", "cat-1", ((2025, 1), (2025, 2))
@@ -423,8 +392,9 @@ async def test_run_updates_prints_success_and_failure(monkeypatch, capsys):
     assert "Failed to update month 2025-02: boom" in out
 
 
-def test_run_requires_token(monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, "")
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_run_requires_token():
+    # patch.dict mutates os.environ before resolve_token reads it.
 
     with pytest.raises(ValueError) as excinfo:
         zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
@@ -432,8 +402,15 @@ def test_run_requires_token(monkeypatch):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-def test_run_uses_token_override(monkeypatch, capsys):
-    monkeypatch.delenv(_ENV_TOKEN, raising=False)
+@patch.dict("os.environ", {}, clear=True)
+@patch.object(zero_out, "_run_updates")
+@patch.object(zero_out.ynab, "CategoriesApi")
+@patch.object(zero_out.ynab, "PlansApi")
+@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
+@patch.object(zero_out.ynab, "Configuration")
+def test_run_uses_token_override(
+    configuration, plans_api_cls, categories_api_cls, run_updates, capsys
+):
     captured: dict[str, str] = {}
     plans = [make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1))]
     category_groups = [make_category_group("Fixed", ["Rent"])]
@@ -442,26 +419,15 @@ def test_run_uses_token_override(monkeypatch, capsys):
         captured["token"] = access_token
         return FakeConfiguration(access_token)
 
-    monkeypatch.setattr(zero_out.ynab, "Configuration", fake_configuration)
-    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
-    monkeypatch.setattr(
-        zero_out.ynab,
-        "PlansApi",
-        lambda client: FakePlansApi(response=make_plans_response(plans)),
+    configuration.side_effect = fake_configuration
+    plans_api_cls.side_effect = lambda client: FakePlansApi(
+        response=make_plans_response(plans)
     )
-    monkeypatch.setattr(
-        zero_out.ynab,
-        "CategoriesApi",
-        lambda client: FakeCategoriesApi(
-            response=make_categories_response(category_groups)
-        ),
+    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
+        response=make_categories_response(category_groups)
     )
-    monkeypatch.setattr(
-        zero_out,
-        "_run_updates",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("_run_updates should not run during dry-run")
-        ),
+    run_updates.side_effect = AssertionError(
+        "_run_updates should not run during dry-run"
     )
 
     ret = zero_out.run(
@@ -475,17 +441,26 @@ def test_run_uses_token_override(monkeypatch, capsys):
     assert "Targeting Fixed - Rent from plan New" in out
 
 
-def test_run_dry_run_prints_preview(monkeypatch, capsys):
-    monkeypatch.setenv(_ENV_TOKEN, "token")
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(zero_out, "_run_updates")
+@patch.object(zero_out.ynab, "CategoriesApi")
+@patch.object(zero_out.ynab, "PlansApi")
+@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
+@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
+def test_run_dry_run_prints_preview(
+    plans_api_cls, categories_api_cls, run_updates, capsys
+):
     plans = [make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1))]
     category_groups = [make_category_group("Fixed", ["Rent"])]
-
-    install_run_dependencies(monkeypatch, plans=plans, category_groups=category_groups)
-
-    def fake_run_updates(*args, **kwargs):
-        raise AssertionError("_run_updates should not run during dry-run")
-
-    monkeypatch.setattr(zero_out, "_run_updates", fake_run_updates)
+    plans_api_cls.side_effect = lambda client: FakePlansApi(
+        response=make_plans_response(plans)
+    )
+    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
+        response=make_categories_response(category_groups)
+    )
+    run_updates.side_effect = AssertionError(
+        "_run_updates should not run during dry-run"
+    )
 
     ret = zero_out.run(
         ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02")
@@ -498,20 +473,14 @@ def test_run_dry_run_prints_preview(monkeypatch, capsys):
     assert "Use --for-real to actually update categories." in out
 
 
-def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
-    monkeypatch.setenv(_ENV_TOKEN, "token")
-
-    monkeypatch.setattr(zero_out.ynab, "Configuration", FakeConfiguration)
-    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
-    monkeypatch.setattr(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-    monkeypatch.setattr(
-        zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object())
-    )
-    monkeypatch.setattr(
-        zero_out,
-        "_get_plan",
-        lambda plans_api, plan_id: (_ for _ in ()).throw(RuntimeError("bad plan")),
-    )
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(zero_out, "_get_plan")
+@patch.object(zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object()))
+@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
+@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
+@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
+def test_run_returns_error_when_plan_lookup_fails(get_plan, capsys):
+    get_plan.side_effect = RuntimeError("bad plan")
 
     ret = zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
 
@@ -537,8 +506,14 @@ def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
         ),
     ],
 )
-def test_run_month_selection(monkeypatch, capsys, argv, today, expected):
-    monkeypatch.setenv(_ENV_TOKEN, "token")
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(zero_out, "_get_category_id")
+@patch.object(zero_out, "_get_plan")
+@patch.object(zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object()))
+@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
+@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
+@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
+def test_run_month_selection(get_plan, get_category_id, capsys, argv, today, expected):
 
     class FakeDate(datetime.date):
         @classmethod
@@ -546,28 +521,13 @@ def test_run_month_selection(monkeypatch, capsys, argv, today, expected):
             assert today is not None
             return cls(today.year, today.month, today.day)
 
-    monkeypatch.setattr(zero_out.ynab, "Configuration", FakeConfiguration)
-    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
-    monkeypatch.setattr(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-    monkeypatch.setattr(
-        zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object())
-    )
-    monkeypatch.setattr(
-        zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan")
-    )
-    monkeypatch.setattr(
-        zero_out,
-        "_get_category_id",
-        lambda categories_api, plan_id, category_group, category_name: (
-            "cat-1",
-            "Rent",
-            "Fixed",
-        ),
-    )
-    if today is not None:
-        monkeypatch.setattr(zero_out.datetime, "date", FakeDate)
-
-    ret = zero_out.run(argv)
+    get_plan.return_value = ("plan-1", "Test Plan")
+    get_category_id.return_value = ("cat-1", "Rent", "Fixed")
+    if today is None:
+        ret = zero_out.run(argv)
+    else:
+        with patch.object(zero_out.datetime, "date", FakeDate):
+            ret = zero_out.run(argv)
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -575,22 +535,17 @@ def test_run_month_selection(monkeypatch, capsys, argv, today, expected):
     assert expected in out
 
 
-def test_run_for_real_runs_updates(monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, "token")
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(zero_out.asyncio, "run")
+@patch.object(zero_out.ynab, "CategoriesApi")
+@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
+@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
+@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
+@patch.object(zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan"))
+def test_run_for_real_runs_updates(categories_api_cls, asyncio_run):
     category_groups = [make_category_group("Fixed", ["Rent"])]
-
-    monkeypatch.setattr(zero_out.ynab, "Configuration", FakeConfiguration)
-    monkeypatch.setattr(zero_out.ynab, "ApiClient", FakeApiClient)
-    monkeypatch.setattr(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-    monkeypatch.setattr(
-        zero_out.ynab,
-        "CategoriesApi",
-        lambda client: FakeCategoriesApi(
-            response=make_categories_response(category_groups)
-        ),
-    )
-    monkeypatch.setattr(
-        zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan")
+    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
+        response=make_categories_response(category_groups)
     )
 
     captured: dict[str, Any] = {}
@@ -599,7 +554,7 @@ def test_run_for_real_runs_updates(monkeypatch):
         captured["coroutine"] = coro
         coro.close()
 
-    monkeypatch.setattr(zero_out.asyncio, "run", fake_asyncio_run)
+    asyncio_run.side_effect = fake_asyncio_run
 
     ret = zero_out.run(
         (
