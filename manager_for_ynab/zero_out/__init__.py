@@ -117,7 +117,7 @@ def _get_plan(plans_api: ynab.PlansApi, plan_id: str | None) -> tuple[str, str]:
         for plan in plans:
             if str(plan.id) == plan_id:
                 return plan_id, plan.name
-        return plan_id, plan_id
+        raise RuntimeError(f"No plan found with id '{plan_id}'.")
 
     plan = max(plans, key=lambda b: b.last_modified_on or datetime.datetime.min)
     return str(plan.id), plan.name

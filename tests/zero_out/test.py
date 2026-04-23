@@ -172,17 +172,17 @@ def test_get_plan_uses_explicit_plan_id():
     )
 
 
-def test_get_plan_falls_back_to_plan_id_when_explicit_plan_name_is_missing():
+def test_get_plan_errors_when_explicit_plan_id_is_missing():
     plans_api = FakePlansApi(
         response=make_plans_response(
             [make_plan("Other", last_modified_on=datetime.datetime(2025, 2, 1))]
         )
     )
 
-    assert zero_out._get_plan(cast("Any", plans_api), "plan-123") == (
-        "plan-123",
-        "plan-123",
-    )
+    with pytest.raises(RuntimeError) as excinfo:
+        zero_out._get_plan(cast("Any", plans_api), "plan-123")
+
+    assert str(excinfo.value) == "No plan found with id 'plan-123'."
 
 
 @pytest.mark.parametrize(
