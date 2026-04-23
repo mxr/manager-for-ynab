@@ -325,6 +325,28 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     assert target_set.targets == [Decimal("410"), Decimal("290")]
 
 
+@pytest.mark.usefixtures(db.__name__)
+def test_fetch_transactions_filters_unapproved(db):
+    with sqlite3.connect(db) as con:
+        con.row_factory = sqlite3.Row
+        con.execute(
+            """
+            UPDATE transactions
+            SET approved = 0
+            WHERE id = 'c479c335-b54f-48b9-8b74-49a907f1b3f2'
+            """
+        )
+
+        cur = con.cursor()
+        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%Checking%"]))[0]
+
+    assert {txn.id for txn in transactions} == {
+        "9a97f337-28db-4c2d-990f-d9ec0e9bc765",
+        "96817e5f-d272-4012-9790-38f8a8e2be90",
+        "eeef0922-b226-4f8a-bf00-66d4d98e348c",
+    }
+
+
 @patch("manager_for_ynab.reconciler.sync")
 @patch(
     "manager_for_ynab.reconciler.PromptSession",
