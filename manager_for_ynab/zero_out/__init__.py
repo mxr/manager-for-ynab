@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import datetime
-import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
@@ -27,9 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="YNAB plan ID. If omitted, uses the most recently updated one.",
     )
     parser.add_argument(
+        "--category-group",
+        help="Category group name to scope the category lookup.",
+    )
+    parser.add_argument(
         "--category-name",
         required=True,
-        help="Category name to update (matched with a regex but must match uniquely).",
+        help="Category name to update.",
     )
     parser.add_argument(
         "--start",
@@ -114,26 +117,44 @@ def _get_plan_id(plans_api: ynab.PlansApi, plan_id: str | None) -> str:
 
 
 def _get_category_id(
-    categories_api: ynab.CategoriesApi, plan_id: str, category_name: str
+    categories_api: ynab.CategoriesApi,
+    plan_id: str,
+    category_group: str | None,
+    category_name: str,
 ) -> tuple[str, str]:
     try:
         cats_resp = categories_api.get_categories(plan_id)
     except ynab.ApiException as e:
         raise RuntimeError(f"Failed to fetch categories: {e}") from e
 
+    normalized_group = category_group.casefold() if category_group else None
+    normalized_name = category_name.casefold()
     matching = [
-        category
+        (group, category)
         for group in cats_resp.data.category_groups
         for category in group.categories
-        if re.search(category_name, category.name, re.IGNORECASE)
+        if (normalized_group is None or group.name.casefold() == normalized_group)
+        and category.name.casefold() == normalized_name
     ]
-    if len(matching) != 1:
-        names = ", ".join(category.name for category in matching)
+    if len(matching) == 0:
+        if category_group:
+            raise RuntimeError(
+                f"No category named '{category_name}' found in group '{category_group}'."
+            )
+        raise RuntimeError(f"No category named '{category_name}' found in this plan.")
+    if len(matching) > 1:
+        names = ", ".join(
+            f"{group.name} / {category.name}" for group, category in matching
+        )
+        if category_group:
+            raise RuntimeError(
+                f"Found {len(matching)} categories named '{category_name}' in group '{category_group}' - {names}."
+            )
         raise RuntimeError(
-            f"Found {len(matching)} categories matching '{category_name}' - {names}."
+            f"Found {len(matching)} categories named '{category_name}' - {names}. Try again with --category-group."
         )
 
-    category = matching[0]
+    _, category = matching[0]
     return str(category.id), category.name
 
 
@@ -178,7 +199,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
         try:
             plan_id = _get_plan_id(plans_api, args.plan_id)
             category_id, category_name = _get_category_id(
-                categories_api, plan_id, args.category_name
+                categories_api, plan_id, args.category_group, args.category_name
             )
         except RuntimeError as e:
             print(e)
