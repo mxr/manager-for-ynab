@@ -27,9 +27,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="YNAB plan ID. If omitted, uses the most recently updated one.",
     )
     parser.add_argument(
+        "--category-group",
+        help="Category group regex to scope the category lookup.",
+    )
+    parser.add_argument(
         "--category-name",
         required=True,
-        help="Category name to update (matched with a regex but must match uniquely).",
+        help="Category name regex to update.",
     )
     parser.add_argument(
         "--start",
@@ -73,6 +77,10 @@ def format_months(months: tuple[tuple[int, int], ...]) -> list[str]:
     return [f"{year}-{month:02d}" for year, month in months]
 
 
+def _regex_search(value: str, pattern: str) -> bool:
+    return re.search(pattern, value, flags=re.IGNORECASE) is not None
+
+
 def _update_month_category(
     categories_api: ynab.CategoriesApi,
     plan_id: str,
@@ -95,10 +103,7 @@ def _update_month_category(
         return month_str, f"{e}"
 
 
-def _get_plan_id(plans_api: ynab.PlansApi, plan_id: str | None) -> str:
-    if plan_id:
-        return plan_id
-
+def _get_plan(plans_api: ynab.PlansApi, plan_id: str | None) -> tuple[str, str]:
     try:
         plans_response = plans_api.get_plans()
     except ynab.ApiException as e:
@@ -108,33 +113,56 @@ def _get_plan_id(plans_api: ynab.PlansApi, plan_id: str | None) -> str:
     if not plans:
         raise RuntimeError("No plans found in this YNAB account.")
 
+    if plan_id:
+        for plan in plans:
+            if str(plan.id) == plan_id:
+                return plan_id, plan.name
+        raise RuntimeError(f"No plan found with id '{plan_id}'.")
+
     plan = max(plans, key=lambda b: b.last_modified_on or datetime.datetime.min)
-    print(f"Using plan: {plan.name} ({plan.id})")
-    return str(plan.id)
+    return str(plan.id), plan.name
 
 
 def _get_category_id(
-    categories_api: ynab.CategoriesApi, plan_id: str, category_name: str
-) -> tuple[str, str]:
+    categories_api: ynab.CategoriesApi,
+    plan_id: str,
+    category_group: str | None,
+    category_name: str,
+) -> tuple[str, str, str]:
     try:
         cats_resp = categories_api.get_categories(plan_id)
     except ynab.ApiException as e:
         raise RuntimeError(f"Failed to fetch categories: {e}") from e
 
     matching = [
-        category
+        (group, category)
         for group in cats_resp.data.category_groups
         for category in group.categories
-        if re.search(category_name, category.name, re.IGNORECASE)
+        if (category_group is None or _regex_search(group.name, category_group))
+        and _regex_search(category.name, category_name)
     ]
-    if len(matching) != 1:
-        names = ", ".join(category.name for category in matching)
+    if len(matching) == 0:
+        if category_group:
+            raise RuntimeError(
+                f"No category matching regex '{category_name}' found in group matching regex '{category_group}'."
+            )
         raise RuntimeError(
-            f"Found {len(matching)} categories matching '{category_name}' - {names}."
+            f"No category matching regex '{category_name}' found in this plan."
+        )
+    if len(matching) > 1:
+        names = ", ".join(
+            f"{group.name} / {category.name}" for group, category in matching
+        )
+        if category_group:
+            raise RuntimeError(
+                f"Found {len(matching)} categories matching regex '{category_name}' in group matching regex '{category_group}' - {names}."
+            )
+        raise RuntimeError(
+            f"Found {len(matching)} categories matching regex '{category_name}' - {names}. Try again with --category-group."
         )
 
-    category = matching[0]
-    return str(category.id), category.name
+    group, category = matching[0]
+    return str(category.id), category.name, group.name
 
 
 async def _run_updates(
@@ -176,15 +204,15 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
         categories_api = ynab.CategoriesApi(api_client)
 
         try:
-            plan_id = _get_plan_id(plans_api, args.plan_id)
-            category_id, category_name = _get_category_id(
-                categories_api, plan_id, args.category_name
+            plan_id, plan_name = _get_plan(plans_api, args.plan_id)
+            category_id, category_name, category_group = _get_category_id(
+                categories_api, plan_id, args.category_group, args.category_name
             )
         except RuntimeError as e:
             print(e)
             return 1
 
-        print(f"Using category: {category_name} ({category_id})")
+        print(f"Targeting {category_group} - {category_name} from plan {plan_name}")
 
         start_year, start_month = args.start
         if args.end:
