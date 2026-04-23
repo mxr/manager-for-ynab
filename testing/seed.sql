@@ -64,6 +64,7 @@ CREATE TABLE transactions (
     , amount_formatted TEXT
     , payee_name TEXT
     , cleared TEXT
+    , approved BOOLEAN
     , deleted BOOLEAN
 )
 ;
@@ -86,6 +87,7 @@ INSERT INTO transactions VALUES (
     , '-$400.00'
     , 'Payee'
     , 'reconciled'
+    , 1
     , 0
 )
 ;
@@ -108,6 +110,7 @@ INSERT INTO transactions VALUES (
     , '-$30.00'
     , 'Payee'
     , 'cleared'
+    , 1
     , 0
 )
 ;
@@ -130,6 +133,7 @@ INSERT INTO transactions VALUES (
     , '-$60.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;
@@ -152,6 +156,7 @@ INSERT INTO transactions VALUES (
     , '-$20.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;
@@ -174,6 +179,7 @@ INSERT INTO transactions VALUES (
     , '-$10.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;
@@ -196,6 +202,7 @@ INSERT INTO transactions VALUES (
     , '$400.00'
     , 'Payee'
     , 'reconciled'
+    , 1
     , 0
 )
 ;
@@ -218,6 +225,7 @@ INSERT INTO transactions VALUES (
     , '$30.00'
     , 'Payee'
     , 'cleared'
+    , 1
     , 0
 )
 ;
@@ -240,6 +248,7 @@ INSERT INTO transactions VALUES (
     , '$60.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;
@@ -262,6 +271,7 @@ INSERT INTO transactions VALUES (
     , '$20.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;
@@ -284,6 +294,7 @@ INSERT INTO transactions VALUES (
     , '$10.00'
     , 'Payee'
     , 'uncleared'
+    , 1
     , 0
 )
 ;

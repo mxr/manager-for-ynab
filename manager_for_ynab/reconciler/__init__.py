@@ -399,6 +399,7 @@ def fetch_transactions(
                 TRUE
                 AND cleared != 'reconciled'
                 AND NOT deleted
+                AND approved = 1
                 AND ({" OR ".join("account_id = ?" for _ in plan_accts)})
             ORDER BY date
             """,
