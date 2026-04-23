@@ -27,12 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--category-group",
-        help="Category group name to scope the category lookup.",
+        help="Category group name pattern to scope the category lookup.",
     )
     parser.add_argument(
         "--category-name",
         required=True,
-        help="Category name to update.",
+        help="Category name pattern to update.",
     )
     parser.add_argument(
         "--start",
@@ -76,6 +76,37 @@ def format_months(months: tuple[tuple[int, int], ...]) -> list[str]:
     return [f"{year}-{month:02d}" for year, month in months]
 
 
+def _normalize_like_pattern(pattern: str) -> str:
+    if "%" in pattern or "_" in pattern:
+        return pattern
+    return f"%{pattern}%"
+
+
+def _like_match(value: str, pattern: str) -> bool:
+    like_pattern = _normalize_like_pattern(pattern).casefold()
+    value = value.casefold()
+    value_len = len(value)
+    pattern_len = len(like_pattern)
+    dp = [[False] * (pattern_len + 1) for _ in range(value_len + 1)]
+    dp[0][0] = True
+
+    for pattern_idx, char in enumerate(like_pattern, start=1):
+        if char == "%":
+            dp[0][pattern_idx] = dp[0][pattern_idx - 1]
+
+    for value_idx in range(1, value_len + 1):
+        for pattern_idx in range(1, pattern_len + 1):
+            char = like_pattern[pattern_idx - 1]
+            if char == "%":
+                dp[value_idx][pattern_idx] = (
+                    dp[value_idx][pattern_idx - 1] or dp[value_idx - 1][pattern_idx]
+                )
+            elif char == "_" or char == value[value_idx - 1]:
+                dp[value_idx][pattern_idx] = dp[value_idx - 1][pattern_idx - 1]
+
+    return dp[value_len][pattern_len]
+
+
 def _update_month_category(
     categories_api: ynab.CategoriesApi,
     plan_id: str,
@@ -98,10 +129,7 @@ def _update_month_category(
         return month_str, f"{e}"
 
 
-def _get_plan_id(plans_api: ynab.PlansApi, plan_id: str | None) -> str:
-    if plan_id:
-        return plan_id
-
+def _get_plan(plans_api: ynab.PlansApi, plan_id: str | None) -> tuple[str, str]:
     try:
         plans_response = plans_api.get_plans()
     except ynab.ApiException as e:
@@ -111,9 +139,14 @@ def _get_plan_id(plans_api: ynab.PlansApi, plan_id: str | None) -> str:
     if not plans:
         raise RuntimeError("No plans found in this YNAB account.")
 
+    if plan_id:
+        for plan in plans:
+            if str(plan.id) == plan_id:
+                return plan_id, plan.name
+        return plan_id, plan_id
+
     plan = max(plans, key=lambda b: b.last_modified_on or datetime.datetime.min)
-    print(f"Using plan: {plan.name} ({plan.id})")
-    return str(plan.id)
+    return str(plan.id), plan.name
 
 
 def _get_category_id(
@@ -121,41 +154,41 @@ def _get_category_id(
     plan_id: str,
     category_group: str | None,
     category_name: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     try:
         cats_resp = categories_api.get_categories(plan_id)
     except ynab.ApiException as e:
         raise RuntimeError(f"Failed to fetch categories: {e}") from e
 
-    normalized_group = category_group.casefold() if category_group else None
-    normalized_name = category_name.casefold()
     matching = [
         (group, category)
         for group in cats_resp.data.category_groups
         for category in group.categories
-        if (normalized_group is None or group.name.casefold() == normalized_group)
-        and category.name.casefold() == normalized_name
+        if (category_group is None or _like_match(group.name, category_group))
+        and _like_match(category.name, category_name)
     ]
     if len(matching) == 0:
         if category_group:
             raise RuntimeError(
-                f"No category named '{category_name}' found in group '{category_group}'."
+                f"No category matching LIKE '{_normalize_like_pattern(category_name)}' found in group matching LIKE '{_normalize_like_pattern(category_group)}'."
             )
-        raise RuntimeError(f"No category named '{category_name}' found in this plan.")
+        raise RuntimeError(
+            f"No category matching LIKE '{_normalize_like_pattern(category_name)}' found in this plan."
+        )
     if len(matching) > 1:
         names = ", ".join(
             f"{group.name} / {category.name}" for group, category in matching
         )
         if category_group:
             raise RuntimeError(
-                f"Found {len(matching)} categories named '{category_name}' in group '{category_group}' - {names}."
+                f"Found {len(matching)} categories matching LIKE '{_normalize_like_pattern(category_name)}' in group matching LIKE '{_normalize_like_pattern(category_group)}' - {names}."
             )
         raise RuntimeError(
-            f"Found {len(matching)} categories named '{category_name}' - {names}. Try again with --category-group."
+            f"Found {len(matching)} categories matching LIKE '{_normalize_like_pattern(category_name)}' - {names}. Try again with --category-group."
         )
 
-    _, category = matching[0]
-    return str(category.id), category.name
+    group, category = matching[0]
+    return str(category.id), category.name, group.name
 
 
 async def _run_updates(
@@ -197,15 +230,15 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
         categories_api = ynab.CategoriesApi(api_client)
 
         try:
-            plan_id = _get_plan_id(plans_api, args.plan_id)
-            category_id, category_name = _get_category_id(
+            plan_id, plan_name = _get_plan(plans_api, args.plan_id)
+            category_id, category_name, category_group = _get_category_id(
                 categories_api, plan_id, args.category_group, args.category_name
             )
         except RuntimeError as e:
             print(e)
             return 1
 
-        print(f"Using category: {category_name} ({category_id})")
+        print(f"Targeting {category_group} - {category_name} from plan {plan_name}")
 
         start_year, start_month = args.start
         if args.end:

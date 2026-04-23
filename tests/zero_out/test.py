@@ -155,7 +155,32 @@ def test_parse_year_month_rejects_invalid_month():
         zero_out.parse_year_month("2025-13")
 
 
-def test_get_plan_id_uses_latest_plan():
+@pytest.mark.parametrize(
+    ("pattern", "expected"),
+    [
+        pytest.param("Rent", "%Rent%", id="wraps-plain-text"),
+        pytest.param("%Rent", "%Rent", id="preserves-percent"),
+        pytest.param("Rent_", "Rent_", id="preserves-underscore"),
+    ],
+)
+def test_normalize_like_pattern(pattern, expected):
+    assert zero_out._normalize_like_pattern(pattern) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "pattern", "expected"),
+    [
+        pytest.param("Medical", "med", True, id="implicit-substring"),
+        pytest.param("True Expenses", "true%", True, id="explicit-percent"),
+        pytest.param("Rent 2", "Rent _", True, id="explicit-underscore"),
+        pytest.param("Rent 20", "Rent _", False, id="underscore-is-single-char"),
+    ],
+)
+def test_like_match(value, pattern, expected):
+    assert zero_out._like_match(value, pattern) is expected
+
+
+def test_get_plan_uses_latest_plan():
     response = make_plans_response(
         [
             make_plan("Old", last_modified_on=datetime.datetime(2025, 1, 1)),
@@ -164,13 +189,33 @@ def test_get_plan_id_uses_latest_plan():
     )
     plans_api = FakePlansApi(response=response)
 
-    assert zero_out._get_plan_id(cast("Any", plans_api), None) == str(
-        response.data.plans[1].id
+    assert zero_out._get_plan(cast("Any", plans_api), None) == (
+        str(response.data.plans[1].id),
+        "New",
     )
 
 
-def test_get_plan_id_uses_explicit_plan_id():
-    assert zero_out._get_plan_id(cast("Any", object()), "plan-123") == "plan-123"
+def test_get_plan_uses_explicit_plan_id():
+    plan = make_plan("Chosen", last_modified_on=datetime.datetime(2025, 2, 1))
+    plans_api = FakePlansApi(response=make_plans_response([plan]))
+
+    assert zero_out._get_plan(cast("Any", plans_api), str(plan.id)) == (
+        str(plan.id),
+        "Chosen",
+    )
+
+
+def test_get_plan_falls_back_to_plan_id_when_explicit_plan_name_is_missing():
+    plans_api = FakePlansApi(
+        response=make_plans_response(
+            [make_plan("Other", last_modified_on=datetime.datetime(2025, 2, 1))]
+        )
+    )
+
+    assert zero_out._get_plan(cast("Any", plans_api), "plan-123") == (
+        "plan-123",
+        "plan-123",
+    )
 
 
 @pytest.mark.parametrize(
@@ -188,9 +233,9 @@ def test_get_plan_id_uses_explicit_plan_id():
         ),
     ],
 )
-def test_get_plan_id_errors(plans_api, expected_message):
+def test_get_plan_errors(plans_api, expected_message):
     with pytest.raises(RuntimeError) as excinfo:
-        zero_out._get_plan_id(cast("Any", plans_api), None)
+        zero_out._get_plan(cast("Any", plans_api), None)
 
     assert expected_message in str(excinfo.value)
 
@@ -203,17 +248,27 @@ def test_get_plan_id_errors(plans_api, expected_message):
             "Rent",
             [make_category_group("Fixed", ["Rent"])],
             ("Rent", "Fixed"),
-            id="unique-name-without-group",
+            id="substring-name-without-group",
         ),
         pytest.param(
-            "Variable",
+            "Vari",
             "rent",
             [
                 make_category_group("Fixed", ["Rent"]),
                 make_category_group("Variable", ["Rent"]),
             ],
             ("Rent", "Variable"),
-            id="qualified-name",
+            id="substring-group-and-name",
+        ),
+        pytest.param(
+            "Var%",
+            "Ren_",
+            [
+                make_category_group("Fixed", ["Rent"]),
+                make_category_group("Variable", ["Rent"]),
+            ],
+            ("Rent", "Variable"),
+            id="explicit-like-patterns",
         ),
     ],
 )
@@ -222,7 +277,7 @@ def test_get_category_id_matches_plan_categories(
 ):
     categories_api = FakeCategoriesApi(response=make_categories_response(groups))
 
-    category_id, matched_name = zero_out._get_category_id(
+    category_id, matched_name, matched_group = zero_out._get_category_id(
         cast("Any", categories_api), "plan-1", category_group, category_name
     )
 
@@ -236,6 +291,7 @@ def test_get_category_id_matches_plan_categories(
     )
     assert category_id == str(expected_category.id)
     assert matched_name == expected_name
+    assert matched_group == expected_group
 
 
 @pytest.mark.parametrize(
@@ -248,35 +304,35 @@ def test_get_category_id_matches_plan_categories(
                 make_category_group("Fixed", ["Rent"]),
                 make_category_group("Variable", ["Rent"]),
             ],
-            "Found 2 categories named 'Rent'",
+            "Found 2 categories matching LIKE '%Rent%'",
             id="ambiguous-name",
         ),
         pytest.param(
             "Fixed",
             "Rent",
-            [make_category_group("Fixed", ["Rent", "Rent"])],
-            "Found 2 categories named 'Rent' in group 'Fixed'",
-            id="ambiguous-name-in-group",
+            [make_category_group("Fixed", ["Rent", "Rent 2"])],
+            "Found 2 categories matching LIKE '%Rent%' in group matching LIKE '%Fixed%'",
+            id="ambiguous-substring-in-group",
         ),
         pytest.param(
             "Variable",
             "Rent",
             [make_category_group("Fixed", ["Rent"])],
-            "No category named 'Rent' found in group 'Variable'.",
+            "No category matching LIKE '%Rent%' found in group matching LIKE '%Variable%'.",
             id="missing-in-group",
         ),
         pytest.param(
             None,
             "Groceries",
             [make_category_group("Fixed", ["Rent"])],
-            "No category named 'Groceries' found in this plan.",
+            "No category matching LIKE '%Groceries%' found in this plan.",
             id="missing-in-plan",
         ),
         pytest.param(
             None,
             "Rent",
             [],
-            "No category named 'Rent' found in this plan.",
+            "No category matching LIKE '%Rent%' found in this plan.",
             id="missing-in-empty-plan",
         ),
     ],
@@ -416,14 +472,13 @@ def test_run_uses_token_override(monkeypatch, capsys):
     out, _ = capsys.readouterr()
     assert ret == 0
     assert captured["token"] == "override-token"
-    assert f"Using plan: New ({plans[0].id})" in out
+    assert "Targeting Fixed - Rent from plan New" in out
 
 
 def test_run_dry_run_prints_preview(monkeypatch, capsys):
     monkeypatch.setenv(_ENV_TOKEN, "token")
     plans = [make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1))]
     category_groups = [make_category_group("Fixed", ["Rent"])]
-    category = category_groups[0].categories[0]
 
     install_run_dependencies(monkeypatch, plans=plans, category_groups=category_groups)
 
@@ -438,8 +493,7 @@ def test_run_dry_run_prints_preview(monkeypatch, capsys):
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    assert f"Using plan: New ({plans[0].id})" in out
-    assert f"Using category: Rent ({category.id})" in out
+    assert "Targeting Fixed - Rent from plan New" in out
     assert "Months to update: 2025-01, 2025-02" in out
     assert "Use --for-real to actually update categories." in out
 
@@ -455,7 +509,7 @@ def test_run_returns_error_when_plan_lookup_fails(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         zero_out,
-        "_get_plan_id",
+        "_get_plan",
         lambda plans_api, plan_id: (_ for _ in ()).throw(RuntimeError("bad plan")),
     )
 
@@ -498,13 +552,16 @@ def test_run_month_selection(monkeypatch, capsys, argv, today, expected):
     monkeypatch.setattr(
         zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object())
     )
-    monkeypatch.setattr(zero_out, "_get_plan_id", lambda plans_api, plan_id: "plan-1")
+    monkeypatch.setattr(
+        zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan")
+    )
     monkeypatch.setattr(
         zero_out,
         "_get_category_id",
         lambda categories_api, plan_id, category_group, category_name: (
             "cat-1",
             "Rent",
+            "Fixed",
         ),
     )
     if today is not None:
@@ -514,6 +571,7 @@ def test_run_month_selection(monkeypatch, capsys, argv, today, expected):
 
     out, _ = capsys.readouterr()
     assert ret == 0
+    assert "Targeting Fixed - Rent from plan Test Plan" in out
     assert expected in out
 
 
@@ -531,7 +589,9 @@ def test_run_for_real_runs_updates(monkeypatch):
             response=make_categories_response(category_groups)
         ),
     )
-    monkeypatch.setattr(zero_out, "_get_plan_id", lambda plans_api, plan_id: "plan-1")
+    monkeypatch.setattr(
+        zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan")
+    )
 
     captured: dict[str, Any] = {}
 
