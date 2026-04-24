@@ -206,11 +206,23 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
     assert all(txn.approved is True for txns in updates.values() for txn in txns)
 
 
-@pytest.mark.parametrize("func", (lambda: run(()), lambda: auto_approve()))
+@pytest.mark.parametrize(
+    "func",
+    (
+        lambda db_path: run(("--sqlite-export-for-ynab-db", str(db_path))),
+        lambda db_path: auto_approve(
+            db=db_path,
+            full_refresh=False,
+            for_real=False,
+            token_override=None,
+            quiet=True,
+        ),
+    ),
+)
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_requires_token(func):
+def test_requires_token(tmp_path, func):
     with pytest.raises(ValueError) as excinfo:
-        func()
+        func(tmp_path / "auto-approve.sqlite")
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -248,7 +260,13 @@ def test_auto_approve_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(db=db_path, token_override="override-token")
+    result = auto_approve(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        token_override="override-token",
+        quiet=True,
+    )
 
     sync.assert_called_once_with("override-token", db_path, False, quiet=True)
     assert result == _expected_auto_approve_result(0)
@@ -261,7 +279,9 @@ def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(db=db_path)
+    result = auto_approve(
+        db=db_path, full_refresh=False, for_real=False, token_override=None, quiet=True
+    )
 
     out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db_path, False, quiet=True)
@@ -289,7 +309,9 @@ def test_auto_approve_for_real_returns_updated_count(sync, transactions_api, tmp
 
     transactions_api.side_effect = FakeTransactionsApi
 
-    result = auto_approve(db=db_path, for_real=True)
+    result = auto_approve(
+        db=db_path, full_refresh=False, for_real=True, token_override=None, quiet=True
+    )
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]

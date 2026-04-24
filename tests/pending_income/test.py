@@ -221,11 +221,24 @@ def test_build_updates_groups_by_plan():
     )
 
 
-@pytest.mark.parametrize("func", (lambda: run(()), lambda: pending_income()))
+@pytest.mark.parametrize(
+    "func",
+    (
+        lambda db_path: run(("--sqlite-export-for-ynab-db", str(db_path))),
+        lambda db_path: pending_income(
+            db=db_path,
+            full_refresh=False,
+            for_real=False,
+            skip_matched=False,
+            token_override=None,
+            quiet=True,
+        ),
+    ),
+)
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_requires_token(func):
+def test_requires_token(tmp_path, func):
     with pytest.raises(ValueError) as excinfo:
-        func()
+        func(tmp_path / "pending.sqlite")
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -276,7 +289,14 @@ def test_pending_income_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(db=db_path, token_override="override-token")
+    result = pending_income(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        skip_matched=False,
+        token_override="override-token",
+        quiet=True,
+    )
 
     sync.assert_called_once_with("override-token", db_path, False, quiet=True)
     assert result == _expected_pending_income_result(0)
@@ -289,7 +309,14 @@ def test_pending_income_skip_matched_excludes_matched_transactions(sync, tmp_pat
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(db=db_path, skip_matched=True)
+    result = pending_income(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        skip_matched=True,
+        token_override=None,
+        quiet=True,
+    )
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert result == _expected_pending_income_result(0, include_matched=False)
@@ -302,7 +329,14 @@ def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(db=db_path)
+    result = pending_income(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        skip_matched=False,
+        token_override=None,
+        quiet=True,
+    )
 
     out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db_path, False, quiet=True)
@@ -332,7 +366,14 @@ def test_pending_income_for_real_returns_updated_count(
 
     transactions_api.side_effect = FakeTransactionsApi
 
-    result = pending_income(db=db_path, for_real=True)
+    result = pending_income(
+        db=db_path,
+        full_refresh=False,
+        for_real=True,
+        skip_matched=False,
+        token_override=None,
+        quiet=True,
+    )
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
