@@ -32,7 +32,6 @@ _PACKAGE = "manager-for-ynab reconciler"
 
 _NEG_BAL_ACCT_TYPES = frozenset(("checking", "savings", "cash"))
 
-_LOCALE_EN_US = "en_US"
 _DESCRIPTION = "Find and automatically reconciles unreconciled transactions."
 
 
@@ -297,7 +296,7 @@ async def _reconcile_account(
             print(f"{prefix} Balance already reconciled to target")
             return 0
         pretty_target = format_currency(
-            target, currency=plan_acct.currency, locale=_LOCALE_EN_US
+            target, currency=plan_acct.currency, locale="en_US"
         )
         print(f"{prefix} No match found for target {pretty_target}")
         return 1
@@ -371,11 +370,17 @@ def fetch_plan_accts(
 
 
 def _pretty(plan_accts: list[sqlite3.Row]) -> str:
-    if not plan_accts:
-        return "nothing!"
-
-    return "\n" + "\n".join(
-        sorted(f" * {pl['plan_name']} - {pl['account_name']}" for pl in plan_accts)
+    return (
+        (
+            "\n"
+            + "\n".join(
+                sorted(
+                    f" * {pl['plan_name']} - {pl['account_name']}" for pl in plan_accts
+                )
+            )
+        )
+        if plan_accts
+        else "nothing!"
     )
 
 
