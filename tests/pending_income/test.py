@@ -8,8 +8,14 @@ from unittest.mock import patch
 
 import pytest
 
-import manager_for_ynab.pending_income as pending_income
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.pending_income import build_updates
+from manager_for_ynab.pending_income import fetch_pending_income
+from manager_for_ynab.pending_income import pending_income
+from manager_for_ynab.pending_income import PendingIncomeResult
+from manager_for_ynab.pending_income import run
+from manager_for_ynab.pending_income import Transaction
+from manager_for_ynab.pending_income import ynab
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -155,7 +161,7 @@ def test_fetch_pending_income_filters_expected_rows(tmp_path):
 
     with sqlite3.connect(db_path) as con:
         con.row_factory = sqlite3.Row
-        found = pending_income.fetch_pending_income(con.cursor())
+        found = fetch_pending_income(con.cursor())
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1", "matched"],
@@ -169,7 +175,7 @@ def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
 
     with sqlite3.connect(db_path) as con:
         con.row_factory = sqlite3.Row
-        found = pending_income.fetch_pending_income(con.cursor(), skip_matched=True)
+        found = fetch_pending_income(con.cursor(), skip_matched=True)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1"],
@@ -180,18 +186,18 @@ def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
 def test_build_updates_groups_by_plan():
     txns_by_plan = {
         "plan-1": [
-            pending_income.Transaction(
+            Transaction(
                 "txn-1", "plan-1", "Checking", "Employer", "$100.00", "2026-04-01"
             )
         ],
         "plan-2": [
-            pending_income.Transaction(
+            Transaction(
                 "txn-2", "plan-2", "Savings", "Employer", "$55.00", "2026-04-01"
             )
         ],
     }
 
-    updates = pending_income.build_updates(txns_by_plan, date(2026, 4, 14))
+    updates = build_updates(txns_by_plan, date(2026, 4, 14))
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in updates.items()} == {
         "plan-1": ["txn-1"],
@@ -202,9 +208,7 @@ def test_build_updates_groups_by_plan():
     )
 
 
-@pytest.mark.parametrize(
-    "func", (lambda: pending_income.run(()), lambda: pending_income.pending_income())
-)
+@pytest.mark.parametrize("func", (lambda: run(()), lambda: pending_income()))
 def test_requires_token(monkeypatch, func):
     monkeypatch.setenv(_ENV_TOKEN, "")
 
@@ -218,10 +222,10 @@ def _expected_pending_income_result(
     updated_count: int,
     *,
     include_matched: bool = True,
-) -> pending_income.PendingIncomeResult:
+) -> PendingIncomeResult:
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     transactions = [
-        pending_income.Transaction(
+        Transaction(
             id="keep-1",
             plan_id="plan-1",
             account_name="Checking",
@@ -229,7 +233,7 @@ def _expected_pending_income_result(
             amount_formatted="$100.00",
             date=yesterday,
         ),
-        pending_income.Transaction(
+        Transaction(
             id="keep-2",
             plan_id="plan-2",
             account_name="Savings",
@@ -241,7 +245,7 @@ def _expected_pending_income_result(
     if include_matched:
         transactions.insert(
             1,
-            pending_income.Transaction(
+            Transaction(
                 id="matched",
                 plan_id="plan-1",
                 account_name="Checking",
@@ -250,9 +254,7 @@ def _expected_pending_income_result(
                 date=yesterday,
             ),
         )
-    return pending_income.PendingIncomeResult(
-        transactions=transactions, updated_count=updated_count
-    )
+    return PendingIncomeResult(transactions=transactions, updated_count=updated_count)
 
 
 @patch("manager_for_ynab.pending_income.sync")
@@ -264,11 +266,9 @@ def test_pending_income_uses_token_override(sync, monkeypatch, tmp_path):
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    result = pending_income.pending_income(db=db_path, token_override="override-token")
+    result = pending_income(db=db_path, token_override="override-token")
 
     sync.assert_called_once_with("override-token", db_path, False, quiet=True)
     assert result == _expected_pending_income_result(0)
@@ -285,11 +285,9 @@ def test_pending_income_skip_matched_excludes_matched_transactions(
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    result = pending_income.pending_income(db=db_path, skip_matched=True)
+    result = pending_income(db=db_path, skip_matched=True)
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert result == _expected_pending_income_result(0, include_matched=False)
@@ -306,11 +304,9 @@ def test_pending_income_quiet_suppresses_refresh_logs(
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    result = pending_income.pending_income(db=db_path)
+    result = pending_income(db=db_path)
 
     out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db_path, False, quiet=True)
@@ -333,17 +329,17 @@ def test_pending_income_for_real_returns_updated_count(sync, monkeypatch, tmp_pa
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(pending_income.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
     monkeypatch.setattr(
-        pending_income.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
+        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
     )
     monkeypatch.setattr(
-        pending_income.ynab,
+        ynab,
         "Configuration",
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    result = pending_income.pending_income(db=db_path, for_real=True)
+    result = pending_income(db=db_path, for_real=True)
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
@@ -362,11 +358,9 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -386,11 +380,9 @@ def test_run_quiet_suppresses_all_output(sync, monkeypatch, tmp_path, capsys):
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -407,7 +399,7 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     with sqlite3.connect(db_path) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
 
-    ret = pending_income.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -432,19 +424,17 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(pending_income.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
     monkeypatch.setattr(
-        pending_income.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
+        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
     )
     monkeypatch.setattr(
-        pending_income.ynab,
+        ynab,
         "Configuration",
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    ret = pending_income.run(
-        ("--sqlite-export-for-ynab-db", str(db_path), "--for-real")
-    )
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
 
     assert ret == 0
     sync.assert_called_once_with("token", db_path, False, quiet=False)
@@ -465,13 +455,9 @@ def test_run_skip_matched_excludes_matched_transactions(
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        pending_income.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    ret = pending_income.run(
-        ("--sqlite-export-for-ynab-db", str(db_path), "--skip-matched")
-    )
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--skip-matched"))
 
     out, _ = capsys.readouterr()
     assert ret == 0

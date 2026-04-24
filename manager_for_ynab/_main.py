@@ -2,11 +2,11 @@ import argparse
 import sys
 from typing import TYPE_CHECKING
 
-import manager_for_ynab.auto_approve as auto_approve
-import manager_for_ynab.pending_income as pending_income
-import manager_for_ynab.reconciler as reconciler
-import manager_for_ynab.zero_out as zero_out
 from manager_for_ynab._version import get_version
+from manager_for_ynab.auto_approve import run as run_auto_approve
+from manager_for_ynab.pending_income import run as run_pending_income
+from manager_for_ynab.reconciler import run as run_reconciler
+from manager_for_ynab.zero_out import run as run_zero_out
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -51,19 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_reconciler(argv: Sequence[str]) -> int:
-    return reconciler.run(argv)
+    return run_reconciler(argv)
 
 
 def _run_pending_income(argv: Sequence[str]) -> int:
-    return pending_income.run(argv)
+    return run_pending_income(argv)
 
 
 def _run_auto_approve(argv: Sequence[str]) -> int:
-    return auto_approve.run(argv)
+    return run_auto_approve(argv)
 
 
 def _run_zero_out(argv: Sequence[str]) -> int:
-    return zero_out.run(argv)
+    return run_zero_out(argv)
 
 
 def main(argv: Sequence[str] = ()) -> int:

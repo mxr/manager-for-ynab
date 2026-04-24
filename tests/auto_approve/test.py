@@ -6,8 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-import manager_for_ynab.auto_approve as auto_approve
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.auto_approve import auto_approve
+from manager_for_ynab.auto_approve import AutoApproveResult
+from manager_for_ynab.auto_approve import build_updates
+from manager_for_ynab.auto_approve import fetch_auto_approve_transactions
+from manager_for_ynab.auto_approve import run
+from manager_for_ynab.auto_approve import Transaction
+from manager_for_ynab.auto_approve import ynab
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -144,7 +150,7 @@ def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
 
     with sqlite3.connect(db_path) as con:
         con.row_factory = sqlite3.Row
-        found = auto_approve.fetch_auto_approve_transactions(con.cursor())
+        found = fetch_auto_approve_transactions(con.cursor())
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["pair-a-1"],
@@ -155,7 +161,7 @@ def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
 def test_build_updates_groups_by_plan_and_updates_both_ids():
     txns_by_plan = {
         "plan-1": [
-            auto_approve.Transaction(
+            Transaction(
                 id="txn-1",
                 matched_transaction_id="txn-2",
                 plan_id="plan-1",
@@ -166,7 +172,7 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
             )
         ],
         "plan-2": [
-            auto_approve.Transaction(
+            Transaction(
                 id="txn-3",
                 matched_transaction_id="txn-4",
                 plan_id="plan-2",
@@ -178,7 +184,7 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
         ],
     }
 
-    updates = auto_approve.build_updates(txns_by_plan)
+    updates = build_updates(txns_by_plan)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in updates.items()} == {
         "plan-1": ["txn-1", "txn-2"],
@@ -187,9 +193,7 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
     assert all(txn.approved is True for txns in updates.values() for txn in txns)
 
 
-@pytest.mark.parametrize(
-    "func", (lambda: auto_approve.run(()), lambda: auto_approve.auto_approve())
-)
+@pytest.mark.parametrize("func", (lambda: run(()), lambda: auto_approve()))
 def test_requires_token(monkeypatch, func):
     monkeypatch.setenv(_ENV_TOKEN, "")
 
@@ -199,10 +203,10 @@ def test_requires_token(monkeypatch, func):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-def _expected_auto_approve_result(updated_count: int) -> auto_approve.AutoApproveResult:
-    return auto_approve.AutoApproveResult(
+def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
+    return AutoApproveResult(
         transactions=[
-            auto_approve.Transaction(
+            Transaction(
                 id="pair-a-1",
                 matched_transaction_id="pair-a-2",
                 plan_id="plan-1",
@@ -211,7 +215,7 @@ def _expected_auto_approve_result(updated_count: int) -> auto_approve.AutoApprov
                 amount_formatted="-$4.50",
                 date="2026-04-20",
             ),
-            auto_approve.Transaction(
+            Transaction(
                 id="pair-b-1",
                 matched_transaction_id="pair-b-2",
                 plan_id="plan-2",
@@ -234,11 +238,9 @@ def test_auto_approve_uses_token_override(sync, monkeypatch, tmp_path):
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        auto_approve.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    result = auto_approve.auto_approve(db=db_path, token_override="override-token")
+    result = auto_approve(db=db_path, token_override="override-token")
 
     sync.assert_called_once_with("override-token", db_path, False, quiet=True)
     assert result == _expected_auto_approve_result(0)
@@ -255,11 +257,9 @@ def test_auto_approve_quiet_suppresses_refresh_logs(
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        auto_approve.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    result = auto_approve.auto_approve(db=db_path)
+    result = auto_approve(db=db_path)
 
     out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db_path, False, quiet=True)
@@ -282,17 +282,17 @@ def test_auto_approve_for_real_returns_updated_count(sync, monkeypatch, tmp_path
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(auto_approve.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
     monkeypatch.setattr(
-        auto_approve.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
+        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
     )
     monkeypatch.setattr(
-        auto_approve.ynab,
+        ynab,
         "Configuration",
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    result = auto_approve.auto_approve(db=db_path, for_real=True)
+    result = auto_approve(db=db_path, for_real=True)
 
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
@@ -310,11 +310,9 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        auto_approve.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    ret = auto_approve.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -334,11 +332,9 @@ def test_run_quiet_suppresses_all_output(sync, monkeypatch, tmp_path, capsys):
     def unexpected_transactions_api(*args, **kwargs):
         raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
-    monkeypatch.setattr(
-        auto_approve.ynab, "TransactionsApi", unexpected_transactions_api
-    )
+    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
-    ret = auto_approve.run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -357,7 +353,7 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
             "UPDATE transactions SET approved = 1 WHERE matched_transaction_id IS NOT NULL"
         )
 
-    ret = auto_approve.run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -382,17 +378,17 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(auto_approve.ynab, "TransactionsApi", FakeTransactionsApi)
+    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
     monkeypatch.setattr(
-        auto_approve.ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
+        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
     )
     monkeypatch.setattr(
-        auto_approve.ynab,
+        ynab,
         "Configuration",
         lambda access_token: SimpleNamespace(access_token=access_token),
     )
 
-    ret = auto_approve.run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
+    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
 
     assert ret == 0
     sync.assert_called_once_with("token", db_path, False, quiet=False)
