@@ -1,5 +1,9 @@
 import argparse
+import asyncio
 import datetime
+from typing import Any
+from typing import cast
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +13,7 @@ from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
 from manager_for_ynab.zero_out import _get_plan
 from manager_for_ynab.zero_out import _regex_search
+from manager_for_ynab.zero_out import _run_updates
 from manager_for_ynab.zero_out import _update_month_category
 from manager_for_ynab.zero_out import month_range
 from manager_for_ynab.zero_out import parse_year_month
@@ -269,6 +274,41 @@ def test_update_month_category(categories_api, update_error, expected):
         assert error is not None
 
 
+@pytest.mark.asyncio
+@patch.object(asyncio, "get_running_loop")
+@patch("manager_for_ynab.zero_out.ThreadPoolExecutor")
+async def test_run_updates_prints_success_and_failure(
+    thread_pool_executor, get_running_loop, capsys
+):
+    class FakeExecutor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+    class FakeLoop:
+        def __init__(self):
+            self.calls = 0
+
+        def run_in_executor(
+            self, executor, func, categories_api, plan_id, category_id, year, month
+        ):
+            self.calls += 1
+            result = ("2025-01", None) if self.calls == 1 else ("2025-02", "boom")
+            return asyncio.create_task(asyncio.sleep(0, result=result))
+
+    fake_loop = FakeLoop()
+    thread_pool_executor.side_effect = lambda max_workers: FakeExecutor()
+    get_running_loop.return_value = fake_loop
+
+    await _run_updates(cast("Any", object()), "plan-1", "cat-1", ((2025, 1), (2025, 2)))
+
+    out, _ = capsys.readouterr()
+    assert "2025-01: set planned to 0." in out
+    assert "Failed to update month 2025-02: boom" in out
+
+
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
 def test_run_requires_token():
     # patch.dict mutates os.environ before resolve_token reads it.
@@ -419,12 +459,13 @@ def test_run_month_selection(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(asyncio, "run")
 @patch(
     "manager_for_ynab.zero_out._get_plan",
     lambda plans_api, plan_id: ("plan-1", "Test Plan"),
 )
 def test_run_for_real_runs_updates(
-    capsys,
+    asyncio_run,
     ynab_configuration,
     ynab_api_client,
     ynab_plans_api,
@@ -437,11 +478,14 @@ def test_run_for_real_runs_updates(
         category_groups
     )
 
-    def update_month_category(*, month, **kwargs):
-        if month == datetime.date(2025, 2, 1):
-            raise ynab.ApiException(status=400, reason="bad request")
+    captured: dict[str, Any] = {}
 
-    ynab_categories_api.update_month_category.side_effect = update_month_category
+    def fake_asyncio_run(coro):
+        captured["coroutine"] = coro
+        coro.close()
+
+    asyncio_run.side_effect = fake_asyncio_run
+
     ret = run(
         (
             "--category-name",
@@ -454,11 +498,7 @@ def test_run_for_real_runs_updates(
         )
     )
 
-    out, _ = capsys.readouterr()
     assert ret == 0
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    assert ynab_categories_api.update_month_category.call_count == 2
-    assert "2025-01: set planned to 0." in out
-    assert "Failed to update month 2025-02:" in out
-    assert "Done." in out
+    assert captured["coroutine"].cr_code.co_name == "_run_updates"
