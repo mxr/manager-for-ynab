@@ -264,7 +264,8 @@ async def _prompt_targets(target_count: int) -> list[str]:
         )
     if len(raw_targets) != target_count:
         raise ValueError(
-            f"`--mode interactive-batch` requires {target_count} target balances, but got {len(raw_targets)}."
+            f"`--mode interactive-batch` requires {target_count} target "
+            "balances, but got {len(raw_targets)}."
         )
     return raw_targets
 
