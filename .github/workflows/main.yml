@@ -18,6 +18,7 @@ jobs:
         filters: |
           project_files:
             - .github/workflows/**
+            - .github/actions/**
             - '**/*.py'
             - '**/*.sql'
             - '**/*.toml'
