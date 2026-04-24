@@ -61,13 +61,15 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     skip_matched: bool = args.skip_matched
     quiet: bool = args.quiet
 
-    result = pending_income(
-        db=db,
-        full_refresh=full_refresh,
-        for_real=for_real,
-        skip_matched=skip_matched,
-        token_override=token_override,
-        quiet=quiet,
+    result = asyncio.run(
+        pending_income(
+            db=db,
+            full_refresh=full_refresh,
+            for_real=for_real,
+            skip_matched=skip_matched,
+            token_override=token_override,
+            quiet=quiet,
+        )
     )
 
     if len(result.transactions) and not for_real:
@@ -77,7 +79,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     return 0
 
 
-def pending_income(
+async def pending_income(
     *,
     db: Path,
     full_refresh: bool,
@@ -89,7 +91,7 @@ def pending_income(
     token = resolve_token(token_override)
 
     _print("** Refreshing SQLite DB **", quiet=quiet)
-    asyncio.run(sync(token, db, full_refresh, quiet=quiet))
+    await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
     with sqlite3.connect(db) as con:

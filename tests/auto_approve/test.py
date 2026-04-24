@@ -199,23 +199,25 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
     assert all(txn.approved is True for txns in updates.values() for txn in txns)
 
 
-@pytest.mark.parametrize(
-    "func",
-    (
-        lambda db_path: run(("--sqlite-export-for-ynab-db", str(db_path))),
-        lambda db_path: auto_approve(
-            db=db_path,
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_run_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        run(("--sqlite-export-for-ynab-db", str(tmp_path / "auto-approve.sqlite")))
+
+    assert "Must set YNAB access token" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+async def test_auto_approve_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        await auto_approve(
+            db=tmp_path / "auto-approve.sqlite",
             full_refresh=False,
             for_real=False,
             token_override=None,
             quiet=True,
-        ),
-    ),
-)
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_requires_token(tmp_path, func):
-    with pytest.raises(ValueError) as excinfo:
-        func(tmp_path / "auto-approve.sqlite")
+        )
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -248,11 +250,12 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
 
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_uses_token_override(sync, tmp_path):
+@pytest.mark.asyncio
+async def test_auto_approve_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(
+    result = await auto_approve(
         db=db_path,
         full_refresh=False,
         for_real=False,
@@ -267,12 +270,17 @@ def test_auto_approve_uses_token_override(sync, tmp_path):
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(
-        db=db_path, full_refresh=False, for_real=False, token_override=None, quiet=True
+    result = await auto_approve(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        token_override=None,
+        quiet=True,
     )
 
     out, _ = capsys.readouterr()
@@ -283,7 +291,8 @@ def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_for_real_returns_updated_count(
+@pytest.mark.asyncio
+async def test_auto_approve_for_real_returns_updated_count(
     sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
 ):
     db_path = tmp_path / "auto-approve.sqlite"
@@ -294,8 +303,12 @@ def test_auto_approve_for_real_returns_updated_count(
         updates.append((plan_id, wrapper))
     )
 
-    result = auto_approve(
-        db=db_path, full_refresh=False, for_real=True, token_override=None, quiet=True
+    result = await auto_approve(
+        db=db_path,
+        full_refresh=False,
+        for_real=True,
+        token_override=None,
+        quiet=True,
     )
 
     ynab_configuration.assert_called_once_with(access_token="token")
