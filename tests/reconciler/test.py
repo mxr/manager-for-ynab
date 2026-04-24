@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
+import aiohttp
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -403,7 +404,8 @@ async def test_run_do_reconcile(sync, db, mock_aioresponses):
         ),
     )
 
-    await do_reconcile(TOKEN, PLAN_ID, transactions, "Reconciling")
+    async with aiohttp.ClientSession() as session:
+        await do_reconcile(session, TOKEN, PLAN_ID, transactions, "Reconciling")
 
 
 @pytest.mark.asyncio
@@ -440,4 +442,5 @@ async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
             ),
         )
 
-    await do_reconcile(TOKEN, PLAN_ID, transactions, "Reconciling")
+    async with aiohttp.ClientSession() as session:
+        await do_reconcile(session, TOKEN, PLAN_ID, transactions, "Reconciling")
