@@ -1,5 +1,6 @@
 name: pre-test
 
+# Used by asottile/workflows/.github/workflows/tox.yml when present.
 runs:
   using: composite
   steps:
