@@ -1,0 +1,9 @@
+name: pre-test
+
+runs:
+  using: composite
+  steps:
+  - name: set USERPROFILE on Windows
+    if: runner.os == 'Windows'
+    shell: bash
+    run: echo 'USERPROFILE=C:\Users\runneradmin' >> "$GITHUB_ENV"  # Standard for GitHub-hosted runners
