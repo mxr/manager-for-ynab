@@ -180,22 +180,26 @@ async def async_run(
         plan_accts = fetch_plan_accts(cur, account_likes)
         transactions = fetch_transactions(cur, plan_accts)
 
-    rets = list(
-        await asyncio.gather(
-            *(
-                asyncio.create_task(
-                    _reconcile_account(
-                        token,
-                        acct,
-                        txns,
-                        t * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
-                        for_real,
+    async with aiohttp.ClientSession() as session:
+        rets = list(
+            await asyncio.gather(
+                *(
+                    asyncio.create_task(
+                        _reconcile_account(
+                            token,
+                            acct,
+                            txns,
+                            t * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
+                            for_real,
+                            session,
+                        )
+                    )
+                    for t, acct, txns in zip(
+                        targets, plan_accts, transactions, strict=True
                     )
                 )
-                for t, acct, txns in zip(targets, plan_accts, transactions, strict=True)
             )
         )
-    )
 
     print("Done.")
 
@@ -283,6 +287,7 @@ async def _reconcile_account(
     transactions: list[Transaction],
     target: Decimal,
     for_real: bool,
+    session: aiohttp.ClientSession,
 ) -> int:
     prefix = f"[{plan_acct.account_name}]"
 
@@ -314,6 +319,7 @@ async def _reconcile_account(
 
     if for_real:
         await do_reconcile(
+            session,
             token,
             plan_acct.plan_id,
             to_reconcile,
@@ -451,20 +457,23 @@ def find_to_reconcile(
 
 
 async def do_reconcile(
-    token: str, plan_id: str, to_reconcile: Sequence[Transaction], progress_desc: str
+    session: aiohttp.ClientSession,
+    token: str,
+    plan_id: str,
+    to_reconcile: Sequence[Transaction],
+    progress_desc: str,
 ) -> None:
     yc = YnabClient(token)
     with tldm[Never](total=len(to_reconcile), desc=progress_desc) as pbar:
-        async with aiohttp.ClientSession() as session:
-            try:
-                await yc.reconcile(session, pbar, plan_id, [t.id for t in to_reconcile])
-            except Error4034:
-                await asyncio.gather(
-                    *(
-                        yc.reconcile(session, pbar, to_reconcile[0].plan_id, [t.id])
-                        for t in to_reconcile
-                    )
+        try:
+            await yc.reconcile(session, pbar, plan_id, [t.id for t in to_reconcile])
+        except Error4034:
+            await asyncio.gather(
+                *(
+                    yc.reconcile(session, pbar, to_reconcile[0].plan_id, [t.id])
+                    for t in to_reconcile
                 )
+            )
 
 
 def partition[T](
