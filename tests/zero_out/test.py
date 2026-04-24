@@ -20,6 +20,8 @@ from manager_for_ynab.zero_out import month_range
 from manager_for_ynab.zero_out import parse_year_month
 from manager_for_ynab.zero_out import run
 
+REAL_DATE = datetime.date
+
 
 def make_plan(
     name: str, *, last_modified_on: datetime.datetime, plan_id: uuid.UUID | None = None
@@ -512,25 +514,19 @@ def test_run_returns_error_when_plan_lookup_fails(get_plan, capsys):
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_category_id")
 @patch("manager_for_ynab.zero_out._get_plan")
+@patch("manager_for_ynab.zero_out.datetime.date")
 @patch.object(ynab, "CategoriesApi", lambda client: cast("Any", object()))
 @patch.object(ynab, "PlansApi", lambda client: cast("Any", object()))
 @patch.object(ynab, "ApiClient", FakeApiClient)
 @patch.object(ynab, "Configuration", FakeConfiguration)
-def test_run_month_selection(get_plan, get_category_id, capsys, argv, today, expected):
-
-    class FakeDate(datetime.date):
-        @classmethod
-        def today(cls):
-            assert today is not None
-            return cls(today.year, today.month, today.day)
-
+def test_run_month_selection(
+    date_cls, get_plan, get_category_id, capsys, argv, today, expected
+):
+    date_cls.side_effect = REAL_DATE
+    date_cls.today.return_value = today
     get_plan.return_value = ("plan-1", "Test Plan")
     get_category_id.return_value = ("cat-1", "Rent", "Fixed")
-    if today is None:
-        ret = run(argv)
-    else:
-        with patch.object(datetime, "date", FakeDate):
-            ret = run(argv)
+    ret = run(argv)
 
     out, _ = capsys.readouterr()
     assert ret == 0

@@ -4,7 +4,6 @@ import sqlite3
 from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -23,6 +22,20 @@ from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
 
 
+class FakePromptSession:
+    def __init__(self, response: str) -> None:
+        self.prompt_async = AsyncMock(return_value=response)
+
+
+def fake_prompt_session_430() -> FakePromptSession:
+    return FakePromptSession("430")
+
+
+def fake_prompt_session_430_290() -> FakePromptSession:
+    return FakePromptSession("430 290")
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
@@ -42,9 +55,7 @@ from testing.fixtures import TOKEN
         ),
     ),
 )
-def test_run(sync, db, monkeypatch, capsys, target, expected, substr):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-
+def test_run(sync, db, capsys, target, expected, substr):
     ret = run(
         (
             "--account-like",
@@ -61,10 +72,9 @@ def test_run(sync, db, monkeypatch, capsys, target, expected, substr):
     assert substr in out
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
-def test_run_nothing_to_do(sync, db, monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-
+def test_run_nothing_to_do(sync, db):
     with sqlite3.connect(db) as con:
         con.execute(
             "UPDATE transactions SET cleared = 'uncleared' where cleared = 'cleared'"
@@ -84,12 +94,11 @@ def test_run_nothing_to_do(sync, db, monkeypatch):
     assert ret == 0
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-
+def test_run_reconciles_with_for_real(reconcile, sync, db):
     ret = run(
         (
             "--account-like",
@@ -106,20 +115,18 @@ def test_run_reconciles_with_for_real(sync, reconcile, db, monkeypatch):
     reconcile.assert_called()
 
 
-def test_run_no_token(monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, "")
-
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_run_no_token():
     with pytest.raises(ValueError) as excinfo:
         run(("--account-like", "checking%123", "--target", "410.50"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
+@patch.dict("os.environ", {}, clear=True)
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_uses_token_override(sync, db, monkeypatch):
-    monkeypatch.delenv(_ENV_TOKEN, raising=False)
-
+def test_run_uses_token_override(sync, db):
     ret = run(
         (
             "--account-like",
@@ -208,10 +215,10 @@ def test_run_mode_interactive_batch_requires_account_likes():
 
 @patch(
     "manager_for_ynab.reconciler.PromptSession",
-    return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430")),
+    new=fake_prompt_session_430,
 )
 @patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
-def test_run_mode_interactive_batch_requires_matching_target_count(_, __):
+def test_run_mode_interactive_batch_requires_matching_target_count(_):
     with pytest.raises(ValueError) as excinfo:
         run(
             (
@@ -226,10 +233,10 @@ def test_run_mode_interactive_batch_requires_matching_target_count(_, __):
     assert "requires 2 target balances" in str(excinfo.value)
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_batch(sync, db, monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+def test_run_mode_batch(sync, db):
     with sqlite3.connect(db) as con:
         con.execute(
             """
@@ -255,10 +262,10 @@ def test_run_mode_batch(sync, db, monkeypatch):
     assert ret == 0
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
     with sqlite3.connect(db) as con:
         con.execute(
             """
@@ -290,6 +297,7 @@ def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
     assert "[Credit Card] Balance already reconciled to target" in out
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
@@ -299,9 +307,7 @@ def test_run_mode_batch_preserves_pair_order(sync, db, monkeypatch, capsys):
         pytest.param("foo", "nothing!", id="none"),
     ),
 )
-def test_run_not_one_account(sync, db, monkeypatch, account_like, substr):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
-
+def test_run_not_one_account(sync, db, account_like, substr):
     with pytest.raises(ValueError) as excinfo:
         run(
             (
@@ -350,12 +356,12 @@ def test_fetch_transactions_filters_unapproved(db):
 @patch("manager_for_ynab.reconciler.sync")
 @patch(
     "manager_for_ynab.reconciler.PromptSession",
-    return_value=SimpleNamespace(prompt_async=AsyncMock(return_value="430 290")),
+    new=fake_prompt_session_430_290,
 )
 @patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_interactive_batch_with_account_likes(_, __, sync, db, monkeypatch):
-    monkeypatch.setenv(_ENV_TOKEN, TOKEN)
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
+def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
     ret = run(
         (
             "--mode",

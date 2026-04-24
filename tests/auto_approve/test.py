@@ -1,5 +1,4 @@
 import sqlite3
-from types import SimpleNamespace
 from typing import Any
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -17,6 +16,20 @@ from manager_for_ynab.auto_approve import ynab
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class FakeConfiguration:
+    def __init__(self, access_token: str) -> None:
+        self.access_token = access_token
+
+
+class FakeApiClient:
+    def __init__(self, config: FakeConfiguration) -> None:
+        self.config = config
+
+
+def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
+    raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
 
 def _create_auto_approve_db(path: Path) -> None:
@@ -194,9 +207,8 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
 
 
 @pytest.mark.parametrize("func", (lambda: run(()), lambda: auto_approve()))
-def test_requires_token(monkeypatch, func):
-    monkeypatch.setenv(_ENV_TOKEN, "")
-
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_requires_token(func):
     with pytest.raises(ValueError) as excinfo:
         func()
 
@@ -229,16 +241,12 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
     )
 
 
+@patch.dict("os.environ", {}, clear=True)
+@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_uses_token_override(sync, monkeypatch, tmp_path):
+def test_auto_approve_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.delenv(_ENV_TOKEN, raising=False)
-
-    def unexpected_transactions_api(*args, **kwargs):
-        raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
     result = auto_approve(db=db_path, token_override="override-token")
 
@@ -246,18 +254,12 @@ def test_auto_approve_uses_token_override(sync, monkeypatch, tmp_path):
     assert result == _expected_auto_approve_result(0)
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_quiet_suppresses_refresh_logs(
-    sync, monkeypatch, tmp_path, capsys
-):
+def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
-
-    def unexpected_transactions_api(*args, **kwargs):
-        raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
     result = auto_approve(db=db_path)
 
@@ -267,11 +269,14 @@ def test_auto_approve_quiet_suppresses_refresh_logs(
     assert result == _expected_auto_approve_result(0)
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "Configuration", FakeConfiguration)
+@patch.object(ynab, "ApiClient", FakeApiClient)
+@patch.object(ynab, "TransactionsApi")
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_for_real_returns_updated_count(sync, monkeypatch, tmp_path):
+def test_auto_approve_for_real_returns_updated_count(sync, transactions_api, tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     updates: list[tuple[str, Any]] = []
 
@@ -282,15 +287,7 @@ def test_auto_approve_for_real_returns_updated_count(sync, monkeypatch, tmp_path
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
-    monkeypatch.setattr(
-        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
-    )
-    monkeypatch.setattr(
-        ynab,
-        "Configuration",
-        lambda access_token: SimpleNamespace(access_token=access_token),
-    )
+    transactions_api.side_effect = FakeTransactionsApi
 
     result = auto_approve(db=db_path, for_real=True)
 
@@ -301,16 +298,12 @@ def test_auto_approve_for_real_returns_updated_count(sync, monkeypatch, tmp_path
     assert result == _expected_auto_approve_result(2)
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
-
-    def unexpected_transactions_api(*args, **kwargs):
-        raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
     ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
 
@@ -323,16 +316,12 @@ def test_run_dry_run_does_not_update_transactions(sync, monkeypatch, tmp_path, c
     assert "Use --for-real to actually approve transactions." in out
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_run_quiet_suppresses_all_output(sync, monkeypatch, tmp_path, capsys):
+def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
-
-    def unexpected_transactions_api(*args, **kwargs):
-        raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-    monkeypatch.setattr(ynab, "TransactionsApi", unexpected_transactions_api)
 
     ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
 
@@ -342,11 +331,11 @@ def test_run_quiet_suppresses_all_output(sync, monkeypatch, tmp_path, capsys):
     assert out == ""
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.auto_approve.sync")
-def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
+def test_run_no_matching_transactions(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     with sqlite3.connect(db_path) as con:
         con.execute(
@@ -363,11 +352,16 @@ def test_run_no_matching_transactions(sync, monkeypatch, tmp_path, capsys):
     assert "Found 0 matched transaction(s) to approve." in out
 
 
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "Configuration", FakeConfiguration)
+@patch.object(ynab, "ApiClient", FakeApiClient)
+@patch.object(ynab, "TransactionsApi")
 @patch("manager_for_ynab.auto_approve.sync")
-def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tmp_path):
+def test_run_for_real_updates_transactions_grouped_by_plan(
+    sync, transactions_api, tmp_path
+):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
-    monkeypatch.setenv(_ENV_TOKEN, "token")
 
     updates: list[tuple[str, Any]] = []
 
@@ -378,15 +372,7 @@ def test_run_for_real_updates_transactions_grouped_by_plan(sync, monkeypatch, tm
         def update_transactions(self, plan_id, wrapper):
             updates.append((plan_id, wrapper))
 
-    monkeypatch.setattr(ynab, "TransactionsApi", FakeTransactionsApi)
-    monkeypatch.setattr(
-        ynab, "ApiClient", lambda config: SimpleNamespace(config=config)
-    )
-    monkeypatch.setattr(
-        ynab,
-        "Configuration",
-        lambda access_token: SimpleNamespace(access_token=access_token),
-    )
+    transactions_api.side_effect = FakeTransactionsApi
 
     ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
 
