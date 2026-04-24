@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
@@ -372,17 +373,11 @@ def fetch_plan_accts(
 
 
 def _pretty(plan_accts: list[sqlite3.Row]) -> str:
-    return (
-        (
-            "\n"
-            + "\n".join(
-                sorted(
-                    f" * {pl['plan_name']} - {pl['account_name']}" for pl in plan_accts
-                )
-            )
-        )
-        if plan_accts
-        else "nothing!"
+    if not plan_accts:
+        return "nothing!"
+
+    return "\n" + "\n".join(
+        sorted(f" * {pl['plan_name']} - {pl['account_name']}" for pl in plan_accts)
     )
 
 
@@ -413,7 +408,7 @@ def fetch_transactions(
         tuple(pl.account_id for pl in plan_accts),
     ).fetchall()
 
-    grouped: dict[str, list[Transaction]] = {pl.account_id: [] for pl in plan_accts}
+    grouped: dict[str, list[Transaction]] = defaultdict(list)
     for u in unreconciled:
         grouped[u["account_id"]].append(
             Transaction(
@@ -446,11 +441,10 @@ def find_to_reconcile(
     ) as pbar:
         for n in range(len(uncleared) + 1):
             for combo in itertools.combinations(uncleared, n):
-                if (
-                    reconciled_balance
-                    + sum(t.amount for t in itertools.chain(cleared, combo))
-                    == target
-                ):
+                bal = reconciled_balance + sum(
+                    t.amount for t in itertools.chain(cleared, combo)
+                )
+                if bal == target:
                     return tuple(itertools.chain(cleared, combo)), True
                 pbar.update()
 
