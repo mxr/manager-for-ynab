@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import datetime
-import uuid
 from typing import Any
 from typing import cast
 from typing import Literal
@@ -10,118 +9,22 @@ from unittest.mock import patch
 import pytest
 import ynab
 
-import manager_for_ynab.zero_out as zero_out
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.zero_out import _get_category_id
+from manager_for_ynab.zero_out import _get_plan
+from manager_for_ynab.zero_out import _regex_search
+from manager_for_ynab.zero_out import _run_updates
+from manager_for_ynab.zero_out import _update_month_category
+from manager_for_ynab.zero_out import month_range
+from manager_for_ynab.zero_out import parse_year_month
+from manager_for_ynab.zero_out import run
 
-
-def make_plan(
-    name: str, *, last_modified_on: datetime.datetime, plan_id: uuid.UUID | None = None
-) -> ynab.PlanSummary:
-    return ynab.PlanSummary(
-        id=plan_id or uuid.uuid4(), name=name, last_modified_on=last_modified_on
-    )
-
-
-def make_plans_response(plans: list[ynab.PlanSummary]) -> ynab.PlanSummaryResponse:
-    return ynab.PlanSummaryResponse(data=ynab.PlanSummaryResponseData(plans=plans))
-
-
-def make_category_group(
-    name: str, category_names: list[str], *, group_id: uuid.UUID | None = None
-) -> ynab.CategoryGroupWithCategories:
-    group_id = group_id or uuid.uuid4()
-    return ynab.CategoryGroupWithCategories(
-        id=group_id,
-        name=name,
-        hidden=False,
-        deleted=False,
-        categories=[
-            ynab.Category(
-                id=uuid.uuid4(),
-                category_group_id=group_id,
-                category_group_name=name,
-                name=category_name,
-                hidden=False,
-                budgeted=0,
-                activity=0,
-                balance=0,
-                deleted=False,
-            )
-            for category_name in category_names
-        ],
-    )
-
-
-def make_categories_response(
-    groups: list[ynab.CategoryGroupWithCategories],
-) -> ynab.CategoriesResponse:
-    return ynab.CategoriesResponse(
-        data=ynab.CategoriesResponseData(category_groups=groups, server_knowledge=0)
-    )
-
-
-class FakePlansApi:
-    def __init__(
-        self,
-        *,
-        response: ynab.PlanSummaryResponse | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        self.response = response
-        self.error = error
-
-    def get_plans(self) -> ynab.PlanSummaryResponse:
-        if self.error is not None:
-            raise self.error
-        assert self.response is not None
-        return self.response
-
-
-class FakeCategoriesApi:
-    def __init__(
-        self,
-        *,
-        response: ynab.CategoriesResponse | None = None,
-        get_error: Exception | None = None,
-        update_error: Exception | None = None,
-    ) -> None:
-        self.response = response
-        self.get_error = get_error
-        self.update_error = update_error
-        self.updates: list[tuple[str, object, str, object]] = []
-
-    def get_categories(self, plan_id: str) -> ynab.CategoriesResponse:
-        if self.get_error is not None:
-            raise self.get_error
-        assert self.response is not None
-        return self.response
-
-    def update_month_category(
-        self, plan_id: str, month: object, category_id: str, data: object
-    ) -> None:
-        if self.update_error is not None:
-            raise self.update_error
-        self.updates.append((plan_id, month, category_id, data))
-
-
-class FakeConfiguration:
-    def __init__(self, access_token: str) -> None:
-        self.access_token = access_token
-
-
-class FakeApiClient:
-    def __init__(self, configuration: FakeConfiguration) -> None:
-        self.configuration = configuration
-
-    def __enter__(self) -> FakeApiClient:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
-        return False
+REAL_DATE = datetime.date
+pytest_plugins = ("tests.zero_out.fixtures",)
 
 
 def test_month_range_is_inclusive():
-    assert tuple(zero_out.month_range(2025, 11, 2026, 2)) == (
+    assert tuple(month_range(2025, 11, 2026, 2)) == (
         (2025, 11),
         (2025, 12),
         (2026, 1),
@@ -131,7 +34,7 @@ def test_month_range_is_inclusive():
 
 def test_parse_year_month_rejects_invalid_month():
     with pytest.raises(argparse.ArgumentTypeError):
-        zero_out.parse_year_month("2025-13")
+        parse_year_month("2025-13")
 
 
 @pytest.mark.parametrize(
@@ -144,76 +47,70 @@ def test_parse_year_month_rejects_invalid_month():
     ],
 )
 def test_regex_search(value, pattern, expected):
-    assert zero_out._regex_search(value, pattern) is expected
+    assert _regex_search(value, pattern) is expected
 
 
-def test_get_plan_uses_latest_plan():
-    response = make_plans_response(
+def test_get_plan_uses_latest_plan(plans_api, plan_summary, plan_summary_response):
+    response = plan_summary_response(
         [
-            make_plan("Old", last_modified_on=datetime.datetime(2025, 1, 1)),
-            make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1)),
+            plan_summary("Old", last_modified_on=datetime.datetime(2025, 1, 1)),
+            plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1)),
         ]
     )
-    plans_api = FakePlansApi(response=response)
 
-    assert zero_out._get_plan(cast("Any", plans_api), None) == (
-        str(response.data.plans[1].id),
-        "New",
+    plans_api.get_plans.return_value = response
+
+    assert _get_plan(plans_api, None) == (str(response.data.plans[1].id), "New")
+
+
+def test_get_plan_uses_explicit_plan_id(plans_api, plan_summary, plan_summary_response):
+    plan = plan_summary("Chosen", last_modified_on=datetime.datetime(2025, 2, 1))
+
+    plans_api.get_plans.return_value = plan_summary_response([plan])
+
+    assert _get_plan(plans_api, str(plan.id)) == (str(plan.id), "Chosen")
+
+
+def test_get_plan_errors_when_explicit_plan_id_is_missing(
+    plans_api, plan_summary, plan_summary_response
+):
+    response = plan_summary_response(
+        [plan_summary("Other", last_modified_on=datetime.datetime(2025, 2, 1))]
     )
 
-
-def test_get_plan_uses_explicit_plan_id():
-    plan = make_plan("Chosen", last_modified_on=datetime.datetime(2025, 2, 1))
-    plans_api = FakePlansApi(response=make_plans_response([plan]))
-
-    assert zero_out._get_plan(cast("Any", plans_api), str(plan.id)) == (
-        str(plan.id),
-        "Chosen",
-    )
-
-
-def test_get_plan_errors_when_explicit_plan_id_is_missing():
-    plans_api = FakePlansApi(
-        response=make_plans_response(
-            [make_plan("Other", last_modified_on=datetime.datetime(2025, 2, 1))]
-        )
-    )
+    plans_api.get_plans.return_value = response
 
     with pytest.raises(RuntimeError) as excinfo:
-        zero_out._get_plan(cast("Any", plans_api), "plan-123")
+        _get_plan(plans_api, "plan-123")
 
     assert str(excinfo.value) == "No plan found with id 'plan-123'."
 
 
-@pytest.mark.parametrize(
-    ("plans_api", "expected_message"),
-    [
-        pytest.param(
-            FakePlansApi(error=zero_out.ynab.ApiException(status=500, reason="boom")),
-            "Failed to fetch plans",
-            id="api-error",
-        ),
-        pytest.param(
-            FakePlansApi(response=make_plans_response([])),
-            "No plans found",
-            id="empty-list",
-        ),
-    ],
-)
-def test_get_plan_errors(plans_api, expected_message):
+def test_get_plan_wraps_api_exception(plans_api):
+    plans_api.get_plans.side_effect = ynab.ApiException(status=500, reason="boom")
+
     with pytest.raises(RuntimeError) as excinfo:
-        zero_out._get_plan(cast("Any", plans_api), None)
+        _get_plan(plans_api, None)
 
-    assert expected_message in str(excinfo.value)
+    assert "Failed to fetch plans" in str(excinfo.value)
+
+
+def test_get_plan_errors_when_plan_list_is_empty(plans_api, plan_summary_response):
+    plans_api.get_plans.return_value = plan_summary_response([])
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _get_plan(plans_api, None)
+
+    assert "No plans found" in str(excinfo.value)
 
 
 @pytest.mark.parametrize(
-    ("category_group", "category_name", "groups", "expected"),
+    ("category_group_pattern", "category_name", "group_specs", "expected"),
     [
         pytest.param(
             None,
             "Rent",
-            [make_category_group("Fixed", ["Rent"])],
+            [("Fixed", ["Rent"])],
             ("Rent", "Fixed"),
             id="substring-name-without-group",
         ),
@@ -221,8 +118,8 @@ def test_get_plan_errors(plans_api, expected_message):
             "Vari",
             "rent",
             [
-                make_category_group("Fixed", ["Rent"]),
-                make_category_group("Variable", ["Rent"]),
+                ("Fixed", ["Rent"]),
+                ("Variable", ["Rent"]),
             ],
             ("Rent", "Variable"),
             id="substring-group-and-name",
@@ -231,8 +128,8 @@ def test_get_plan_errors(plans_api, expected_message):
             "^Var",
             r"Ren.",
             [
-                make_category_group("Fixed", ["Rent"]),
-                make_category_group("Variable", ["Rent"]),
+                ("Fixed", ["Rent"]),
+                ("Variable", ["Rent"]),
             ],
             ("Rent", "Variable"),
             id="explicit-regex-patterns",
@@ -240,12 +137,22 @@ def test_get_plan_errors(plans_api, expected_message):
     ],
 )
 def test_get_category_id_matches_plan_categories(
-    category_group, category_name, groups, expected
+    categories_api,
+    category_group,
+    categories_response,
+    category_group_pattern,
+    category_name,
+    group_specs,
+    expected,
 ):
-    categories_api = FakeCategoriesApi(response=make_categories_response(groups))
+    groups = [
+        category_group(group_name, category_names)
+        for group_name, category_names in group_specs
+    ]
+    categories_api.get_categories.return_value = categories_response(groups)
 
-    category_id, matched_name, matched_group = zero_out._get_category_id(
-        cast("Any", categories_api), "plan-1", category_group, category_name
+    category_id, matched_name, matched_group = _get_category_id(
+        categories_api, "plan-1", category_group_pattern, category_name
     )
 
     expected_name, expected_group = expected
@@ -262,14 +169,14 @@ def test_get_category_id_matches_plan_categories(
 
 
 @pytest.mark.parametrize(
-    ("category_group", "category_name", "groups", "expected_message"),
+    ("category_group_pattern", "category_name", "group_specs", "expected_message"),
     [
         pytest.param(
             None,
             "Rent",
             [
-                make_category_group("Fixed", ["Rent"]),
-                make_category_group("Variable", ["Rent"]),
+                ("Fixed", ["Rent"]),
+                ("Variable", ["Rent"]),
             ],
             "Found 2 categories matching regex 'Rent'",
             id="ambiguous-name",
@@ -277,21 +184,21 @@ def test_get_category_id_matches_plan_categories(
         pytest.param(
             "Fixed",
             "Rent",
-            [make_category_group("Fixed", ["Rent", "Rent 2"])],
+            [("Fixed", ["Rent", "Rent 2"])],
             "Found 2 categories matching regex 'Rent' in group matching regex 'Fixed'",
             id="ambiguous-regex-in-group",
         ),
         pytest.param(
             "Variable",
             "Rent",
-            [make_category_group("Fixed", ["Rent"])],
+            [("Fixed", ["Rent"])],
             "No category matching regex 'Rent' found in group matching regex 'Variable'.",
             id="missing-in-group",
         ),
         pytest.param(
             None,
             "Groceries",
-            [make_category_group("Fixed", ["Rent"])],
+            [("Fixed", ["Rent"])],
             "No category matching regex 'Groceries' found in this plan.",
             id="missing-in-plan",
         ),
@@ -305,25 +212,35 @@ def test_get_category_id_matches_plan_categories(
     ],
 )
 def test_get_category_id_errors(
-    category_group, category_name, groups, expected_message
+    categories_api,
+    category_group,
+    categories_response,
+    category_group_pattern,
+    category_name,
+    group_specs,
+    expected_message,
 ):
-    categories_api = FakeCategoriesApi(response=make_categories_response(groups))
+    groups = [
+        category_group(group_name, category_names)
+        for group_name, category_names in group_specs
+    ]
+    categories_api.get_categories.return_value = categories_response(groups)
 
     with pytest.raises(RuntimeError) as excinfo:
-        zero_out._get_category_id(
-            cast("Any", categories_api), "plan-1", category_group, category_name
+        _get_category_id(
+            categories_api, "plan-1", category_group_pattern, category_name
         )
 
     assert expected_message in str(excinfo.value)
 
 
-def test_get_category_id_wraps_api_exception():
-    categories_api = FakeCategoriesApi(
-        get_error=zero_out.ynab.ApiException(status=500, reason="boom")
+def test_get_category_id_wraps_api_exception(categories_api):
+    categories_api.get_categories.side_effect = ynab.ApiException(
+        status=500, reason="boom"
     )
 
     with pytest.raises(RuntimeError) as excinfo:
-        zero_out._get_category_id(cast("Any", categories_api), "plan-1", None, "rent")
+        _get_category_id(categories_api, "plan-1", None, "rent")
 
     assert "Failed to fetch categories" in str(excinfo.value)
 
@@ -333,31 +250,33 @@ def test_get_category_id_wraps_api_exception():
     [
         pytest.param(None, ("2025-02", None), id="success"),
         pytest.param(
-            zero_out.ynab.ApiException(status=400, reason="bad request"),
+            ynab.ApiException(status=400, reason="bad request"),
             ("2025-02", "error"),
             id="api-error",
         ),
     ],
 )
-def test_update_month_category(update_error, expected):
-    categories_api = FakeCategoriesApi(update_error=update_error)
+def test_update_month_category(categories_api, update_error, expected):
+    categories_api.update_month_category.side_effect = update_error
 
-    month_str, error = zero_out._update_month_category(
-        cast("Any", categories_api), "plan-1", "cat-1", 2025, 2
+    month_str, error = _update_month_category(
+        categories_api, "plan-1", "cat-1", 2025, 2
     )
 
     assert month_str == expected[0]
     if expected[1] is None:
         assert error is None
-        assert categories_api.updates[0][0] == "plan-1"
-        assert categories_api.updates[0][2] == "cat-1"
+        categories_api.update_month_category.assert_called_once()
+        _, kwargs = categories_api.update_month_category.call_args
+        assert kwargs["plan_id"] == "plan-1"
+        assert kwargs["category_id"] == "cat-1"
     else:
         assert error is not None
 
 
 @pytest.mark.asyncio
-@patch.object(zero_out.asyncio, "get_running_loop")
-@patch.object(zero_out, "ThreadPoolExecutor")
+@patch.object(asyncio, "get_running_loop")
+@patch("manager_for_ynab.zero_out.ThreadPoolExecutor")
 async def test_run_updates_prints_success_and_failure(
     thread_pool_executor, get_running_loop, capsys
 ):
@@ -383,9 +302,7 @@ async def test_run_updates_prints_success_and_failure(
     thread_pool_executor.side_effect = lambda max_workers: FakeExecutor()
     get_running_loop.return_value = fake_loop
 
-    await zero_out._run_updates(
-        cast("Any", object()), "plan-1", "cat-1", ((2025, 1), (2025, 2))
-    )
+    await _run_updates(cast("Any", object()), "plan-1", "cat-1", ((2025, 1), (2025, 2)))
 
     out, _ = capsys.readouterr()
     assert "2025-01: set planned to 0." in out
@@ -397,95 +314,99 @@ def test_run_requires_token():
     # patch.dict mutates os.environ before resolve_token reads it.
 
     with pytest.raises(ValueError) as excinfo:
-        zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
+        run(("--category-name", "Rent", "--start", "2025-01"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-@patch.dict("os.environ", {}, clear=True)
-@patch.object(zero_out, "_run_updates")
-@patch.object(zero_out.ynab, "CategoriesApi")
-@patch.object(zero_out.ynab, "PlansApi")
-@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
-@patch.object(zero_out.ynab, "Configuration")
+@patch("manager_for_ynab.zero_out._run_updates")
 def test_run_uses_token_override(
-    configuration, plans_api_cls, categories_api_cls, run_updates, capsys
+    run_updates,
+    capsys,
+    ynab_configuration,
+    ynab_api_client,
+    ynab_plans_api,
+    ynab_categories_api,
+    plan_summary,
+    plan_summary_response,
+    category_group,
+    categories_response,
 ):
-    captured: dict[str, str] = {}
-    plans = [make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1))]
-    category_groups = [make_category_group("Fixed", ["Rent"])]
-
-    def fake_configuration(access_token: str) -> FakeConfiguration:
-        captured["token"] = access_token
-        return FakeConfiguration(access_token)
-
-    configuration.side_effect = fake_configuration
-    plans_api_cls.side_effect = lambda client: FakePlansApi(
-        response=make_plans_response(plans)
-    )
-    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
-        response=make_categories_response(category_groups)
+    plans = [plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1))]
+    category_groups = [category_group("Fixed", ["Rent"])]
+    ynab_plans_api.get_plans.return_value = plan_summary_response(plans)
+    ynab_categories_api.get_categories.return_value = categories_response(
+        category_groups
     )
     run_updates.side_effect = AssertionError(
         "_run_updates should not run during dry-run"
     )
 
-    ret = zero_out.run(
+    ret = run(
         ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02"),
         token_override="override-token",
     )
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    assert captured["token"] == "override-token"
+    ynab_configuration.assert_called_once_with(access_token="override-token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert "Targeting Fixed - Rent from plan New" in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(zero_out, "_run_updates")
-@patch.object(zero_out.ynab, "CategoriesApi")
-@patch.object(zero_out.ynab, "PlansApi")
-@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
-@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
+@patch("manager_for_ynab.zero_out._run_updates")
 def test_run_dry_run_prints_preview(
-    plans_api_cls, categories_api_cls, run_updates, capsys
+    run_updates,
+    capsys,
+    ynab_configuration,
+    ynab_api_client,
+    ynab_plans_api,
+    ynab_categories_api,
+    plan_summary,
+    plan_summary_response,
+    category_group,
+    categories_response,
 ):
-    plans = [make_plan("New", last_modified_on=datetime.datetime(2025, 2, 1))]
-    category_groups = [make_category_group("Fixed", ["Rent"])]
-    plans_api_cls.side_effect = lambda client: FakePlansApi(
-        response=make_plans_response(plans)
-    )
-    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
-        response=make_categories_response(category_groups)
+    plans = [plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1))]
+    category_groups = [category_group("Fixed", ["Rent"])]
+    ynab_plans_api.get_plans.return_value = plan_summary_response(plans)
+    ynab_categories_api.get_categories.return_value = categories_response(
+        category_groups
     )
     run_updates.side_effect = AssertionError(
         "_run_updates should not run during dry-run"
     )
 
-    ret = zero_out.run(
-        ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02")
-    )
+    ret = run(("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert "Targeting Fixed - Rent from plan New" in out
     assert "Months to update: 2025-01, 2025-02" in out
     assert "Use --for-real to actually update categories." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(zero_out, "_get_plan")
-@patch.object(zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object()))
-@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
-@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
-def test_run_returns_error_when_plan_lookup_fails(get_plan, capsys):
+@patch("manager_for_ynab.zero_out._get_plan")
+def test_run_returns_error_when_plan_lookup_fails(
+    get_plan,
+    capsys,
+    ynab_configuration,
+    ynab_api_client,
+    ynab_plans_api,
+    ynab_categories_api,
+):
     get_plan.side_effect = RuntimeError("bad plan")
 
-    ret = zero_out.run(("--category-name", "Rent", "--start", "2025-01"))
+    ret = run(("--category-name", "Rent", "--start", "2025-01"))
 
     out, _ = capsys.readouterr()
     assert ret == 1
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert "bad plan" in out
 
 
@@ -507,45 +428,54 @@ def test_run_returns_error_when_plan_lookup_fails(get_plan, capsys):
     ],
 )
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(zero_out, "_get_category_id")
-@patch.object(zero_out, "_get_plan")
-@patch.object(zero_out.ynab, "CategoriesApi", lambda client: cast("Any", object()))
-@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
-@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
-def test_run_month_selection(get_plan, get_category_id, capsys, argv, today, expected):
-
-    class FakeDate(datetime.date):
-        @classmethod
-        def today(cls):
-            assert today is not None
-            return cls(today.year, today.month, today.day)
-
+@patch("manager_for_ynab.zero_out._get_category_id")
+@patch("manager_for_ynab.zero_out._get_plan")
+@patch("manager_for_ynab.zero_out.datetime.date")
+def test_run_month_selection(
+    date_cls,
+    get_plan,
+    get_category_id,
+    capsys,
+    ynab_configuration,
+    ynab_api_client,
+    ynab_plans_api,
+    ynab_categories_api,
+    argv,
+    today,
+    expected,
+):
+    date_cls.side_effect = REAL_DATE
+    date_cls.today.return_value = today
     get_plan.return_value = ("plan-1", "Test Plan")
     get_category_id.return_value = ("cat-1", "Rent", "Fixed")
-    if today is None:
-        ret = zero_out.run(argv)
-    else:
-        with patch.object(zero_out.datetime, "date", FakeDate):
-            ret = zero_out.run(argv)
+    ret = run(argv)
 
     out, _ = capsys.readouterr()
     assert ret == 0
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert "Targeting Fixed - Rent from plan Test Plan" in out
     assert expected in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(zero_out.asyncio, "run")
-@patch.object(zero_out.ynab, "CategoriesApi")
-@patch.object(zero_out.ynab, "PlansApi", lambda client: cast("Any", object()))
-@patch.object(zero_out.ynab, "ApiClient", FakeApiClient)
-@patch.object(zero_out.ynab, "Configuration", FakeConfiguration)
-@patch.object(zero_out, "_get_plan", lambda plans_api, plan_id: ("plan-1", "Test Plan"))
-def test_run_for_real_runs_updates(categories_api_cls, asyncio_run):
-    category_groups = [make_category_group("Fixed", ["Rent"])]
-    categories_api_cls.side_effect = lambda client: FakeCategoriesApi(
-        response=make_categories_response(category_groups)
+@patch.object(asyncio, "run")
+@patch(
+    "manager_for_ynab.zero_out._get_plan",
+    lambda plans_api, plan_id: ("plan-1", "Test Plan"),
+)
+def test_run_for_real_runs_updates(
+    asyncio_run,
+    ynab_configuration,
+    ynab_api_client,
+    ynab_plans_api,
+    ynab_categories_api,
+    category_group,
+    categories_response,
+):
+    category_groups = [category_group("Fixed", ["Rent"])]
+    ynab_categories_api.get_categories.return_value = categories_response(
+        category_groups
     )
 
     captured: dict[str, Any] = {}
@@ -556,7 +486,7 @@ def test_run_for_real_runs_updates(categories_api_cls, asyncio_run):
 
     asyncio_run.side_effect = fake_asyncio_run
 
-    ret = zero_out.run(
+    ret = run(
         (
             "--category-name",
             "Rent",
@@ -569,4 +499,6 @@ def test_run_for_real_runs_updates(categories_api_cls, asyncio_run):
     )
 
     assert ret == 0
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert captured["coroutine"].cr_code.co_name == "_run_updates"

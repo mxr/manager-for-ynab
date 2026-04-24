@@ -1,12 +1,18 @@
+import sys
 from configparser import ConfigParser
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from manager_for_ynab import _version
 from manager_for_ynab._main import build_parser
 from manager_for_ynab._main import main
+
+
+def raising_version(distribution: str) -> str:
+    raise PackageNotFoundError(distribution)
 
 
 def test_main_version(capsys):
@@ -18,9 +24,8 @@ def test_main_version(capsys):
     assert out == f"manager-for-ynab {_version.get_version()}\n"
 
 
-def test_main_without_args_prints_help(capsys, monkeypatch):
-    monkeypatch.setattr("sys.argv", ["manager-for-ynab"])
-
+@patch.object(sys, "argv", ["manager-for-ynab"])
+def test_main_without_args_prints_help(capsys):
     assert main() == 0
 
     out, _ = capsys.readouterr()
@@ -31,9 +36,8 @@ def test_main_without_args_prints_help(capsys, monkeypatch):
     assert "zero-out" in out
 
 
-def test_main_defaults_to_sys_argv(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["manager-for-ynab", "--version"])
-
+@patch.object(sys, "argv", ["manager-for-ynab", "--version"])
+def test_main_defaults_to_sys_argv():
     with pytest.raises(SystemExit) as excinfo:
         main()
 
@@ -94,20 +98,13 @@ def test_build_parser_registers_expected_subcommands():
     }
 
 
-def test_get_version_from_installed_metadata(monkeypatch):
-    monkeypatch.setattr(
-        _version, "version", lambda distribution: f"{distribution}-version"
-    )
-
+@patch.object(_version, "version", lambda distribution: f"{distribution}-version")
+def test_get_version_from_installed_metadata():
     assert _version.get_version("custom-dist") == "custom-dist-version"
 
 
-def test_get_version_falls_back_to_setup_cfg(monkeypatch):
-    def raising_version(distribution):
-        raise PackageNotFoundError(distribution)
-
-    monkeypatch.setattr(_version, "version", raising_version)
-
+@patch.object(_version, "version", raising_version)
+def test_get_version_falls_back_to_setup_cfg():
     config = ConfigParser()
     config.read(Path(__file__).parents[2] / "setup.cfg")
 

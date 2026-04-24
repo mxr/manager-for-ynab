@@ -27,5 +27,6 @@ def mock_aioresponses():
 
 
 TOKEN = f"token-{uuid4()}"
+TOKEN_OVERRIDE = f"token-{uuid4()}"
 
 PLAN_ID = "a20542ae-bb3e-4282-8b3e-df3bdea4be10"

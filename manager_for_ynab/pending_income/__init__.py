@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 
 _PACKAGE = "manager-for-ynab pending-income"
-_DEFAULT_DB_PATH = default_db_path()
 _PENDING_INCOME_SQL = (
     files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
 )
@@ -48,7 +47,7 @@ class PendingIncomeResult:
 def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
     parser = argparse.ArgumentParser(prog=_PACKAGE)
     parser.add_argument(
-        "--sqlite-export-for-ynab-db", type=Path, default=_DEFAULT_DB_PATH
+        "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
     )
     parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
     parser.add_argument("--for-real", action="store_true")
@@ -80,12 +79,12 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
 def pending_income(
     *,
-    db: Path = _DEFAULT_DB_PATH,
-    full_refresh: bool = False,
-    for_real: bool = False,
-    skip_matched: bool = False,
-    token_override: str | None = None,
-    quiet: bool = True,
+    db: Path,
+    full_refresh: bool,
+    for_real: bool,
+    skip_matched: bool,
+    token_override: str | None,
+    quiet: bool,
 ) -> PendingIncomeResult:
     token = resolve_token(token_override)
 

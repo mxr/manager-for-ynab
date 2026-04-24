@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 
 _PACKAGE = "manager-for-ynab auto-approve"
-_DEFAULT_DB_PATH = default_db_path()
 _AUTO_APPROVE_SQL = (
     files("manager_for_ynab.auto_approve").joinpath("auto_approve.sql").read_text()
 )
@@ -48,7 +47,7 @@ class AutoApproveResult:
 def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
     parser = argparse.ArgumentParser(prog=_PACKAGE)
     parser.add_argument(
-        "--sqlite-export-for-ynab-db", type=Path, default=_DEFAULT_DB_PATH
+        "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
     )
     parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
     parser.add_argument("--for-real", action="store_true")
@@ -77,11 +76,11 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
 def auto_approve(
     *,
-    db: Path = _DEFAULT_DB_PATH,
-    full_refresh: bool = False,
-    for_real: bool = False,
-    token_override: str | None = None,
-    quiet: bool = True,
+    db: Path,
+    full_refresh: bool,
+    for_real: bool,
+    token_override: str | None,
+    quiet: bool,
 ) -> AutoApproveResult:
     token = resolve_token(token_override)
 
