@@ -18,18 +18,26 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class FakeConfiguration:
-    def __init__(self, access_token: str) -> None:
-        self.access_token = access_token
-
-
-class FakeApiClient:
-    def __init__(self, config: FakeConfiguration) -> None:
-        self.config = config
-
-
 def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
+
+
+@pytest.fixture
+def ynab_configuration():
+    with patch.object(ynab, "Configuration") as configuration:
+        yield configuration
+
+
+@pytest.fixture
+def ynab_api_client():
+    with patch.object(ynab, "ApiClient") as api_client:
+        yield api_client
+
+
+@pytest.fixture
+def transactions_api():
+    with patch.object(ynab, "TransactionsApi") as transactions_api_cls:
+        yield transactions_api_cls.return_value
 
 
 def _create_auto_approve_db(path: Path) -> None:
@@ -290,29 +298,24 @@ def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "Configuration", FakeConfiguration)
-@patch.object(ynab, "ApiClient", FakeApiClient)
-@patch.object(ynab, "TransactionsApi")
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_for_real_returns_updated_count(sync, transactions_api, tmp_path):
+def test_auto_approve_for_real_returns_updated_count(
+    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
+):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
     updates: list[tuple[str, Any]] = []
-
-    class FakeTransactionsApi:
-        def __init__(self, client):
-            self.client = client
-
-        def update_transactions(self, plan_id, wrapper):
-            updates.append((plan_id, wrapper))
-
-    transactions_api.side_effect = FakeTransactionsApi
+    transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
+        updates.append((plan_id, wrapper))
+    )
 
     result = auto_approve(
         db=db_path, full_refresh=False, for_real=True, token_override=None, quiet=True
     )
 
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     sync.assert_called_once_with("token", db_path, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
@@ -375,30 +378,23 @@ def test_run_no_matching_transactions(sync, tmp_path, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "Configuration", FakeConfiguration)
-@patch.object(ynab, "ApiClient", FakeApiClient)
-@patch.object(ynab, "TransactionsApi")
 @patch("manager_for_ynab.auto_approve.sync")
 def test_run_for_real_updates_transactions_grouped_by_plan(
-    sync, transactions_api, tmp_path
+    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
 ):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
     updates: list[tuple[str, Any]] = []
-
-    class FakeTransactionsApi:
-        def __init__(self, client):
-            self.client = client
-
-        def update_transactions(self, plan_id, wrapper):
-            updates.append((plan_id, wrapper))
-
-    transactions_api.side_effect = FakeTransactionsApi
+    transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
+        updates.append((plan_id, wrapper))
+    )
 
     ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
 
     assert ret == 0
+    ynab_configuration.assert_called_once_with(access_token="token")
+    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     sync.assert_called_once_with("token", db_path, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
