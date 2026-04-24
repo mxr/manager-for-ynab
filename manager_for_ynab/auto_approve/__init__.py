@@ -59,12 +59,14 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     for_real: bool = args.for_real
     quiet: bool = args.quiet
 
-    result = auto_approve(
-        db=db,
-        full_refresh=full_refresh,
-        for_real=for_real,
-        token_override=token_override,
-        quiet=quiet,
+    result = asyncio.run(
+        auto_approve(
+            db=db,
+            full_refresh=full_refresh,
+            for_real=for_real,
+            token_override=token_override,
+            quiet=quiet,
+        )
     )
 
     if len(result.transactions) and not for_real:
@@ -74,7 +76,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     return 0
 
 
-def auto_approve(
+async def auto_approve(
     *,
     db: Path,
     full_refresh: bool,
@@ -85,7 +87,7 @@ def auto_approve(
     token = resolve_token(token_override)
 
     _print("** Refreshing SQLite DB **", quiet=quiet)
-    asyncio.run(sync(token, db, full_refresh, quiet=quiet))
+    await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
     with sqlite3.connect(db) as con:
