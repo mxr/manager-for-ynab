@@ -441,10 +441,8 @@ def find_to_reconcile(
     ) as pbar:
         for n in range(len(uncleared) + 1):
             for combo in itertools.combinations(uncleared, n):
-                bal = reconciled_balance + sum(
-                    t.amount for t in itertools.chain(cleared, combo)
-                )
-                if bal == target:
+                amt = sum(t.amount for t in itertools.chain(cleared, combo))
+                if reconciled_balance + amt == target:
                     return tuple(itertools.chain(cleared, combo)), True
                 pbar.update()
 
