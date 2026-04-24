@@ -18,26 +18,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytest_plugins = ("tests.auto_approve.fixtures",)
+
+
 def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-
-@pytest.fixture
-def ynab_configuration():
-    with patch.object(ynab, "Configuration") as configuration:
-        yield configuration
-
-
-@pytest.fixture
-def ynab_api_client():
-    with patch.object(ynab, "ApiClient") as api_client:
-        yield api_client
-
-
-@pytest.fixture
-def transactions_api():
-    with patch.object(ynab, "TransactionsApi") as transactions_api_cls:
-        yield transactions_api_cls.return_value
 
 
 def _create_auto_approve_db(path: Path) -> None:
@@ -261,7 +246,6 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
     )
 
 
-@patch.dict("os.environ", {}, clear=True)
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 def test_auto_approve_uses_token_override(sync, tmp_path):

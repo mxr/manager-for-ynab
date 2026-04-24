@@ -20,26 +20,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytest_plugins = ("tests.pending_income.fixtures",)
+
+
 def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
-
-
-@pytest.fixture
-def ynab_configuration():
-    with patch.object(ynab, "Configuration") as configuration:
-        yield configuration
-
-
-@pytest.fixture
-def ynab_api_client():
-    with patch.object(ynab, "ApiClient") as api_client:
-        yield api_client
-
-
-@pytest.fixture
-def transactions_api():
-    with patch.object(ynab, "TransactionsApi") as transactions_api_cls:
-        yield transactions_api_cls.return_value
 
 
 def _create_pending_income_db(path: Path) -> None:
@@ -290,7 +275,6 @@ def _expected_pending_income_result(
     return PendingIncomeResult(transactions=transactions, updated_count=updated_count)
 
 
-@patch.dict("os.environ", {}, clear=True)
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 def test_pending_income_uses_token_override(sync, tmp_path):

@@ -20,6 +20,7 @@ from testing.fixtures import db
 from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
+from testing.fixtures import TOKEN_OVERRIDE
 
 
 class FakePromptSession:
@@ -123,7 +124,6 @@ def test_run_no_token():
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-@patch.dict("os.environ", {}, clear=True)
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 def test_run_uses_token_override(sync, db):
@@ -136,10 +136,10 @@ def test_run_uses_token_override(sync, db):
             "--sqlite-export-for-ynab-db",
             db,
         ),
-        token_override=TOKEN,
+        token_override=TOKEN_OVERRIDE,
     )
 
-    sync.assert_called_once_with(TOKEN, Path(db), False)
+    sync.assert_called_once_with(TOKEN_OVERRIDE, Path(db), False)
     assert ret == 0
 
 
