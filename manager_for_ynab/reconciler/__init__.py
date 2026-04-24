@@ -353,7 +353,8 @@ def fetch_plan_accts(
 
     if len(plan_accts) != len(account_likes):
         raise ValueError(
-            f"\n❌ Must have {len(account_likes)} total account matches for the supplied pairs, but instead found: {_pretty(plan_accts)}\nChange account LIKE patterns to be more precise and try again."
+            f"\n❌ Must have {len(account_likes)} total account matches for the supplied pairs, but instead found: {_pretty(plan_accts)}\n"
+            "Change account LIKE patterns to be more precise and try again."
         )
 
     return [
