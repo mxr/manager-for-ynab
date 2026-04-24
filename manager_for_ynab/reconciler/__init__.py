@@ -469,13 +469,10 @@ async def do_reconcile(
 def partition[T](
     items: Iterable[T], func: Callable[[T], bool]
 ) -> tuple[list[T], list[T]]:
-    trues, falses = [], []
+    parts = defaultdict(list)
     for i in items:
-        if func(i):
-            trues.append(i)
-        else:
-            falses.append(i)
-    return trues, falses
+        parts[func(i)].append(i)
+    return parts[True], parts[False]
 
 
 class Error4034(Exception):
