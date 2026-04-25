@@ -35,6 +35,7 @@ def _create_auto_approve_db(path: Path) -> None:
                 , account_name TEXT
                 , payee_name TEXT
                 , amount_formatted TEXT
+                , amount INT
                 , date TEXT
                 , approved BOOLEAN
                 , matched_transaction_id TEXT
@@ -44,7 +45,7 @@ def _create_auto_approve_db(path: Path) -> None:
         )
         con.executemany(
             """
-            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
@@ -53,6 +54,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Coffee",
                     "-$4.50",
+                    -4500,
                     "2026-04-20",
                     0,
                     "pair-a-2",
@@ -64,6 +66,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Coffee",
                     "-$4.50",
+                    -4500,
                     "2026-04-20",
                     0,
                     "pair-a-1",
@@ -75,6 +78,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Card",
                     "Lunch",
                     "-$12.00",
+                    -12000,
                     "2026-04-21",
                     0,
                     "pair-b-2",
@@ -86,6 +90,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Card",
                     "Lunch",
                     "-$12.00",
+                    -12000,
                     "2026-04-21",
                     0,
                     "pair-b-1",
@@ -97,6 +102,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Done",
                     "-$3.00",
+                    -3000,
                     "2026-04-21",
                     1,
                     "approved-2",
@@ -108,6 +114,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Done",
                     "-$3.00",
+                    -3000,
                     "2026-04-21",
                     0,
                     "approved-1",
@@ -119,6 +126,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Solo",
                     "-$7.00",
+                    -7000,
                     "2026-04-21",
                     0,
                     None,
@@ -130,6 +138,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Gone",
                     "-$5.00",
+                    -5000,
                     "2026-04-21",
                     0,
                     "deleted-2",
@@ -141,6 +150,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Gone",
                     "-$5.00",
+                    -5000,
                     "2026-04-21",
                     0,
                     "deleted-1",
