@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
 from importlib.resources import files
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import Never
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import rich
 import ynab
 from rich.table import Table
@@ -90,9 +90,9 @@ async def auto_approve(
     await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-        txns_by_plan = fetch_auto_approve_transactions(con.cursor())
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        txns_by_plan = await fetch_auto_approve_transactions(con)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
@@ -143,10 +143,11 @@ def build_updates(
     return grouped
 
 
-def fetch_auto_approve_transactions(
-    cur: sqlite3.Cursor,
+async def fetch_auto_approve_transactions(
+    con: aiosqlite.Connection,
 ) -> dict[str, list[Transaction]]:
-    txns = cur.execute(_AUTO_APPROVE_SQL).fetchall()
+    async with con.execute(_AUTO_APPROVE_SQL) as cur:
+        txns = await cur.fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:

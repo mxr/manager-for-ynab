@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import Never
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import rich
 import ynab
 from rich.table import Table
@@ -94,9 +94,9 @@ async def pending_income(
     await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-        txns_by_plan = fetch_pending_income(con.cursor(), skip_matched=skip_matched)
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        txns_by_plan = await fetch_pending_income(con, skip_matched=skip_matched)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
@@ -145,12 +145,13 @@ def build_updates(
     return grouped
 
 
-def fetch_pending_income(
-    cur: sqlite3.Cursor, *, skip_matched: bool = False
+async def fetch_pending_income(
+    con: aiosqlite.Connection, *, skip_matched: bool = False
 ) -> dict[str, list[Transaction]]:
-    txns = cur.execute(
+    async with con.execute(
         _PENDING_INCOME_SQL, {"skip_matched": int(skip_matched)}
-    ).fetchall()
+    ) as cur:
+        txns = await cur.fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:
