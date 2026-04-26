@@ -1,5 +1,8 @@
 import argparse
+import asyncio
 import datetime
+import threading
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +12,7 @@ from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
 from manager_for_ynab.zero_out import _get_plan
 from manager_for_ynab.zero_out import _regex_search
+from manager_for_ynab.zero_out import _run_updates
 from manager_for_ynab.zero_out import _update_month_category
 from manager_for_ynab.zero_out import month_range
 from manager_for_ynab.zero_out import parse_year_month
@@ -45,7 +49,10 @@ def test_regex_search(value, pattern, expected):
     assert _regex_search(value, pattern) is expected
 
 
-def test_get_plan_uses_latest_plan(plans_api, plan_summary, plan_summary_response):
+@pytest.mark.asyncio
+async def test_get_plan_uses_latest_plan(
+    plans_api, plan_summary, plan_summary_response
+):
     response = plan_summary_response(
         [
             plan_summary("Old", last_modified_on=datetime.datetime(2025, 1, 1)),
@@ -55,18 +62,22 @@ def test_get_plan_uses_latest_plan(plans_api, plan_summary, plan_summary_respons
 
     plans_api.get_plans.return_value = response
 
-    assert _get_plan(plans_api, None) == (str(response.data.plans[1].id), "New")
+    assert await _get_plan(plans_api, None) == (str(response.data.plans[1].id), "New")
 
 
-def test_get_plan_uses_explicit_plan_id(plans_api, plan_summary, plan_summary_response):
+@pytest.mark.asyncio
+async def test_get_plan_uses_explicit_plan_id(
+    plans_api, plan_summary, plan_summary_response
+):
     plan = plan_summary("Chosen", last_modified_on=datetime.datetime(2025, 2, 1))
 
     plans_api.get_plans.return_value = plan_summary_response([plan])
 
-    assert _get_plan(plans_api, str(plan.id)) == (str(plan.id), "Chosen")
+    assert await _get_plan(plans_api, str(plan.id)) == (str(plan.id), "Chosen")
 
 
-def test_get_plan_errors_when_explicit_plan_id_is_missing(
+@pytest.mark.asyncio
+async def test_get_plan_errors_when_explicit_plan_id_is_missing(
     plans_api, plan_summary, plan_summary_response
 ):
     response = plan_summary_response(
@@ -76,25 +87,29 @@ def test_get_plan_errors_when_explicit_plan_id_is_missing(
     plans_api.get_plans.return_value = response
 
     with pytest.raises(RuntimeError) as excinfo:
-        _get_plan(plans_api, "plan-123")
+        await _get_plan(plans_api, "plan-123")
 
     assert str(excinfo.value) == "No plan found with id 'plan-123'."
 
 
-def test_get_plan_wraps_api_exception(plans_api):
+@pytest.mark.asyncio
+async def test_get_plan_wraps_api_exception(plans_api):
     plans_api.get_plans.side_effect = ynab.ApiException(status=500, reason="boom")
 
     with pytest.raises(RuntimeError) as excinfo:
-        _get_plan(plans_api, None)
+        await _get_plan(plans_api, None)
 
     assert "Failed to fetch plans" in str(excinfo.value)
 
 
-def test_get_plan_errors_when_plan_list_is_empty(plans_api, plan_summary_response):
+@pytest.mark.asyncio
+async def test_get_plan_errors_when_plan_list_is_empty(
+    plans_api, plan_summary_response
+):
     plans_api.get_plans.return_value = plan_summary_response([])
 
     with pytest.raises(RuntimeError) as excinfo:
-        _get_plan(plans_api, None)
+        await _get_plan(plans_api, None)
 
     assert "No plans found" in str(excinfo.value)
 
@@ -131,7 +146,8 @@ def test_get_plan_errors_when_plan_list_is_empty(plans_api, plan_summary_respons
         ),
     ],
 )
-def test_get_category_id_matches_plan_categories(
+@pytest.mark.asyncio
+async def test_get_category_id_matches_plan_categories(
     categories_api,
     category_group,
     categories_response,
@@ -146,7 +162,7 @@ def test_get_category_id_matches_plan_categories(
     ]
     categories_api.get_categories.return_value = categories_response(groups)
 
-    category_id, matched_name, matched_group = _get_category_id(
+    category_id, matched_name, matched_group = await _get_category_id(
         categories_api, "plan-1", category_group_pattern, category_name
     )
 
@@ -206,7 +222,8 @@ def test_get_category_id_matches_plan_categories(
         ),
     ],
 )
-def test_get_category_id_errors(
+@pytest.mark.asyncio
+async def test_get_category_id_errors(
     categories_api,
     category_group,
     categories_response,
@@ -222,20 +239,21 @@ def test_get_category_id_errors(
     categories_api.get_categories.return_value = categories_response(groups)
 
     with pytest.raises(RuntimeError) as excinfo:
-        _get_category_id(
+        await _get_category_id(
             categories_api, "plan-1", category_group_pattern, category_name
         )
 
     assert expected_message in str(excinfo.value)
 
 
-def test_get_category_id_wraps_api_exception(categories_api):
+@pytest.mark.asyncio
+async def test_get_category_id_wraps_api_exception(categories_api):
     categories_api.get_categories.side_effect = ynab.ApiException(
         status=500, reason="boom"
     )
 
     with pytest.raises(RuntimeError) as excinfo:
-        _get_category_id(categories_api, "plan-1", None, "rent")
+        await _get_category_id(categories_api, "plan-1", None, "rent")
 
     assert "Failed to fetch categories" in str(excinfo.value)
 
@@ -251,10 +269,11 @@ def test_get_category_id_wraps_api_exception(categories_api):
         ),
     ],
 )
-def test_update_month_category(categories_api, update_error, expected):
+@pytest.mark.asyncio
+async def test_update_month_category(categories_api, update_error, expected):
     categories_api.update_month_category.side_effect = update_error
 
-    month_str, error = _update_month_category(
+    month_str, error = await _update_month_category(
         categories_api, "plan-1", "cat-1", 2025, 2
     )
 
@@ -267,6 +286,42 @@ def test_update_month_category(categories_api, update_error, expected):
         assert kwargs["category_id"] == "cat-1"
     else:
         assert error is not None
+
+
+@pytest.mark.asyncio
+async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+    release = threading.Event()
+
+    def update_month_category(*, month, **kwargs):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        release.wait(timeout=1)
+        with lock:
+            active -= 1
+
+    categories_api.update_month_category.side_effect = update_month_category
+    months = tuple((2025, month) for month in range(1, 11))
+    task = asyncio.create_task(_run_updates(categories_api, "plan-1", "cat-1", months))
+
+    while True:
+        with lock:
+            if max_active == 5:
+                break
+        await asyncio.sleep(0)
+
+    release.set()
+    await task
+
+    out, _ = capsys.readouterr()
+    assert max_active == 5
+    assert categories_api.update_month_category.call_count == 10
+    assert "2025-01: set planned to 0." in out
+    assert "2025-10: set planned to 0." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
@@ -350,7 +405,7 @@ def test_run_dry_run_prints_preview(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch("manager_for_ynab.zero_out._get_plan")
+@patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 def test_run_returns_error_when_plan_lookup_fails(
     get_plan,
     capsys,
@@ -388,8 +443,8 @@ def test_run_returns_error_when_plan_lookup_fails(
     ],
 )
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch("manager_for_ynab.zero_out._get_category_id")
-@patch("manager_for_ynab.zero_out._get_plan")
+@patch("manager_for_ynab.zero_out._get_category_id", new_callable=AsyncMock)
+@patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out.datetime.date")
 def test_run_month_selection(
     date_cls,
@@ -419,11 +474,9 @@ def test_run_month_selection(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch(
-    "manager_for_ynab.zero_out._get_plan",
-    lambda plans_api, plan_id: ("plan-1", "Test Plan"),
-)
+@patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 def test_run_for_real_runs_updates(
+    get_plan,
     capsys,
     ynab_configuration,
     ynab_api_client,
@@ -436,6 +489,7 @@ def test_run_for_real_runs_updates(
     ynab_categories_api.get_categories.return_value = categories_response(
         category_groups
     )
+    get_plan.return_value = ("plan-1", "Test Plan")
 
     def update_month_category(*, month, **kwargs):
         if month == datetime.date(2025, 2, 1):
