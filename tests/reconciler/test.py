@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import aiohttp
+import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -332,10 +333,10 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     assert target_set.targets == [Decimal("410"), Decimal("290")]
 
 
+@pytest.mark.asyncio
 @pytest.mark.usefixtures(db.__name__)
-def test_fetch_transactions_filters_unapproved(db):
+async def test_fetch_transactions_filters_unapproved(db):
     with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
         con.execute(
             """
             UPDATE transactions
@@ -344,8 +345,11 @@ def test_fetch_transactions_filters_unapproved(db):
             """
         )
 
-        cur = con.cursor()
-        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%Checking%"]))[0]
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        transactions = (
+            await fetch_transactions(con, await fetch_plan_accts(con, ["%Checking%"]))
+        )[0]
 
     assert {txn.id for txn in transactions} == {
         "9a97f337-28db-4c2d-990f-d9ec0e9bc765",
@@ -384,12 +388,11 @@ def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile(sync, db, mock_aioresponses):
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-
-        cur = con.cursor()
-
-        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%checking%"]))[0]
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        transactions = (
+            await fetch_transactions(con, await fetch_plan_accts(con, ["%checking%"]))
+        )[0]
 
     mock_aioresponses.patch(
         re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
@@ -413,12 +416,11 @@ async def test_run_do_reconcile(sync, db, mock_aioresponses):
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.usefixtures(mock_aioresponses.__name__)
 async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-
-        cur = con.cursor()
-
-        transactions = fetch_transactions(cur, fetch_plan_accts(cur, ["%checking%"]))[0]
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        transactions = (
+            await fetch_transactions(con, await fetch_plan_accts(con, ["%checking%"]))
+        )[0]
 
     mock_aioresponses.patch(
         re.compile("https://api.ynab.com/v1/plans/.+/transactions"),

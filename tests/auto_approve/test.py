@@ -3,6 +3,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -160,13 +161,14 @@ def _create_auto_approve_db(path: Path) -> None:
         )
 
 
-def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_auto_approve_transactions(con.cursor())
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_auto_approve_transactions(con)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["pair-a-1"],

@@ -4,7 +4,6 @@ import itertools
 import os
 import re
 import shlex
-import sqlite3
 from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
@@ -13,6 +12,7 @@ from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
+import aiosqlite
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -172,13 +172,11 @@ async def async_run(
     await sync(token, db, full_refresh)
     print("** Done **")
 
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
 
-        cur = con.cursor()
-
-        plan_accts = fetch_plan_accts(cur, account_likes)
-        transactions = fetch_transactions(cur, plan_accts)
+        plan_accts = await fetch_plan_accts(con, account_likes)
+        transactions = await fetch_transactions(con, plan_accts)
 
     async with aiohttp.ClientSession() as session:
         rets = list(
@@ -328,10 +326,10 @@ async def _reconcile_account(
     return 0
 
 
-def fetch_plan_accts(
-    cur: sqlite3.Cursor, account_likes: list[str]
+async def fetch_plan_accts(
+    con: aiosqlite.Connection, account_likes: list[str]
 ) -> list[PlanAccount]:
-    plan_accts = cur.execute(
+    async with con.execute(
         f"""
             SELECT
                 plans.id as plan_id
@@ -356,7 +354,8 @@ def fetch_plan_accts(
                 END
             """,
         (*account_likes, *account_likes),
-    ).fetchall()
+    ) as cur:
+        plan_accts = list(await cur.fetchall())
 
     if len(plan_accts) != len(account_likes):
         raise ValueError(
@@ -376,7 +375,7 @@ def fetch_plan_accts(
     ]
 
 
-def _pretty(plan_accts: list[sqlite3.Row]) -> str:
+def _pretty(plan_accts: list[aiosqlite.Row]) -> str:
     if not plan_accts:
         return "nothing!"
 
@@ -385,12 +384,12 @@ def _pretty(plan_accts: list[sqlite3.Row]) -> str:
     )
 
 
-def fetch_transactions(
-    cur: sqlite3.Cursor, plan_accts: list[PlanAccount]
+async def fetch_transactions(
+    con: aiosqlite.Connection, plan_accts: list[PlanAccount]
 ) -> list[list[Transaction]]:
     assert plan_accts
 
-    unreconciled = cur.execute(
+    async with con.execute(
         f"""
             SELECT
                 id
@@ -410,7 +409,8 @@ def fetch_transactions(
             ORDER BY date
             """,
         tuple(pl.account_id for pl in plan_accts),
-    ).fetchall()
+    ) as cur:
+        unreconciled = await cur.fetchall()
 
     grouped: dict[str, list[Transaction]] = {pl.account_id: [] for pl in plan_accts}
     for u in unreconciled:

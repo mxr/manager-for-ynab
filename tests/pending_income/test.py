@@ -5,6 +5,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -161,13 +162,14 @@ def _create_pending_income_db(path: Path) -> None:
         con.execute("INSERT INTO subtransactions VALUES (?, ?)", ("transfer", 0))
 
 
-def test_fetch_pending_income_filters_expected_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_pending_income_filters_expected_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_pending_income(con.cursor())
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_pending_income(con)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1", "matched"],
@@ -175,13 +177,14 @@ def test_fetch_pending_income_filters_expected_rows(tmp_path):
     }
 
 
-def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_pending_income(con.cursor(), skip_matched=True)
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_pending_income(con, skip_matched=True)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1"],
