@@ -59,17 +59,32 @@ CREATE TABLE transactions (
     id TEXT PRIMARY KEY
     , plan_id TEXT
     , account_id TEXT
+    , account_name TEXT
     , "date" TEXT
     , amount INT
     , amount_formatted TEXT
     , payee_name TEXT
     , cleared TEXT
     , approved BOOLEAN
+    , matched_transaction_id TEXT
     , deleted BOOLEAN
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     'ae3d9f6b-07f1-4c49-9137-5133c8bf0500'
     , (
         SELECT id
@@ -82,17 +97,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Checking'
         ORDER BY id LIMIT 1
     )
+    , 'Checking'
     , '2025-08-01'
     , 400000
     , '-$400.00'
     , 'Payee'
     , 'reconciled'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     '9a97f337-28db-4c2d-990f-d9ec0e9bc765'
     , (
         SELECT id
@@ -105,17 +135,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Checking'
         ORDER BY id LIMIT 1
     )
+    , 'Checking'
     , '2025-08-01'
     , 30000
     , '-$30.00'
     , 'Payee'
     , 'cleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     'c479c335-b54f-48b9-8b74-49a907f1b3f2'
     , (
         SELECT id
@@ -128,17 +173,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Checking'
         ORDER BY id LIMIT 1
     )
+    , 'Checking'
     , '2025-08-01'
     , 60000
     , '-$60.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     '96817e5f-d272-4012-9790-38f8a8e2be90'
     , (
         SELECT id
@@ -151,17 +211,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Checking'
         ORDER BY id LIMIT 1
     )
+    , 'Checking'
     , '2025-08-01'
     , 20000
     , '-$20.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     'eeef0922-b226-4f8a-bf00-66d4d98e348c'
     , (
         SELECT id
@@ -174,17 +249,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Checking'
         ORDER BY id LIMIT 1
     )
+    , 'Checking'
     , '2025-08-01'
     , 10000
     , '-$10.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     '21c45599-4113-4888-9969-66d42553d870'
     , (
         SELECT id
@@ -197,17 +287,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Credit Card'
         ORDER BY id LIMIT 1
     )
+    , 'Credit Card'
     , '2025-08-01'
     , -400000
     , '$400.00'
     , 'Payee'
     , 'reconciled'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     '956ff61f-b0e4-4f36-bf7d-f31d008ff7e4'
     , (
         SELECT id
@@ -220,17 +325,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Credit Card'
         ORDER BY id LIMIT 1
     )
+    , 'Credit Card'
     , '2025-08-01'
     , -30000
     , '$30.00'
     , 'Payee'
     , 'cleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     'c9ca467d-e89d-4d0d-8356-f37d4f798c5f'
     , (
         SELECT id
@@ -243,17 +363,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Credit Card'
         ORDER BY id LIMIT 1
     )
+    , 'Credit Card'
     , '2025-08-01'
     , -60000
     , '$60.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     '258b33fb-a2b2-4833-9274-05697c68ff1d'
     , (
         SELECT id
@@ -266,17 +401,32 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Credit Card'
         ORDER BY id LIMIT 1
     )
+    , 'Credit Card'
     , '2025-08-01'
     , -20000
     , '$20.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
 )
 ;
 
-INSERT INTO transactions VALUES (
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
     'd9faa297-f59e-4516-bcbf-664b298ff09e'
     , (
         SELECT id
@@ -289,12 +439,20 @@ INSERT INTO transactions VALUES (
         WHERE name = 'Credit Card'
         ORDER BY id LIMIT 1
     )
+    , 'Credit Card'
     , '2025-08-01'
     , -10000
     , '$10.00'
     , 'Payee'
     , 'uncleared'
     , 1
+    , NULL
     , 0
+)
+;
+
+CREATE TABLE subtransactions (
+    transfer_transaction_id TEXT
+    , deleted BOOLEAN
 )
 ;

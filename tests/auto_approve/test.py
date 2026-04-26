@@ -1,6 +1,6 @@
 import sqlite3
+from pathlib import Path
 from typing import Any
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import aiosqlite
@@ -15,9 +15,6 @@ from manager_for_ynab.auto_approve import run
 from manager_for_ynab.auto_approve import Transaction
 from manager_for_ynab.auto_approve import ynab
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 pytest_plugins = ("tests.auto_approve.fixtures",)
 
@@ -29,24 +26,24 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
 def _create_auto_approve_db(path: Path) -> None:
     with sqlite3.connect(path) as con:
         con.executescript(
-            """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY
-                , plan_id TEXT
-                , account_name TEXT
-                , payee_name TEXT
-                , amount_formatted TEXT
-                , amount INT
-                , date TEXT
-                , approved BOOLEAN
-                , matched_transaction_id TEXT
-                , deleted BOOLEAN
-            );
-            """
+            (Path(__file__).resolve().parents[2] / "testing" / "seed.sql").read_text()
         )
+        con.execute("DELETE FROM transactions")
+        con.execute("DELETE FROM subtransactions")
         con.executemany(
             """
-            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (
+                id
+                , plan_id
+                , account_name
+                , payee_name
+                , amount_formatted
+                , amount
+                , "date"
+                , approved
+                , matched_transaction_id
+                , deleted
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (

@@ -1,8 +1,8 @@
 import sqlite3
 from datetime import date
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import aiosqlite
@@ -16,9 +16,6 @@ from manager_for_ynab.pending_income import PendingIncomeResult
 from manager_for_ynab.pending_income import run
 from manager_for_ynab.pending_income import Transaction
 from manager_for_ynab.pending_income import ynab
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 pytest_plugins = ("tests.pending_income.fixtures",)
@@ -36,29 +33,24 @@ def _create_pending_income_db(path: Path) -> None:
 
     with sqlite3.connect(path) as con:
         con.executescript(
-            """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY
-                , plan_id TEXT
-                , account_name TEXT
-                , payee_name TEXT
-                , amount_formatted TEXT
-                , date TEXT
-                , cleared TEXT
-                , amount INT
-                , matched_transaction_id TEXT
-                , deleted BOOLEAN
-            );
-
-            CREATE TABLE subtransactions (
-                transfer_transaction_id TEXT
-                , deleted BOOLEAN
-            );
-            """
+            (Path(__file__).resolve().parents[2] / "testing" / "seed.sql").read_text()
         )
+        con.execute("DELETE FROM transactions")
+        con.execute("DELETE FROM subtransactions")
         con.executemany(
             """
-            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (
+                id
+                , plan_id
+                , account_name
+                , payee_name
+                , amount_formatted
+                , "date"
+                , cleared
+                , amount
+                , matched_transaction_id
+                , deleted
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
