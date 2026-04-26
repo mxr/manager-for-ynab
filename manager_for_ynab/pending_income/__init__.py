@@ -1,20 +1,20 @@
 import argparse
 import asyncio
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
 from pathlib import Path
-from typing import Never
 from typing import TYPE_CHECKING
 
 import aiosqlite
 import rich
 import ynab
+from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
@@ -111,16 +111,15 @@ async def pending_income(
                 ynab.ApiClient(ynab.Configuration(access_token=token))
             )
 
-            with tldm[Never](
-                total=total_txns,
-                desc=f"Updating {total_txns} transaction(s)",
-                disable=quiet,
-            ) as progress:
+            with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
+                task_id = progress.add_task(
+                    f"Updating {total_txns} transaction(s)", total=total_txns
+                )
                 for plan_id, txns in grouped.items():
                     api_client.update_transactions(
                         plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
                     )
-                    progress.update(len(txns))
+                    progress.update(task_id, advance=len(txns))
             _print("Done", quiet=quiet)
 
     return PendingIncomeResult(

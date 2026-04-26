@@ -4,11 +4,11 @@ import itertools
 import os
 import re
 import shlex
+import sys
 from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
-from typing import Never
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -16,9 +16,14 @@ import aiosqlite
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from rich.progress import BarColumn
+from rich.progress import MofNCompleteColumn
+from rich.progress import Progress
+from rich.progress import TaskID
+from rich.progress import TextColumn
+from rich.progress import TimeElapsedColumn
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
@@ -34,6 +39,13 @@ _NEG_BAL_ACCT_TYPES = frozenset(("checking", "savings", "cash"))
 
 _LOCALE_EN_US = "en_US"
 _DESCRIPTION = "Find and automatically reconciles unreconciled transactions."
+
+_PROGRESS_COLUMNS = (
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(),
+    MofNCompleteColumn(),
+    TimeElapsedColumn(),
+)
 
 
 @dataclass(frozen=True)
@@ -440,9 +452,12 @@ def find_to_reconcile(
     if reconciled_balance == target and not cleared:
         return (), True
 
-    with tldm[Never](
-        total=2 ** len(uncleared), desc=progress_desc, complete_bar_on_early_finish=True
-    ) as pbar:
+    total = 2 ** len(uncleared)
+    with Progress(
+        *_PROGRESS_COLUMNS,
+        disable=not sys.stderr.isatty(),
+    ) as progress:
+        task_id = progress.add_task(progress_desc, total=total)
         for n in range(len(uncleared) + 1):
             for combo in itertools.combinations(uncleared, n):
                 if (
@@ -450,8 +465,9 @@ def find_to_reconcile(
                     + sum(t.amount for t in itertools.chain(cleared, combo))
                     == target
                 ):
+                    progress.update(task_id, completed=total)
                     return tuple(itertools.chain(cleared, combo)), True
-                pbar.update()
+                progress.update(task_id, advance=1)
 
     return (), False
 
@@ -464,13 +480,18 @@ async def do_reconcile(
     progress_desc: str,
 ) -> None:
     yc = YnabClient(token)
-    with tldm[Never](total=len(to_reconcile), desc=progress_desc) as pbar:
+    with Progress(*_PROGRESS_COLUMNS, disable=not sys.stderr.isatty()) as progress:
+        task_id = progress.add_task(progress_desc, total=len(to_reconcile))
         try:
-            await yc.reconcile(session, pbar, plan_id, [t.id for t in to_reconcile])
+            await yc.reconcile(
+                session, progress, task_id, plan_id, [t.id for t in to_reconcile]
+            )
         except Error4034:
             await asyncio.gather(
                 *(
-                    yc.reconcile(session, pbar, to_reconcile[0].plan_id, [t.id])
+                    yc.reconcile(
+                        session, progress, task_id, to_reconcile[0].plan_id, [t.id]
+                    )
                     for t in to_reconcile
                 )
             )
@@ -506,7 +527,8 @@ class YnabClient:
     async def reconcile(
         self,
         session: aiohttp.ClientSession,
-        pbar: tldm[Never],
+        progress: Progress,
+        task_id: TaskID,
         plan_id: str,
         transaction_ids: list[str],
     ) -> None:
@@ -522,7 +544,7 @@ class YnabClient:
         if body.get("error", {}).get("id") == "403.4":
             raise Error4034()
 
-        pbar.update(len(transaction_ids))
+        progress.update(task_id, advance=len(transaction_ids))
 
 
 def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
