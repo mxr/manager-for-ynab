@@ -44,7 +44,9 @@ class PendingIncomeResult:
     updated_count: int
 
 
-def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
+async def run(
+    argv: Sequence[str] | None = None, *, token_override: str | None = None
+) -> int:
     parser = argparse.ArgumentParser(prog=_PACKAGE)
     parser.add_argument(
         "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
@@ -61,15 +63,13 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     skip_matched: bool = args.skip_matched
     quiet: bool = args.quiet
 
-    result = asyncio.run(
-        pending_income(
-            db=db,
-            full_refresh=full_refresh,
-            for_real=for_real,
-            skip_matched=skip_matched,
-            token_override=token_override,
-            quiet=quiet,
-        )
+    result = await pending_income(
+        db=db,
+        full_refresh=full_refresh,
+        for_real=for_real,
+        skip_matched=skip_matched,
+        token_override=token_override,
+        quiet=quiet,
     )
 
     if len(result.transactions) and not for_real:

@@ -325,17 +325,19 @@ async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_run_requires_token():
+@pytest.mark.asyncio
+async def test_run_requires_token():
     # patch.dict mutates os.environ before resolve_token reads it.
 
     with pytest.raises(ValueError) as excinfo:
-        run(("--category-name", "Rent", "--start", "2025-01"))
+        await run(("--category-name", "Rent", "--start", "2025-01"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.zero_out._run_updates")
-def test_run_uses_token_override(
+@pytest.mark.asyncio
+async def test_run_uses_token_override(
     run_updates,
     capsys,
     ynab_configuration,
@@ -357,7 +359,7 @@ def test_run_uses_token_override(
         "_run_updates should not run during dry-run"
     )
 
-    ret = run(
+    ret = await run(
         ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02"),
         token_override="override-token",
     )
@@ -371,7 +373,8 @@ def test_run_uses_token_override(
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._run_updates")
-def test_run_dry_run_prints_preview(
+@pytest.mark.asyncio
+async def test_run_dry_run_prints_preview(
     run_updates,
     capsys,
     ynab_configuration,
@@ -393,7 +396,9 @@ def test_run_dry_run_prints_preview(
         "_run_updates should not run during dry-run"
     )
 
-    ret = run(("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02"))
+    ret = await run(
+        ("--category-name", "Rent", "--start", "2025-01", "--end", "2025-02")
+    )
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -406,7 +411,8 @@ def test_run_dry_run_prints_preview(
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
-def test_run_returns_error_when_plan_lookup_fails(
+@pytest.mark.asyncio
+async def test_run_returns_error_when_plan_lookup_fails(
     get_plan,
     capsys,
     ynab_configuration,
@@ -416,7 +422,7 @@ def test_run_returns_error_when_plan_lookup_fails(
 ):
     get_plan.side_effect = RuntimeError("bad plan")
 
-    ret = run(("--category-name", "Rent", "--start", "2025-01"))
+    ret = await run(("--category-name", "Rent", "--start", "2025-01"))
 
     out, _ = capsys.readouterr()
     assert ret == 1
@@ -446,7 +452,8 @@ def test_run_returns_error_when_plan_lookup_fails(
 @patch("manager_for_ynab.zero_out._get_category_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out.datetime.date")
-def test_run_month_selection(
+@pytest.mark.asyncio
+async def test_run_month_selection(
     date_cls,
     get_plan,
     get_category_id,
@@ -463,7 +470,7 @@ def test_run_month_selection(
     date_cls.today.return_value = today
     get_plan.return_value = ("plan-1", "Test Plan")
     get_category_id.return_value = ("cat-1", "Rent", "Fixed")
-    ret = run(argv)
+    ret = await run(argv)
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -475,7 +482,8 @@ def test_run_month_selection(
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
-def test_run_for_real_runs_updates(
+@pytest.mark.asyncio
+async def test_run_for_real_runs_updates(
     get_plan,
     capsys,
     ynab_configuration,
@@ -496,7 +504,7 @@ def test_run_for_real_runs_updates(
             raise ynab.ApiException(status=400, reason="bad request")
 
     ynab_categories_api.update_month_category.side_effect = update_month_category
-    ret = run(
+    ret = await run(
         (
             "--category-name",
             "Rent",
