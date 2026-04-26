@@ -71,7 +71,6 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
 
     if len(result.transactions) and not for_real:
         _print("Use --for-real to actually approve transactions.", quiet=quiet)
-        return 0
 
     return 0
 
