@@ -189,9 +189,16 @@ async def _run_updates(
             print(f"Failed to update month {month_str}: {err}")
 
 
-def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
-    args = build_parser().parse_args(argv)
-
+async def zero_out(
+    *,
+    plan_id: str | None,
+    category_group: str | None,
+    category_name: str,
+    start: tuple[int, int],
+    end: tuple[int, int] | None,
+    for_real: bool,
+    token_override: str | None,
+) -> int:
     token = resolve_token(token_override)
 
     configuration = ynab.Configuration(access_token=token)
@@ -200,47 +207,63 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
         plans_api = ynab.PlansApi(api_client)
         categories_api = ynab.CategoriesApi(api_client)
 
-        return asyncio.run(_run_command(args, plans_api, categories_api))
+        try:
+            resolved_plan_id, plan_name = await _get_plan(plans_api, plan_id)
+            (
+                resolved_category_id,
+                resolved_category_name,
+                resolved_category_group,
+            ) = await _get_category_id(
+                categories_api, resolved_plan_id, category_group, category_name
+            )
+        except RuntimeError as e:
+            print(e)
+            return 1
 
-
-async def _run_command(
-    args: argparse.Namespace,
-    plans_api: ynab.PlansApi,
-    categories_api: ynab.CategoriesApi,
-) -> int:
-    try:
-        plan_id, plan_name = await _get_plan(plans_api, args.plan_id)
-        category_id, category_name, category_group = await _get_category_id(
-            categories_api, plan_id, args.category_group, args.category_name
+        print(
+            f"Targeting {resolved_category_group} - {resolved_category_name} from plan {plan_name}"
         )
-    except RuntimeError as e:
-        print(e)
-        return 1
 
-    print(f"Targeting {category_group} - {category_name} from plan {plan_name}")
+        start_year, start_month = start
+        if end:
+            end_year, end_month = end
+        else:
+            today = datetime.date.today()
+            end_year, end_month = today.year, today.month
 
-    start_year, start_month = args.start
-    if args.end:
-        end_year, end_month = args.end
-    else:
-        today = datetime.date.today()
-        end_year, end_month = today.year, today.month
+        months = tuple(month_range(start_year, start_month, end_year, end_month))
+        month_labels = format_months(months)
+        if not month_labels:
+            print("No months selected.")
+            return 0
 
-    months = tuple(month_range(start_year, start_month, end_year, end_month))
-    month_labels = format_months(months)
-    if not month_labels:
-        print("No months selected.")
-        return 0
+        print("Months to update:", ", ".join(month_labels))
+        if not for_real:
+            print("Use --for-real to actually update categories.")
+            return 0
 
-    print("Months to update:", ", ".join(month_labels))
-    if not args.for_real:
-        print("Use --for-real to actually update categories.")
-        return 0
-
-    await _run_updates(categories_api, plan_id, category_id, months)
+        await _run_updates(
+            categories_api, resolved_plan_id, resolved_category_id, months
+        )
 
     print("Done.")
     return 0
 
 
-__all__ = [run.__name__]
+def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    return asyncio.run(
+        zero_out(
+            plan_id=args.plan_id,
+            category_group=args.category_group,
+            category_name=args.category_name,
+            start=args.start,
+            end=args.end,
+            for_real=args.for_real,
+            token_override=token_override,
+        )
+    )
+
+
+__all__ = [run.__name__, zero_out.__name__]
