@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import sys
 from typing import TYPE_CHECKING
 
@@ -50,7 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def main(argv: Sequence[str] = ()) -> int:
+def main(argv: Sequence[str] = ()) -> int:
+    return asyncio.run(async_main(argv))
+
+
+async def async_main(argv: Sequence[str] = ()) -> int:
     argv = argv or sys.argv[1:]
     if not argv:
         build_parser().print_help()

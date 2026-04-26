@@ -15,10 +15,9 @@ def raising_version(distribution: str) -> str:
     raise PackageNotFoundError(distribution)
 
 
-@pytest.mark.asyncio
-async def test_main_version(capsys):
+def test_main_version(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        await main(("--version",))
+        main(("--version",))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
@@ -26,9 +25,8 @@ async def test_main_version(capsys):
 
 
 @patch.object(sys, "argv", ["manager-for-ynab"])
-@pytest.mark.asyncio
-async def test_main_without_args_prints_help(capsys):
-    assert await main() == 0
+def test_main_without_args_prints_help(capsys):
+    assert main() == 0
 
     out, _ = capsys.readouterr()
     assert "usage: manager-for-ynab" in out
@@ -39,18 +37,16 @@ async def test_main_without_args_prints_help(capsys):
 
 
 @patch.object(sys, "argv", ["manager-for-ynab", "--version"])
-@pytest.mark.asyncio
-async def test_main_defaults_to_sys_argv():
+def test_main_defaults_to_sys_argv():
     with pytest.raises(SystemExit) as excinfo:
-        await main()
+        main()
 
     assert excinfo.value.code == 0
 
 
-@pytest.mark.asyncio
-async def test_main_reconciler_help(capsys):
+def test_main_reconciler_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        await main(("reconciler", "--help"))
+        main(("reconciler", "--help"))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
@@ -59,10 +55,9 @@ async def test_main_reconciler_help(capsys):
     assert "--for-real" in out
 
 
-@pytest.mark.asyncio
-async def test_main_pending_income_help(capsys):
+def test_main_pending_income_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        await main(("pending-income", "--help"))
+        main(("pending-income", "--help"))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
@@ -70,10 +65,9 @@ async def test_main_pending_income_help(capsys):
     assert "--for-real" in out
 
 
-@pytest.mark.asyncio
-async def test_main_auto_approve_help(capsys):
+def test_main_auto_approve_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        await main(("auto-approve", "--help"))
+        main(("auto-approve", "--help"))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
@@ -81,10 +75,9 @@ async def test_main_auto_approve_help(capsys):
     assert "--for-real" in out
 
 
-@pytest.mark.asyncio
-async def test_main_zero_out_help(capsys):
+def test_main_zero_out_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        await main(("zero-out", "--help"))
+        main(("zero-out", "--help"))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
