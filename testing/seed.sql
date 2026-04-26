@@ -456,3 +456,498 @@ CREATE TABLE subtransactions (
     , deleted BOOLEAN
 )
 ;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'keep-1'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '-1 day')
+    , 100000
+    , '$100.00'
+    , 'Employer'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'keep-2'
+    , 'plan-2'
+    , NULL
+    , 'Savings'
+    , DATE('now', 'localtime', '-1 day')
+    , 55000
+    , '$55.00'
+    , 'Employer'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'future'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '+1 day')
+    , 50000
+    , '$50.00'
+    , 'Future'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'negative'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '-1 day')
+    , -20000
+    , '-$20.00'
+    , 'Refund'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'cleared'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '-1 day')
+    , 10000
+    , '$10.00'
+    , 'Cleared'
+    , 'cleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'prior-month'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', 'start of month', '-1 month')
+    , 30000
+    , '$30.00'
+    , 'Old'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'transfer'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '-1 day')
+    , 40000
+    , '$40.00'
+    , 'Transfer'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'matched'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', '-1 day')
+    , 65000
+    , '$65.00'
+    , 'Employer'
+    , 'uncleared'
+    , 1
+    , 'matched-peer'
+    , 0
+)
+;
+
+INSERT INTO subtransactions VALUES ('transfer', 0);
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'pair-a-1'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-20'
+    , -4500
+    , '-$4.50'
+    , 'Coffee'
+    , 'uncleared'
+    , 0
+    , 'pair-a-2'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'pair-a-2'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-20'
+    , -4500
+    , '-$4.50'
+    , 'Coffee'
+    , 'uncleared'
+    , 0
+    , 'pair-a-1'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'pair-b-1'
+    , 'plan-2'
+    , NULL
+    , 'Card'
+    , '2026-04-21'
+    , -12000
+    , '-$12.00'
+    , 'Lunch'
+    , 'uncleared'
+    , 0
+    , 'pair-b-2'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'pair-b-2'
+    , 'plan-2'
+    , NULL
+    , 'Card'
+    , '2026-04-21'
+    , -12000
+    , '-$12.00'
+    , 'Lunch'
+    , 'uncleared'
+    , 0
+    , 'pair-b-1'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'approved-1'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-21'
+    , -3000
+    , '-$3.00'
+    , 'Done'
+    , 'uncleared'
+    , 1
+    , 'approved-2'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'approved-2'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-21'
+    , -3000
+    , '-$3.00'
+    , 'Done'
+    , 'uncleared'
+    , 0
+    , 'approved-1'
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'unmatched'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-21'
+    , -7000
+    , '-$7.00'
+    , 'Solo'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'deleted-1'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-21'
+    , -5000
+    , '-$5.00'
+    , 'Gone'
+    , 'uncleared'
+    , 0
+    , 'deleted-2'
+    , 1
+)
+;
+
+INSERT INTO transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , "date"
+    , amount
+    , amount_formatted
+    , payee_name
+    , cleared
+    , approved
+    , matched_transaction_id
+    , deleted
+) VALUES (
+    'deleted-2'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , '2026-04-21'
+    , -5000
+    , '-$5.00'
+    , 'Gone'
+    , 'uncleared'
+    , 0
+    , 'deleted-1'
+    , 0
+)
+;

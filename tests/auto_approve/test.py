@@ -1,5 +1,4 @@
 import sqlite3
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -23,147 +22,9 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
 
-def _create_auto_approve_db(path: Path) -> None:
-    with sqlite3.connect(path) as con:
-        con.executescript(
-            (Path(__file__).resolve().parents[2] / "testing" / "seed.sql").read_text()
-        )
-        con.execute("DELETE FROM transactions")
-        con.execute("DELETE FROM subtransactions")
-        con.executemany(
-            """
-            INSERT INTO transactions (
-                id
-                , plan_id
-                , account_name
-                , payee_name
-                , amount_formatted
-                , amount
-                , "date"
-                , approved
-                , matched_transaction_id
-                , deleted
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                (
-                    "pair-a-1",
-                    "plan-1",
-                    "Checking",
-                    "Coffee",
-                    "-$4.50",
-                    -4500,
-                    "2026-04-20",
-                    0,
-                    "pair-a-2",
-                    0,
-                ),
-                (
-                    "pair-a-2",
-                    "plan-1",
-                    "Checking",
-                    "Coffee",
-                    "-$4.50",
-                    -4500,
-                    "2026-04-20",
-                    0,
-                    "pair-a-1",
-                    0,
-                ),
-                (
-                    "pair-b-1",
-                    "plan-2",
-                    "Card",
-                    "Lunch",
-                    "-$12.00",
-                    -12000,
-                    "2026-04-21",
-                    0,
-                    "pair-b-2",
-                    0,
-                ),
-                (
-                    "pair-b-2",
-                    "plan-2",
-                    "Card",
-                    "Lunch",
-                    "-$12.00",
-                    -12000,
-                    "2026-04-21",
-                    0,
-                    "pair-b-1",
-                    0,
-                ),
-                (
-                    "approved-1",
-                    "plan-1",
-                    "Checking",
-                    "Done",
-                    "-$3.00",
-                    -3000,
-                    "2026-04-21",
-                    1,
-                    "approved-2",
-                    0,
-                ),
-                (
-                    "approved-2",
-                    "plan-1",
-                    "Checking",
-                    "Done",
-                    "-$3.00",
-                    -3000,
-                    "2026-04-21",
-                    0,
-                    "approved-1",
-                    0,
-                ),
-                (
-                    "unmatched",
-                    "plan-1",
-                    "Checking",
-                    "Solo",
-                    "-$7.00",
-                    -7000,
-                    "2026-04-21",
-                    0,
-                    None,
-                    0,
-                ),
-                (
-                    "deleted-1",
-                    "plan-1",
-                    "Checking",
-                    "Gone",
-                    "-$5.00",
-                    -5000,
-                    "2026-04-21",
-                    0,
-                    "deleted-2",
-                    1,
-                ),
-                (
-                    "deleted-2",
-                    "plan-1",
-                    "Checking",
-                    "Gone",
-                    "-$5.00",
-                    -5000,
-                    "2026-04-21",
-                    0,
-                    "deleted-1",
-                    0,
-                ),
-            ),
-        )
-
-
 @pytest.mark.asyncio
-async def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
-    async with aiosqlite.connect(db_path) as con:
+async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
+    async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         found = await fetch_auto_approve_transactions(con)
 
@@ -210,21 +71,19 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
 @pytest.mark.asyncio
-async def test_run_requires_token(tmp_path):
+async def test_run_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
-        await run(
-            ("--sqlite-export-for-ynab-db", str(tmp_path / "auto-approve.sqlite"))
-        )
+        await run(("--sqlite-export-for-ynab-db", str(db)))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-async def test_auto_approve_requires_token(tmp_path):
+async def test_auto_approve_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
         await auto_approve(
-            db=tmp_path / "auto-approve.sqlite",
+            db=db,
             full_refresh=False,
             for_real=False,
             token_override=None,
@@ -263,19 +122,16 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
-async def test_auto_approve_uses_token_override(sync, tmp_path):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
+async def test_auto_approve_uses_token_override(sync, db):
     result = await auto_approve(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=False,
         token_override="override-token",
         quiet=True,
     )
 
-    sync.assert_called_once_with("override-token", db_path, False, quiet=True)
+    sync.assert_called_once_with("override-token", db, False, quiet=True)
     assert result == _expected_auto_approve_result(0)
 
 
@@ -283,12 +139,9 @@ async def test_auto_approve_uses_token_override(sync, tmp_path):
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
-async def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
+async def test_auto_approve_quiet_suppresses_refresh_logs(sync, db, capsys):
     result = await auto_approve(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=False,
         token_override=None,
@@ -296,7 +149,7 @@ async def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys
     )
 
     out, _ = capsys.readouterr()
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert out == ""
     assert result == _expected_auto_approve_result(0)
 
@@ -305,18 +158,15 @@ async def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_auto_approve_for_real_returns_updated_count(
-    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
+    sync, transactions_api, ynab_api_client, ynab_configuration, db
 ):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
     updates: list[tuple[str, Any]] = []
     transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
         updates.append((plan_id, wrapper))
     )
 
     result = await auto_approve(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=True,
         token_override=None,
@@ -325,7 +175,7 @@ async def test_auto_approve_for_real_returns_updated_count(
 
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
     assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]
@@ -336,15 +186,12 @@ async def test_auto_approve_for_real_returns_updated_count(
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
-async def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
+async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
     assert "Found 2 matched transaction(s) to approve." in out
@@ -355,35 +202,29 @@ async def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
-async def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
+async def test_run_quiet_suppresses_all_output(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--quiet"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert out == ""
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
-async def test_run_no_matching_transactions(sync, tmp_path, capsys):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
-    with sqlite3.connect(db_path) as con:
+async def test_run_no_matching_transactions(sync, db, capsys):
+    with sqlite3.connect(db) as con:
         con.execute(
             "UPDATE transactions SET approved = 1 WHERE matched_transaction_id IS NOT NULL"
         )
 
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
     assert "Found 0 matched transaction(s) to approve." in out
@@ -393,22 +234,19 @@ async def test_run_no_matching_transactions(sync, tmp_path, capsys):
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_run_for_real_updates_transactions_grouped_by_plan(
-    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
+    sync, transactions_api, ynab_api_client, ynab_configuration, db
 ):
-    db_path = tmp_path / "auto-approve.sqlite"
-    _create_auto_approve_db(db_path)
-
     updates: list[tuple[str, Any]] = []
     transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
         updates.append((plan_id, wrapper))
     )
 
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--for-real"))
 
     assert ret == 0
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
     assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]

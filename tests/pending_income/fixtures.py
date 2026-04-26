@@ -1,8 +1,21 @@
+import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from manager_for_ynab.pending_income import ynab
+
+
+_SEED_SQL = (Path(__file__).resolve().parents[2] / "testing" / "seed.sql").read_text()
+
+
+@pytest.fixture()
+def db(tmp_path):
+    path = tmp_path / "db.sqlite"
+    with sqlite3.connect(path) as con:
+        con.executescript(_SEED_SQL)
+    return path
 
 
 @pytest.fixture
