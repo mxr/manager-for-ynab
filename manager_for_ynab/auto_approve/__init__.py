@@ -1,19 +1,19 @@
 import argparse
 import asyncio
-import sqlite3
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Never
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import rich
 import ynab
+from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
@@ -59,12 +59,14 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     for_real: bool = args.for_real
     quiet: bool = args.quiet
 
-    result = auto_approve(
-        db=db,
-        full_refresh=full_refresh,
-        for_real=for_real,
-        token_override=token_override,
-        quiet=quiet,
+    result = asyncio.run(
+        auto_approve(
+            db=db,
+            full_refresh=full_refresh,
+            for_real=for_real,
+            token_override=token_override,
+            quiet=quiet,
+        )
     )
 
     if len(result.transactions) and not for_real:
@@ -74,7 +76,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     return 0
 
 
-def auto_approve(
+async def auto_approve(
     *,
     db: Path,
     full_refresh: bool,
@@ -85,12 +87,12 @@ def auto_approve(
     token = resolve_token(token_override)
 
     _print("** Refreshing SQLite DB **", quiet=quiet)
-    asyncio.run(sync(token, db, full_refresh, quiet=quiet))
+    await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-        txns_by_plan = fetch_auto_approve_transactions(con.cursor())
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        txns_by_plan = await fetch_auto_approve_transactions(con)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
@@ -105,16 +107,17 @@ def auto_approve(
                 ynab.ApiClient(ynab.Configuration(access_token=token))
             )
 
-            with tldm[Never](
-                total=total_txns,
-                desc=f"Approving {total_txns} transaction(s)",
-                disable=quiet,
-            ) as progress:
+            with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
+                task_id = progress.add_task(
+                    f"Approving {total_txns} transaction(s)", total=total_txns
+                )
                 for plan_id, txns in grouped.items():
-                    api_client.update_transactions(
-                        plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
+                    await asyncio.to_thread(
+                        api_client.update_transactions,
+                        plan_id,
+                        ynab.PatchTransactionsWrapper(transactions=txns),
                     )
-                    progress.update(len(txns) // 2)
+                    progress.update(task_id, advance=len(txns) // 2)
             _print("Done", quiet=quiet)
 
     return AutoApproveResult(
@@ -141,10 +144,11 @@ def build_updates(
     return grouped
 
 
-def fetch_auto_approve_transactions(
-    cur: sqlite3.Cursor,
+async def fetch_auto_approve_transactions(
+    con: aiosqlite.Connection,
 ) -> dict[str, list[Transaction]]:
-    txns = cur.execute(_AUTO_APPROVE_SQL).fetchall()
+    async with con.execute(_AUTO_APPROVE_SQL) as cur:
+        txns = await cur.fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:

@@ -15,8 +15,8 @@ WHERE
     -- so keep one stable row per pair
     AND transactions.id < transactions.matched_transaction_id
 ORDER BY
-    transactions."date"
-    , transactions.account_name
-    , transactions.payee_name
-    , transactions.id
+    transactions."date" ASC
+    , transactions.account_name ASC
+    , transactions.payee_name ASC
+    , transactions.amount DESC
 ;

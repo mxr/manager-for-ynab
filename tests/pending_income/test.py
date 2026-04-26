@@ -5,6 +5,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -161,13 +162,14 @@ def _create_pending_income_db(path: Path) -> None:
         con.execute("INSERT INTO subtransactions VALUES (?, ?)", ("transfer", 0))
 
 
-def test_fetch_pending_income_filters_expected_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_pending_income_filters_expected_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_pending_income(con.cursor())
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_pending_income(con)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1", "matched"],
@@ -175,13 +177,14 @@ def test_fetch_pending_income_filters_expected_rows(tmp_path):
     }
 
 
-def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_pending_income(con.cursor(), skip_matched=True)
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_pending_income(con, skip_matched=True)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["keep-1"],
@@ -214,24 +217,26 @@ def test_build_updates_groups_by_plan():
     )
 
 
-@pytest.mark.parametrize(
-    "func",
-    (
-        lambda db_path: run(("--sqlite-export-for-ynab-db", str(db_path))),
-        lambda db_path: pending_income(
-            db=db_path,
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_run_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        run(("--sqlite-export-for-ynab-db", str(tmp_path / "pending.sqlite")))
+
+    assert "Must set YNAB access token" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+async def test_pending_income_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        await pending_income(
+            db=tmp_path / "pending.sqlite",
             full_refresh=False,
             for_real=False,
             skip_matched=False,
             token_override=None,
             quiet=True,
-        ),
-    ),
-)
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_requires_token(tmp_path, func):
-    with pytest.raises(ValueError) as excinfo:
-        func(tmp_path / "pending.sqlite")
+        )
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -277,11 +282,12 @@ def _expected_pending_income_result(
 
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_pending_income_uses_token_override(sync, tmp_path):
+@pytest.mark.asyncio
+async def test_pending_income_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(
+    result = await pending_income(
         db=db_path,
         full_refresh=False,
         for_real=False,
@@ -297,11 +303,14 @@ def test_pending_income_uses_token_override(sync, tmp_path):
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_pending_income_skip_matched_excludes_matched_transactions(sync, tmp_path):
+@pytest.mark.asyncio
+async def test_pending_income_skip_matched_excludes_matched_transactions(
+    sync, tmp_path
+):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(
+    result = await pending_income(
         db=db_path,
         full_refresh=False,
         for_real=False,
@@ -317,11 +326,12 @@ def test_pending_income_skip_matched_excludes_matched_transactions(sync, tmp_pat
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    result = pending_income(
+    result = await pending_income(
         db=db_path,
         full_refresh=False,
         for_real=False,
@@ -338,7 +348,8 @@ def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
-def test_pending_income_for_real_returns_updated_count(
+@pytest.mark.asyncio
+async def test_pending_income_for_real_returns_updated_count(
     sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
 ):
     db_path = tmp_path / "pending.sqlite"
@@ -349,7 +360,7 @@ def test_pending_income_for_real_returns_updated_count(
         updates.append((plan_id, wrapper))
     )
 
-    result = pending_income(
+    result = await pending_income(
         db=db_path,
         full_refresh=False,
         for_real=True,

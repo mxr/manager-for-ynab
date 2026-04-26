@@ -3,6 +3,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -35,6 +36,7 @@ def _create_auto_approve_db(path: Path) -> None:
                 , account_name TEXT
                 , payee_name TEXT
                 , amount_formatted TEXT
+                , amount INT
                 , date TEXT
                 , approved BOOLEAN
                 , matched_transaction_id TEXT
@@ -44,7 +46,7 @@ def _create_auto_approve_db(path: Path) -> None:
         )
         con.executemany(
             """
-            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
@@ -53,6 +55,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Coffee",
                     "-$4.50",
+                    -4500,
                     "2026-04-20",
                     0,
                     "pair-a-2",
@@ -64,6 +67,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Coffee",
                     "-$4.50",
+                    -4500,
                     "2026-04-20",
                     0,
                     "pair-a-1",
@@ -75,6 +79,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Card",
                     "Lunch",
                     "-$12.00",
+                    -12000,
                     "2026-04-21",
                     0,
                     "pair-b-2",
@@ -86,6 +91,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Card",
                     "Lunch",
                     "-$12.00",
+                    -12000,
                     "2026-04-21",
                     0,
                     "pair-b-1",
@@ -97,6 +103,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Done",
                     "-$3.00",
+                    -3000,
                     "2026-04-21",
                     1,
                     "approved-2",
@@ -108,6 +115,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Done",
                     "-$3.00",
+                    -3000,
                     "2026-04-21",
                     0,
                     "approved-1",
@@ -119,6 +127,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Solo",
                     "-$7.00",
+                    -7000,
                     "2026-04-21",
                     0,
                     None,
@@ -130,6 +139,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Gone",
                     "-$5.00",
+                    -5000,
                     "2026-04-21",
                     0,
                     "deleted-2",
@@ -141,6 +151,7 @@ def _create_auto_approve_db(path: Path) -> None:
                     "Checking",
                     "Gone",
                     "-$5.00",
+                    -5000,
                     "2026-04-21",
                     0,
                     "deleted-1",
@@ -150,13 +161,14 @@ def _create_auto_approve_db(path: Path) -> None:
         )
 
 
-def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
+@pytest.mark.asyncio
+async def test_fetch_auto_approve_transactions_filters_expected_rows(tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    with sqlite3.connect(db_path) as con:
-        con.row_factory = sqlite3.Row
-        found = fetch_auto_approve_transactions(con.cursor())
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_auto_approve_transactions(con)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
         "plan-1": ["pair-a-1"],
@@ -199,23 +211,25 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
     assert all(txn.approved is True for txns in updates.values() for txn in txns)
 
 
-@pytest.mark.parametrize(
-    "func",
-    (
-        lambda db_path: run(("--sqlite-export-for-ynab-db", str(db_path))),
-        lambda db_path: auto_approve(
-            db=db_path,
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+def test_run_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        run(("--sqlite-export-for-ynab-db", str(tmp_path / "auto-approve.sqlite")))
+
+    assert "Must set YNAB access token" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+@patch.dict("os.environ", {_ENV_TOKEN: ""})
+async def test_auto_approve_requires_token(tmp_path):
+    with pytest.raises(ValueError) as excinfo:
+        await auto_approve(
+            db=tmp_path / "auto-approve.sqlite",
             full_refresh=False,
             for_real=False,
             token_override=None,
             quiet=True,
-        ),
-    ),
-)
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_requires_token(tmp_path, func):
-    with pytest.raises(ValueError) as excinfo:
-        func(tmp_path / "auto-approve.sqlite")
+        )
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -248,11 +262,12 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
 
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_uses_token_override(sync, tmp_path):
+@pytest.mark.asyncio
+async def test_auto_approve_uses_token_override(sync, tmp_path):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(
+    result = await auto_approve(
         db=db_path,
         full_refresh=False,
         for_real=False,
@@ -267,12 +282,17 @@ def test_auto_approve_uses_token_override(sync, tmp_path):
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
     db_path = tmp_path / "auto-approve.sqlite"
     _create_auto_approve_db(db_path)
 
-    result = auto_approve(
-        db=db_path, full_refresh=False, for_real=False, token_override=None, quiet=True
+    result = await auto_approve(
+        db=db_path,
+        full_refresh=False,
+        for_real=False,
+        token_override=None,
+        quiet=True,
     )
 
     out, _ = capsys.readouterr()
@@ -283,7 +303,8 @@ def test_auto_approve_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.auto_approve.sync")
-def test_auto_approve_for_real_returns_updated_count(
+@pytest.mark.asyncio
+async def test_auto_approve_for_real_returns_updated_count(
     sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
 ):
     db_path = tmp_path / "auto-approve.sqlite"
@@ -294,8 +315,12 @@ def test_auto_approve_for_real_returns_updated_count(
         updates.append((plan_id, wrapper))
     )
 
-    result = auto_approve(
-        db=db_path, full_refresh=False, for_real=True, token_override=None, quiet=True
+    result = await auto_approve(
+        db=db_path,
+        full_refresh=False,
+        for_real=True,
+        token_override=None,
+        quiet=True,
     )
 
     ynab_configuration.assert_called_once_with(access_token="token")

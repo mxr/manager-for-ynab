@@ -1,20 +1,20 @@
 import argparse
 import asyncio
-import sqlite3
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
 from pathlib import Path
-from typing import Never
 from typing import TYPE_CHECKING
 
+import aiosqlite
 import rich
 import ynab
+from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from tldm import tldm
 
 from manager_for_ynab._auth import resolve_token
 
@@ -61,13 +61,15 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     skip_matched: bool = args.skip_matched
     quiet: bool = args.quiet
 
-    result = pending_income(
-        db=db,
-        full_refresh=full_refresh,
-        for_real=for_real,
-        skip_matched=skip_matched,
-        token_override=token_override,
-        quiet=quiet,
+    result = asyncio.run(
+        pending_income(
+            db=db,
+            full_refresh=full_refresh,
+            for_real=for_real,
+            skip_matched=skip_matched,
+            token_override=token_override,
+            quiet=quiet,
+        )
     )
 
     if len(result.transactions) and not for_real:
@@ -77,7 +79,7 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     return 0
 
 
-def pending_income(
+async def pending_income(
     *,
     db: Path,
     full_refresh: bool,
@@ -89,12 +91,12 @@ def pending_income(
     token = resolve_token(token_override)
 
     _print("** Refreshing SQLite DB **", quiet=quiet)
-    asyncio.run(sync(token, db, full_refresh, quiet=quiet))
+    await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
-    with sqlite3.connect(db) as con:
-        con.row_factory = sqlite3.Row
-        txns_by_plan = fetch_pending_income(con.cursor(), skip_matched=skip_matched)
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        txns_by_plan = await fetch_pending_income(con, skip_matched=skip_matched)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
@@ -109,16 +111,17 @@ def pending_income(
                 ynab.ApiClient(ynab.Configuration(access_token=token))
             )
 
-            with tldm[Never](
-                total=total_txns,
-                desc=f"Updating {total_txns} transaction(s)",
-                disable=quiet,
-            ) as progress:
+            with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
+                task_id = progress.add_task(
+                    f"Updating {total_txns} transaction(s)", total=total_txns
+                )
                 for plan_id, txns in grouped.items():
-                    api_client.update_transactions(
-                        plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
+                    await asyncio.to_thread(
+                        api_client.update_transactions,
+                        plan_id,
+                        ynab.PatchTransactionsWrapper(transactions=txns),
                     )
-                    progress.update(len(txns))
+                    progress.update(task_id, advance=len(txns))
             _print("Done", quiet=quiet)
 
     return PendingIncomeResult(
@@ -143,12 +146,13 @@ def build_updates(
     return grouped
 
 
-def fetch_pending_income(
-    cur: sqlite3.Cursor, *, skip_matched: bool = False
+async def fetch_pending_income(
+    con: aiosqlite.Connection, *, skip_matched: bool = False
 ) -> dict[str, list[Transaction]]:
-    txns = cur.execute(
+    async with con.execute(
         _PENDING_INCOME_SQL, {"skip_matched": int(skip_matched)}
-    ).fetchall()
+    ) as cur:
+        txns = await cur.fetchall()
 
     txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
     for txn in txns:
