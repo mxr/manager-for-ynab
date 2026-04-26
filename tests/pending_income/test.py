@@ -2,7 +2,6 @@ import sqlite3
 from datetime import date
 from datetime import timedelta
 from typing import Any
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import aiosqlite
@@ -17,9 +16,6 @@ from manager_for_ynab.pending_income import run
 from manager_for_ynab.pending_income import Transaction
 from manager_for_ynab.pending_income import ynab
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 pytest_plugins = ("tests.pending_income.fixtures",)
 
@@ -28,146 +24,9 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
 
-def _create_pending_income_db(path: Path) -> None:
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-    tomorrow = today + timedelta(days=1)
-    last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-
-    with sqlite3.connect(path) as con:
-        con.executescript(
-            """
-            CREATE TABLE transactions (
-                id TEXT PRIMARY KEY
-                , plan_id TEXT
-                , account_name TEXT
-                , payee_name TEXT
-                , amount_formatted TEXT
-                , date TEXT
-                , cleared TEXT
-                , amount INT
-                , matched_transaction_id TEXT
-                , deleted BOOLEAN
-            );
-
-            CREATE TABLE subtransactions (
-                transfer_transaction_id TEXT
-                , deleted BOOLEAN
-            );
-            """
-        )
-        con.executemany(
-            """
-            INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                (
-                    "keep-1",
-                    "plan-1",
-                    "Checking",
-                    "Employer",
-                    "$100.00",
-                    yesterday.isoformat(),
-                    "uncleared",
-                    100000,
-                    None,
-                    0,
-                ),
-                (
-                    "keep-2",
-                    "plan-2",
-                    "Savings",
-                    "Employer",
-                    "$55.00",
-                    yesterday.isoformat(),
-                    "uncleared",
-                    55000,
-                    None,
-                    0,
-                ),
-                (
-                    "future",
-                    "plan-1",
-                    "Checking",
-                    "Future",
-                    "$50.00",
-                    tomorrow.isoformat(),
-                    "uncleared",
-                    50000,
-                    None,
-                    0,
-                ),
-                (
-                    "negative",
-                    "plan-1",
-                    "Checking",
-                    "Refund",
-                    "-$20.00",
-                    yesterday.isoformat(),
-                    "uncleared",
-                    -20000,
-                    None,
-                    0,
-                ),
-                (
-                    "cleared",
-                    "plan-1",
-                    "Checking",
-                    "Cleared",
-                    "$10.00",
-                    yesterday.isoformat(),
-                    "cleared",
-                    10000,
-                    None,
-                    0,
-                ),
-                (
-                    "prior-month",
-                    "plan-1",
-                    "Checking",
-                    "Old",
-                    "$30.00",
-                    last_month.isoformat(),
-                    "uncleared",
-                    30000,
-                    None,
-                    0,
-                ),
-                (
-                    "transfer",
-                    "plan-1",
-                    "Checking",
-                    "Transfer",
-                    "$40.00",
-                    yesterday.isoformat(),
-                    "uncleared",
-                    40000,
-                    None,
-                    0,
-                ),
-                (
-                    "matched",
-                    "plan-1",
-                    "Checking",
-                    "Employer",
-                    "$65.00",
-                    yesterday.isoformat(),
-                    "uncleared",
-                    65000,
-                    "matched-peer",
-                    0,
-                ),
-            ),
-        )
-        con.execute("INSERT INTO subtransactions VALUES (?, ?)", ("transfer", 0))
-
-
 @pytest.mark.asyncio
-async def test_fetch_pending_income_filters_expected_rows(tmp_path):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    async with aiosqlite.connect(db_path) as con:
+async def test_fetch_pending_income_filters_expected_rows(db):
+    async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         found = await fetch_pending_income(con)
 
@@ -178,11 +37,8 @@ async def test_fetch_pending_income_filters_expected_rows(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_fetch_pending_income_skip_matched_filters_matched_rows(tmp_path):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    async with aiosqlite.connect(db_path) as con:
+async def test_fetch_pending_income_skip_matched_filters_matched_rows(db):
+    async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         found = await fetch_pending_income(con, skip_matched=True)
 
@@ -219,19 +75,19 @@ def test_build_updates_groups_by_plan():
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
 @pytest.mark.asyncio
-async def test_run_requires_token(tmp_path):
+async def test_run_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
-        await run(("--sqlite-export-for-ynab-db", str(tmp_path / "pending.sqlite")))
+        await run(("--sqlite-export-for-ynab-db", str(db)))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-async def test_pending_income_requires_token(tmp_path):
+async def test_pending_income_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
         await pending_income(
-            db=tmp_path / "pending.sqlite",
+            db=db,
             full_refresh=False,
             for_real=False,
             skip_matched=False,
@@ -284,12 +140,9 @@ def _expected_pending_income_result(
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_pending_income_uses_token_override(sync, tmp_path):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
+async def test_pending_income_uses_token_override(sync, db):
     result = await pending_income(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=False,
         skip_matched=False,
@@ -297,7 +150,7 @@ async def test_pending_income_uses_token_override(sync, tmp_path):
         quiet=True,
     )
 
-    sync.assert_called_once_with("override-token", db_path, False, quiet=True)
+    sync.assert_called_once_with("override-token", db, False, quiet=True)
     assert result == _expected_pending_income_result(0)
 
 
@@ -305,14 +158,9 @@ async def test_pending_income_uses_token_override(sync, tmp_path):
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_pending_income_skip_matched_excludes_matched_transactions(
-    sync, tmp_path
-):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
+async def test_pending_income_skip_matched_excludes_matched_transactions(sync, db):
     result = await pending_income(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=False,
         skip_matched=True,
@@ -320,7 +168,7 @@ async def test_pending_income_skip_matched_excludes_matched_transactions(
         quiet=True,
     )
 
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert result == _expected_pending_income_result(0, include_matched=False)
 
 
@@ -328,12 +176,9 @@ async def test_pending_income_skip_matched_excludes_matched_transactions(
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, capsys):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
+async def test_pending_income_quiet_suppresses_refresh_logs(sync, db, capsys):
     result = await pending_income(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=False,
         skip_matched=False,
@@ -342,7 +187,7 @@ async def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, caps
     )
 
     out, _ = capsys.readouterr()
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert out == ""
     assert result == _expected_pending_income_result(0)
 
@@ -351,18 +196,15 @@ async def test_pending_income_quiet_suppresses_refresh_logs(sync, tmp_path, caps
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_pending_income_for_real_returns_updated_count(
-    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
+    sync, transactions_api, ynab_api_client, ynab_configuration, db
 ):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
     updates: list[tuple[str, Any]] = []
     transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
         updates.append((plan_id, wrapper))
     )
 
     result = await pending_income(
-        db=db_path,
+        db=db,
         full_refresh=False,
         for_real=True,
         skip_matched=False,
@@ -372,7 +214,7 @@ async def test_pending_income_for_real_returns_updated_count(
 
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert [txn.id for txn in updates[0][1].transactions] == ["keep-1", "matched"]
@@ -384,15 +226,12 @@ async def test_pending_income_for_real_returns_updated_count(
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
+async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
     assert "Found 3 income transaction(s) to update." in out
@@ -403,33 +242,27 @@ async def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
+async def test_run_quiet_suppresses_all_output(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--quiet"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=True)
+    sync.assert_called_once_with("token", db, False, quiet=True)
     assert out == ""
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_run_no_matching_transactions(sync, tmp_path, capsys):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    with sqlite3.connect(db_path) as con:
+async def test_run_no_matching_transactions(sync, db, capsys):
+    with sqlite3.connect(db) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
 
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
     assert "Found 0 income transaction(s) to update." in out
@@ -439,22 +272,19 @@ async def test_run_no_matching_transactions(sync, tmp_path, capsys):
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_for_real_updates_transactions_grouped_by_plan(
-    sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
+    sync, transactions_api, ynab_api_client, ynab_configuration, db
 ):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
     updates: list[tuple[str, Any]] = []
     transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
         updates.append((plan_id, wrapper))
     )
 
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--for-real"))
 
     assert ret == 0
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert updates[0][1].transactions[0].id == "keep-1"
     assert [txn.id for txn in updates[0][1].transactions] == ["keep-1", "matched"]
@@ -465,14 +295,11 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
-async def test_run_skip_matched_excludes_matched_transactions(sync, tmp_path, capsys):
-    db_path = tmp_path / "pending.sqlite"
-    _create_pending_income_db(db_path)
-
-    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--skip-matched"))
+async def test_run_skip_matched_excludes_matched_transactions(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--skip-matched"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    sync.assert_called_once_with("token", db_path, False, quiet=False)
+    sync.assert_called_once_with("token", db, False, quiet=False)
     assert "Found 2 income transaction(s) to update." in out
     assert "matched" not in out.lower()
