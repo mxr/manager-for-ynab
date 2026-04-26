@@ -449,7 +449,8 @@ async def fetch_transactions(
     ) as cur:
         unreconciled = await cur.fetchall()
 
-    grouped: dict[str, list[Transaction]] = defaultdict(list)
+    # pre-initalize lists so zip() works later
+    grouped: dict[str, list[Transaction]] = {pl.account_id: [] for pl in plan_accts}
     for u in unreconciled:
         grouped[u["account_id"]].append(
             Transaction(
