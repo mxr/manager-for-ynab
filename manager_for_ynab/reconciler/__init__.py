@@ -159,20 +159,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def async_run(
+async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    for_real: bool = args.for_real
-    db: Path = args.sqlite_export_for_ynab_db
-    full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
+    return await reconciler(
+        mode=args.mode,
+        account_like=args.account_like,
+        target=args.target,
+        account_target_pairs=args.account_target_pairs,
+        account_likes=args.account_likes,
+        for_real=args.for_real,
+        db=args.sqlite_export_for_ynab_db,
+        full_refresh=args.sqlite_export_for_ynab_full_refresh,
+        token_override=token_override,
+    )
+
+
+async def reconciler(
+    *,
+    mode: str,
+    account_like: str | None,
+    target: Decimal | None,
+    account_target_pairs: list[str] | None,
+    account_likes: list[str] | None,
+    for_real: bool,
+    db: Path,
+    full_refresh: bool,
+    token_override: str | None,
+) -> int:
     target_set = await _resolve_target_set(
         ReconcileCliRequest(
-            mode=args.mode,
-            account_like=args.account_like,
-            target=args.target,
-            account_target_pairs=args.account_target_pairs,
-            account_likes=args.account_likes,
+            mode=mode,
+            account_like=account_like,
+            target=target,
+            account_target_pairs=account_target_pairs,
+            account_likes=account_likes,
         )
     )
     account_likes = target_set.account_likes
@@ -544,8 +566,4 @@ class YnabClient:
         progress.update(task_id, advance=len(transaction_ids))
 
 
-def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
-    return asyncio.run(async_run(argv, token_override=token_override))
-
-
-__all__ = [default_db_path.__name__, run.__name__, sync.__name__]
+__all__ = [reconciler.__name__, run.__name__, sync.__name__]
