@@ -16,8 +16,12 @@ import aiosqlite
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from rich.progress import BarColumn
+from rich.progress import MofNCompleteColumn
 from rich.progress import Progress
 from rich.progress import TaskID
+from rich.progress import TextColumn
+from rich.progress import TimeElapsedColumn
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
@@ -35,6 +39,13 @@ _NEG_BAL_ACCT_TYPES = frozenset(("checking", "savings", "cash"))
 
 _LOCALE_EN_US = "en_US"
 _DESCRIPTION = "Find and automatically reconciles unreconciled transactions."
+
+_PROGRESS_COLUMNS = (
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(),
+    MofNCompleteColumn(),
+    TimeElapsedColumn(),
+)
 
 
 @dataclass(frozen=True)
@@ -442,7 +453,10 @@ def find_to_reconcile(
         return (), True
 
     total = 2 ** len(uncleared)
-    with Progress(disable=not sys.stderr.isatty()) as progress:
+    with Progress(
+        *_PROGRESS_COLUMNS,
+        disable=not sys.stderr.isatty(),
+    ) as progress:
         task_id = progress.add_task(progress_desc, total=total)
         for n in range(len(uncleared) + 1):
             for combo in itertools.combinations(uncleared, n):
@@ -466,7 +480,7 @@ async def do_reconcile(
     progress_desc: str,
 ) -> None:
     yc = YnabClient(token)
-    with Progress(disable=not sys.stderr.isatty()) as progress:
+    with Progress(*_PROGRESS_COLUMNS, disable=not sys.stderr.isatty()) as progress:
         task_id = progress.add_task(progress_desc, total=len(to_reconcile))
         try:
             await yc.reconcile(
