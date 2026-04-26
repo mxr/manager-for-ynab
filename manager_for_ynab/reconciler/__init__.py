@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import field
 from decimal import Decimal
@@ -37,7 +38,6 @@ _PACKAGE = "manager-for-ynab reconciler"
 
 _NEG_BAL_ACCT_TYPES = frozenset(("checking", "savings", "cash"))
 
-_LOCALE_EN_US = "en_US"
 _DESCRIPTION = "Find and automatically reconciles unreconciled transactions."
 
 _PROGRESS_COLUMNS = (
@@ -300,7 +300,8 @@ async def _prompt_targets(target_count: int) -> list[str]:
         )
     if len(raw_targets) != target_count:
         raise ValueError(
-            f"`--mode interactive-batch` requires {target_count} target balances, but got {len(raw_targets)}."
+            f"`--mode interactive-batch` requires {target_count} target "
+            "balances, but got {len(raw_targets)}."
         )
     return raw_targets
 
@@ -334,7 +335,7 @@ async def _reconcile_account(
             print(f"{prefix} Balance already reconciled to target")
             return 0
         pretty_target = format_currency(
-            target, currency=plan_acct.currency, locale=_LOCALE_EN_US
+            target, currency=plan_acct.currency, locale="en_US"
         )
         print(f"{prefix} No match found for target {pretty_target}")
         return 1
@@ -393,7 +394,9 @@ async def fetch_plan_accts(
 
     if len(plan_accts) != len(account_likes):
         raise ValueError(
-            f"\n❌ Must have {len(account_likes)} total account matches for the supplied pairs, but instead found: {_pretty(plan_accts)}\nChange account LIKE patterns to be more precise and try again."
+            f"\n❌ Must have {len(account_likes)} total account matches for the "
+            f"supplied pairs, but instead found: {_pretty(plan_accts)}\n"
+            "Change account LIKE patterns to be more precise and try again."
         )
 
     return [
@@ -446,6 +449,7 @@ async def fetch_transactions(
     ) as cur:
         unreconciled = await cur.fetchall()
 
+    # pre-initalize lists so zip() works later
     grouped: dict[str, list[Transaction]] = {pl.account_id: [] for pl in plan_accts}
     for u in unreconciled:
         grouped[u["account_id"]].append(
@@ -482,11 +486,8 @@ def find_to_reconcile(
         task_id = progress.add_task(progress_desc, total=total)
         for n in range(len(uncleared) + 1):
             for combo in itertools.combinations(uncleared, n):
-                if (
-                    reconciled_balance
-                    + sum(t.amount for t in itertools.chain(cleared, combo))
-                    == target
-                ):
+                amt = sum(t.amount for t in itertools.chain(cleared, combo))
+                if reconciled_balance + amt == target:
                     progress.update(task_id, completed=total)
                     return tuple(itertools.chain(cleared, combo)), True
                 progress.update(task_id, advance=1)
@@ -522,13 +523,10 @@ async def do_reconcile(
 def partition[T](
     items: Iterable[T], func: Callable[[T], bool]
 ) -> tuple[list[T], list[T]]:
-    trues, falses = [], []
+    parts = defaultdict(list)
     for i in items:
-        if func(i):
-            trues.append(i)
-        else:
-            falses.append(i)
-    return trues, falses
+        parts[func(i)].append(i)
+    return parts[True], parts[False]
 
 
 class Error4034(Exception):
