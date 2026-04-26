@@ -116,8 +116,10 @@ async def pending_income(
                     f"Updating {total_txns} transaction(s)", total=total_txns
                 )
                 for plan_id, txns in grouped.items():
-                    api_client.update_transactions(
-                        plan_id, ynab.PatchTransactionsWrapper(transactions=txns)
+                    await asyncio.to_thread(
+                        api_client.update_transactions,
+                        plan_id,
+                        ynab.PatchTransactionsWrapper(transactions=txns),
                     )
                     progress.update(task_id, advance=len(txns))
             _print("Done", quiet=quiet)
