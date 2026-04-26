@@ -44,7 +44,9 @@ class AutoApproveResult:
     updated_count: int
 
 
-def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
+async def run(
+    argv: Sequence[str] | None = None, *, token_override: str | None = None
+) -> int:
     parser = argparse.ArgumentParser(prog=_PACKAGE)
     parser.add_argument(
         "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
@@ -59,14 +61,12 @@ def run(argv: Sequence[str] | None = None, *, token_override: str | None = None)
     for_real: bool = args.for_real
     quiet: bool = args.quiet
 
-    result = asyncio.run(
-        auto_approve(
-            db=db,
-            full_refresh=full_refresh,
-            for_real=for_real,
-            token_override=token_override,
-            quiet=quiet,
-        )
+    result = await auto_approve(
+        db=db,
+        full_refresh=full_refresh,
+        for_real=for_real,
+        token_override=token_override,
+        quiet=quiet,
     )
 
     if len(result.transactions) and not for_real:

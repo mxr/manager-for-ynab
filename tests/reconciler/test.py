@@ -58,8 +58,9 @@ def fake_prompt_session_430_290() -> FakePromptSession:
         ),
     ),
 )
-def test_run(sync, db, capsys, target, expected, substr):
-    ret = run(
+@pytest.mark.asyncio
+async def test_run(sync, db, capsys, target, expected, substr):
+    ret = await run(
         (
             "--account-like",
             "Checking",
@@ -77,13 +78,14 @@ def test_run(sync, db, capsys, target, expected, substr):
 
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
-def test_run_nothing_to_do(sync, db):
+@pytest.mark.asyncio
+async def test_run_nothing_to_do(sync, db):
     with sqlite3.connect(db) as con:
         con.execute(
             "UPDATE transactions SET cleared = 'uncleared' where cleared = 'cleared'"
         )
 
-    ret = run(
+    ret = await run(
         (
             "--account-like",
             "Checking",
@@ -101,8 +103,9 @@ def test_run_nothing_to_do(sync, db):
 @patch("manager_for_ynab.reconciler.sync")
 @patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_reconciles_with_for_real(reconcile, sync, db):
-    ret = run(
+@pytest.mark.asyncio
+async def test_run_reconciles_with_for_real(reconcile, sync, db):
+    ret = await run(
         (
             "--account-like",
             "Checking",
@@ -119,17 +122,19 @@ def test_run_reconciles_with_for_real(reconcile, sync, db):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_run_no_token():
+@pytest.mark.asyncio
+async def test_run_no_token():
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-like", "checking%123", "--target", "410.50"))
+        await run(("--account-like", "checking%123", "--target", "410.50"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_uses_token_override(sync, db):
-    ret = run(
+@pytest.mark.asyncio
+async def test_run_uses_token_override(sync, db):
+    ret = await run(
         (
             "--account-like",
             "Checking",
@@ -145,51 +150,58 @@ def test_run_uses_token_override(sync, db):
     assert ret == 0
 
 
-def test_run_mode_single_requires_single_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_single_requires_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(())
+        await run(())
 
     assert "--mode single" in str(excinfo.value)
 
 
-def test_run_mode_single_rejects_batch_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_single_rejects_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-target-pairs", "Checking=500"))
+        await run(("--account-target-pairs", "Checking=500"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
-def test_run_mode_single_rejects_interactive_batch_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_single_rejects_interactive_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--account-likes", "Checking"))
+        await run(("--account-likes", "Checking"))
 
     assert "--account-likes" in str(excinfo.value)
 
 
-def test_run_mode_batch_requires_account_target_pairs():
+@pytest.mark.asyncio
+async def test_run_mode_batch_requires_account_target_pairs():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch"))
+        await run(("--mode", "batch"))
 
     assert "--account-target-pairs" in str(excinfo.value)
 
 
-def test_run_mode_batch_rejects_single_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
+        await run(("--mode", "batch", "--account-like", "Checking", "--target", "500"))
 
     assert "--mode batch" in str(excinfo.value)
 
 
-def test_run_mode_batch_rejects_interactive_batch_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_batch_rejects_interactive_batch_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "batch", "--account-likes", "Checking"))
+        await run(("--mode", "batch", "--account-likes", "Checking"))
 
     assert "--account-likes" in str(excinfo.value)
 
 
-def test_run_mode_interactive_batch_rejects_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_interactive_batch_rejects_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(
+        await run(
             (
                 "--mode",
                 "interactive-batch",
@@ -201,16 +213,18 @@ def test_run_mode_interactive_batch_rejects_targeting_params():
     assert "--mode interactive-batch" in str(excinfo.value)
 
 
-def test_run_mode_interactive_batch_rejects_single_targeting_params():
+@pytest.mark.asyncio
+async def test_run_mode_interactive_batch_rejects_single_targeting_params():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "interactive-batch", "--account-like", "Checking"))
+        await run(("--mode", "interactive-batch", "--account-like", "Checking"))
 
     assert "--account-like" in str(excinfo.value)
 
 
-def test_run_mode_interactive_batch_requires_account_likes():
+@pytest.mark.asyncio
+async def test_run_mode_interactive_batch_requires_account_likes():
     with pytest.raises(ValueError) as excinfo:
-        run(("--mode", "interactive-batch"))
+        await run(("--mode", "interactive-batch"))
 
     assert "--account-likes" in str(excinfo.value)
 
@@ -220,9 +234,10 @@ def test_run_mode_interactive_batch_requires_account_likes():
     new=fake_prompt_session_430,
 )
 @patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
-def test_run_mode_interactive_batch_requires_matching_target_count(_):
+@pytest.mark.asyncio
+async def test_run_mode_interactive_batch_requires_matching_target_count(_):
     with pytest.raises(ValueError) as excinfo:
-        run(
+        await run(
             (
                 "--mode",
                 "interactive-batch",
@@ -238,7 +253,8 @@ def test_run_mode_interactive_batch_requires_matching_target_count(_):
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_batch(sync, db):
+@pytest.mark.asyncio
+async def test_run_mode_batch(sync, db):
     with sqlite3.connect(db) as con:
         con.execute(
             """
@@ -248,7 +264,7 @@ def test_run_mode_batch(sync, db):
             """
         )
 
-    ret = run(
+    ret = await run(
         (
             "--mode",
             "batch",
@@ -267,7 +283,8 @@ def test_run_mode_batch(sync, db):
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
+@pytest.mark.asyncio
+async def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
     with sqlite3.connect(db) as con:
         con.execute(
             """
@@ -280,7 +297,7 @@ def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
             """
         )
 
-    ret = run(
+    ret = await run(
         (
             "--mode",
             "batch",
@@ -309,9 +326,10 @@ def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
         pytest.param("foo", "nothing!", id="none"),
     ),
 )
-def test_run_not_one_account(sync, db, account_like, substr):
+@pytest.mark.asyncio
+async def test_run_not_one_account(sync, db, account_like, substr):
     with pytest.raises(ValueError) as excinfo:
-        run(
+        await run(
             (
                 "--account-like",
                 account_like,
@@ -366,8 +384,9 @@ async def test_fetch_transactions_filters_unapproved(db):
 @patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
 @pytest.mark.usefixtures(db.__name__)
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
-def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
-    ret = run(
+@pytest.mark.asyncio
+async def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
+    ret = await run(
         (
             "--mode",
             "interactive-batch",

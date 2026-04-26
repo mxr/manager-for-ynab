@@ -218,9 +218,10 @@ def test_build_updates_groups_by_plan():
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
-def test_run_requires_token(tmp_path):
+@pytest.mark.asyncio
+async def test_run_requires_token(tmp_path):
     with pytest.raises(ValueError) as excinfo:
-        run(("--sqlite-export-for-ynab-db", str(tmp_path / "pending.sqlite")))
+        await run(("--sqlite-export-for-ynab-db", str(tmp_path / "pending.sqlite")))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -382,11 +383,12 @@ async def test_pending_income_for_real_returns_updated_count(
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -400,11 +402,12 @@ def test_run_dry_run_does_not_update_transactions(sync, tmp_path, capsys):
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--quiet"))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -414,14 +417,15 @@ def test_run_quiet_suppresses_all_output(sync, tmp_path, capsys):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_no_matching_transactions(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_run_no_matching_transactions(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
     with sqlite3.connect(db_path) as con:
         con.execute("UPDATE transactions SET cleared = 'cleared'")
 
-    ret = run(("--sqlite-export-for-ynab-db", str(db_path)))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db_path)))
 
     out, _ = capsys.readouterr()
     assert ret == 0
@@ -433,7 +437,8 @@ def test_run_no_matching_transactions(sync, tmp_path, capsys):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_for_real_updates_transactions_grouped_by_plan(
+@pytest.mark.asyncio
+async def test_run_for_real_updates_transactions_grouped_by_plan(
     sync, transactions_api, ynab_api_client, ynab_configuration, tmp_path
 ):
     db_path = tmp_path / "pending.sqlite"
@@ -444,7 +449,7 @@ def test_run_for_real_updates_transactions_grouped_by_plan(
         updates.append((plan_id, wrapper))
     )
 
-    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--for-real"))
 
     assert ret == 0
     ynab_configuration.assert_called_once_with(access_token="token")
@@ -459,11 +464,12 @@ def test_run_for_real_updates_transactions_grouped_by_plan(
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
-def test_run_skip_matched_excludes_matched_transactions(sync, tmp_path, capsys):
+@pytest.mark.asyncio
+async def test_run_skip_matched_excludes_matched_transactions(sync, tmp_path, capsys):
     db_path = tmp_path / "pending.sqlite"
     _create_pending_income_db(db_path)
 
-    ret = run(("--sqlite-export-for-ynab-db", str(db_path), "--skip-matched"))
+    ret = await run(("--sqlite-export-for-ynab-db", str(db_path), "--skip-matched"))
 
     out, _ = capsys.readouterr()
     assert ret == 0

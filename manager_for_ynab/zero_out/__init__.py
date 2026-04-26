@@ -250,19 +250,19 @@ async def zero_out(
     return 0
 
 
-def run(argv: Sequence[str] | None = None, *, token_override: str | None = None) -> int:
+async def run(
+    argv: Sequence[str] | None = None, *, token_override: str | None = None
+) -> int:
     args = build_parser().parse_args(argv)
 
-    return asyncio.run(
-        zero_out(
-            plan_id=args.plan_id,
-            category_group=args.category_group,
-            category_name=args.category_name,
-            start=args.start,
-            end=args.end,
-            for_real=args.for_real,
-            token_override=token_override,
-        )
+    return await zero_out(
+        plan_id=args.plan_id,
+        category_group=args.category_group,
+        category_name=args.category_name,
+        start=args.start,
+        end=args.end,
+        for_real=args.for_real,
+        token_override=token_override,
     )
 
 
