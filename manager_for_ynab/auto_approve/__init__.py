@@ -30,7 +30,7 @@ _AUTO_APPROVE_SQL = (
 @dataclass(frozen=True)
 class Transaction:
     id: str
-    matched_transaction_id: str
+    matched_transaction_id: str | None
     plan_id: str
     account_name: str
     payee_name: str
@@ -96,7 +96,7 @@ async def auto_approve(
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
 
-    _print(f"Found {total_txns} matched transaction(s) to approve.", quiet=quiet)
+    _print(f"Found {total_txns} transaction(s) to approve.", quiet=quiet)
     if found_txns:
         print_found_txns(found_txns, quiet=quiet)
 
@@ -139,6 +139,7 @@ def build_updates(
             ynab.SaveTransactionWithIdOrImportId(id=txn_id, approved=True)
             for txn in txns
             for txn_id in (txn.id, txn.matched_transaction_id)
+            if txn_id is not None
         )
     return grouped
 
@@ -170,7 +171,7 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     if quiet:
         return
 
-    table = Table(title="Matched Transactions To Approve")
+    table = Table(title="Transactions To Approve")
     table.add_column("Date")
     table.add_column("Account")
     table.add_column("Payee")

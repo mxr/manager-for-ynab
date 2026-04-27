@@ -514,6 +514,72 @@ CREATE TABLE subtransactions (
 )
 ;
 
+CREATE TABLE scheduled_transactions (
+    id TEXT PRIMARY KEY
+    , plan_id TEXT
+    , account_id TEXT
+    , account_name TEXT
+    , amount INT
+    , amount_formatted TEXT
+    , amount_currency REAL
+    , category_id TEXT
+    , category_name TEXT
+    , date_first TEXT
+    , date_next TEXT
+    , deleted BOOLEAN
+    , flag_color TEXT
+    , flag_name TEXT
+    , frequency TEXT
+    , memo TEXT
+    , payee_id TEXT
+    , payee_name TEXT
+    , transfer_account_id TEXT
+)
+;
+
+INSERT INTO scheduled_transactions (
+    id
+    , plan_id
+    , account_id
+    , account_name
+    , amount
+    , amount_formatted
+    , amount_currency
+    , category_id
+    , category_name
+    , date_first
+    , date_next
+    , deleted
+    , flag_color
+    , flag_name
+    , frequency
+    , memo
+    , payee_id
+    , payee_name
+    , transfer_account_id
+) VALUES (
+    'sched-solo'
+    , 'plan-1'
+    , NULL
+    , 'Checking'
+    , -7000
+    , '-$7.00'
+    , -7.0
+    , NULL
+    , NULL
+    , '2026-04-21'
+    , '2026-05-21'
+    , 0
+    , NULL
+    , NULL
+    , 'monthly'
+    , NULL
+    , NULL
+    , 'Solo'
+    , NULL
+)
+;
+
 INSERT INTO transactions (
     id
     , plan_id
