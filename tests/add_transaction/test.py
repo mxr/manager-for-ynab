@@ -62,6 +62,32 @@ def _seed_ids(path: Path) -> dict[str, str]:
         }
 
 
+@pytest.fixture
+def resolved_dining_transaction():
+    return add_transaction_module.ResolvedTransaction(
+        plan=add_transaction_module.ResolvedPlan(
+            id="11111111-1111-1111-1111-111111111111",
+            name="My Plan",
+        ),
+        account=add_transaction_module.ResolvedAccount(
+            id="22222222-2222-2222-2222-222222222222",
+            name="Checking",
+            type="checking",
+        ),
+        payee=add_transaction_module.ResolvedPayee(
+            id="33333333-3333-3333-3333-333333333333",
+            name="Employer",
+        ),
+        category=add_transaction_module.ResolvedCategory(
+            id="44444444-4444-4444-4444-444444444444",
+            name="Dining Out",
+        ),
+        date=date(2026, 4, 26),
+        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        amount=Decimal("12.34"),
+    )
+
+
 def test_build_parser_uses_expected_prog():
     assert build_parser().prog == "manager-for-ynab add-transaction"
 
@@ -196,10 +222,24 @@ async def test_add_transaction_moves_credit_card_payment_back_to_ready_to_assign
     )
 
 
-@patch("manager_for_ynab.add_transaction.add_transaction", new_callable=AsyncMock)
+@patch(
+    "manager_for_ynab.add_transaction.build_transaction_and_move_funds",
+    new_callable=AsyncMock,
+)
+@patch(
+    "manager_for_ynab.add_transaction.sync_and_resolve_transaction",
+    new_callable=AsyncMock,
+)
+@patch("manager_for_ynab.add_transaction.resolve_token")
 @pytest.mark.asyncio
-async def test_run_delegates_parsed_args(add_transaction_mock):
-    add_transaction_mock.return_value = 17
+async def test_run_delegates_parsed_args(
+    resolve_token_mock,
+    sync_and_resolve_transaction_mock,
+    build_transaction_and_move_funds_mock,
+):
+    resolve_token_mock.return_value = "resolved-token"
+    sync_and_resolve_transaction_mock.return_value = object()
+    build_transaction_and_move_funds_mock.return_value = 17
 
     ret = await run(
         (
@@ -226,8 +266,9 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
     )
 
     assert ret == 17
-    add_transaction_mock.assert_awaited_once()
-    kwargs = add_transaction_mock.await_args.kwargs
+    resolve_token_mock.assert_called_once_with(None)
+    sync_and_resolve_transaction_mock.assert_awaited_once()
+    kwargs = sync_and_resolve_transaction_mock.await_args.kwargs
     assert kwargs["plan_name"] == "My Plan"
     assert kwargs["account_name"] == "Checking"
     assert kwargs["payee_name"] == "Employer"
@@ -235,10 +276,48 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
     assert kwargs["date"] == date(2026, 4, 26)
     assert kwargs["cleared"].name == "UNCLEARED"
     assert kwargs["amount"] == Decimal("12.34")
-    assert kwargs["for_real"] is True
-    assert kwargs["quiet"] is True
     assert kwargs["db"] == Path("/tmp/db.sqlite")
     assert kwargs["full_refresh"] is True
+    assert kwargs["token"] == "resolved-token"
+    assert kwargs["quiet"] is True
+
+    build_transaction_and_move_funds_mock.assert_awaited_once()
+    kwargs = build_transaction_and_move_funds_mock.await_args.kwargs
+    assert kwargs["resolved"] is sync_and_resolve_transaction_mock.return_value
+    assert kwargs["token"] == "resolved-token"
+    assert kwargs["db"] == Path("/tmp/db.sqlite")
+    assert kwargs["for_real"] is True
+    assert kwargs["quiet"] is True
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        pytest.param(RuntimeError("runtime boom"), id="runtime-error"),
+        pytest.param(ValueError("value boom"), id="value-error"),
+    ],
+)
+@patch(
+    "manager_for_ynab.add_transaction.sync_and_resolve_transaction",
+    new_callable=AsyncMock,
+)
+@patch("manager_for_ynab.add_transaction.resolve_token")
+@pytest.mark.asyncio
+async def test_run_returns_one_when_resolution_stage_fails(
+    resolve_token_mock,
+    sync_and_resolve_transaction_mock,
+    err,
+    capsys,
+):
+    resolve_token_mock.return_value = "resolved-token"
+    sync_and_resolve_transaction_mock.side_effect = err
+
+    ret = await run(())
+
+    out, stderr = capsys.readouterr()
+    assert ret == 1
+    assert out == f"{err}\n"
+    assert stderr == ""
 
 
 @pytest.mark.parametrize(
@@ -609,6 +688,47 @@ async def test_add_transaction_returns_one_when_api_raises(
     api_client_cls.assert_called_once_with(configuration_cls.return_value)
 
 
+@pytest.mark.parametrize(
+    "err",
+    [
+        pytest.param(RuntimeError("runtime boom"), id="runtime-error"),
+        pytest.param(ValueError("value boom"), id="value-error"),
+    ],
+)
+@patch("manager_for_ynab.add_transaction._fund_category", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
+@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@pytest.mark.asyncio
+async def test_build_transaction_and_move_funds_returns_one_when_funding_fails(
+    configuration_cls,
+    api_client_cls,
+    transactions_api_cls,
+    fund_category_mock,
+    err,
+    resolved_dining_transaction,
+    tmp_path,
+    capsys,
+):
+    fund_category_mock.side_effect = err
+
+    ret = await add_transaction_module.build_transaction_and_move_funds(
+        resolved=resolved_dining_transaction,
+        token="token",
+        db=tmp_path / "add-transaction.sqlite",
+        for_real=True,
+        quiet=True,
+    )
+
+    out, stderr = capsys.readouterr()
+    assert ret == 1
+    assert out == f"{err}\n"
+    assert stderr == ""
+    transactions_api_cls.return_value.create_transaction.assert_called_once()
+    configuration_cls.assert_called_once_with(access_token="token")
+    api_client_cls.assert_called_once_with(configuration_cls.return_value)
+
+
 @patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @patch(
     "manager_for_ynab.add_transaction._resolve_transaction",
@@ -705,10 +825,11 @@ async def test_resolve_transaction_prompts_for_missing_values(
             amount=None,
         )
 
-    assert resolved.plan_id == ids["plan_id"]
-    assert resolved.account_id == ids["checking_account_id"]
-    assert resolved.payee_id == ids["employer_payee_id"]
-    assert resolved.category_id == ids["ready_to_assign_category_id"]
+    assert resolved.plan.id == ids["plan_id"]
+    assert resolved.account.id == ids["checking_account_id"]
+    assert resolved.payee.id == ids["employer_payee_id"]
+    assert resolved.category is not None
+    assert resolved.category.id == ids["ready_to_assign_category_id"]
     assert resolved.date == date(2026, 4, 26)
     assert resolved.amount == Decimal("12.34")
 
@@ -751,8 +872,8 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
             amount=Decimal("12.34"),
         )
 
-    assert resolved.plan_id == "plan-b"
-    assert resolved.plan_name == "Plan B"
+    assert resolved.plan.id == "plan-b"
+    assert resolved.plan.name == "Plan B"
 
 
 @patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
@@ -787,8 +908,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
             amount=Decimal("12.34"),
         )
 
-    assert resolved.category_id is None
-    assert resolved.category_name is None
+    assert resolved.category is None
 
 
 @patch("manager_for_ynab.add_transaction._matching_entry", new_callable=AsyncMock)
