@@ -3,7 +3,7 @@ import asyncio
 import datetime
 import re
 import sys
-from collections.abc import Callable
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -22,6 +22,8 @@ from ynab.models.transaction_cleared_status import TransactionClearedStatus
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
 
@@ -106,7 +108,7 @@ async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    return await add_txn(
+    return await add_transaction(
         plan_name=args.plan_name,
         account_name=args.account_name,
         payee_name=args.payee_name,
@@ -122,7 +124,7 @@ async def run(
     )
 
 
-async def add_txn(
+async def add_transaction(
     *,
     plan_name: str | None,
     account_name: str | None,
@@ -190,6 +192,7 @@ async def add_txn(
                         ) = await _resolve_credit_card_payment_category(
                             con, resolved.plan_id, resolved.account_name
                         )
+                        assert txn.amount is not None
                         applied_delta = await _apply_category_budget_delta(
                             api_client,
                             resolved.plan_id,
@@ -205,7 +208,7 @@ async def add_txn(
                                 f"Applied {applied_delta / 1000:.2f} USD to "
                                 f"{payment_category_name!r} from Ready to Assign."
                             )
-                        elif applied_delta < 0:
+                        if applied_delta < 0:
                             print(
                                 f"Returned {abs(applied_delta) / 1000:.2f} USD from "
                                 f"{payment_category_name!r} to Ready to Assign."
@@ -217,6 +220,7 @@ async def add_txn(
                         and resolved.category_name is not None
                         and resolved.category_name != "Inflow: Ready to Assign"
                     ):
+                        assert txn.amount is not None
                         applied_delta = await _fund_category(
                             api_client,
                             resolved.plan_id,
@@ -298,7 +302,7 @@ async def _resolve_transaction(
             con, plan_id, category_name
         )
 
-    resolved_amount = amount or await amount_prompt()
+    resolved_amount = amount if amount is not None else await amount_prompt()
     return ResolvedTransaction(
         plan_id=plan_id,
         plan_name=plan_name,
@@ -317,12 +321,18 @@ async def _resolve_transaction(
 
 def _build_transaction(resolved: ResolvedTransaction) -> ynab.NewTransaction:
     return ynab.NewTransaction(
-        account_id=resolved.account_id,
+        account_id=uuid.UUID(resolved.account_id),
         date=resolved.date,
-        payee_id=resolved.payee_id,
+        payee_id=(
+            uuid.UUID(resolved.payee_id) if resolved.payee_id is not None else None
+        ),
         payee_name=resolved.payee_name,
         amount=int(-1 * 1000 * resolved.amount),
-        category_id=resolved.category_id,
+        category_id=(
+            uuid.UUID(resolved.category_id)
+            if resolved.category_id is not None
+            else None
+        ),
         cleared=resolved.cleared,
         approved=True,
     )
@@ -473,7 +483,7 @@ async def _resolve_credit_card_payment_category(
         """,
         (plan_id, account_name),
     ) as cur:
-        rows = await cur.fetchall()
+        rows = list(await cur.fetchall())
 
     if not rows:
         raise RuntimeError(
@@ -598,7 +608,7 @@ async def _closest_match(
     )
 
 
-async def _choice_prompt(message: str, options: dict[str, str]) -> str:
+async def _choice_prompt(message: str, options: Mapping[str, object]) -> str:
     return await _prompt(
         message,
         lambda text: text in options,
@@ -676,4 +686,4 @@ def edit_distance(left: str, right: str) -> int:
     return previous[-1]
 
 
-__all__ = [add_txn.__name__, build_parser.__name__, run.__name__]
+__all__ = [add_transaction.__name__, build_parser.__name__, run.__name__]
