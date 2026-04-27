@@ -22,7 +22,6 @@ from manager_for_ynab.add_transaction import _resolve_category
 from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
 from manager_for_ynab.add_transaction import _resolve_payee
 from manager_for_ynab.add_transaction import _resolve_transaction
-from manager_for_ynab.add_transaction import add_transaction
 from manager_for_ynab.add_transaction import amount_prompt
 from manager_for_ynab.add_transaction import build_parser
 from manager_for_ynab.add_transaction import confirm
@@ -223,7 +222,7 @@ async def test_add_transaction_moves_credit_card_payment_back_to_ready_to_assign
 
 
 @patch(
-    "manager_for_ynab.add_transaction.build_transaction_and_move_funds",
+    "manager_for_ynab.add_transaction.add_transaction_and_move_funds",
     new_callable=AsyncMock,
 )
 @patch(
@@ -235,11 +234,11 @@ async def test_add_transaction_moves_credit_card_payment_back_to_ready_to_assign
 async def test_run_delegates_parsed_args(
     resolve_token_mock,
     sync_and_resolve_transaction_mock,
-    build_transaction_and_move_funds_mock,
+    add_transaction_and_move_funds_mock,
 ):
     resolve_token_mock.return_value = "resolved-token"
     sync_and_resolve_transaction_mock.return_value = object()
-    build_transaction_and_move_funds_mock.return_value = 17
+    add_transaction_and_move_funds_mock.return_value = 17
 
     ret = await run(
         (
@@ -281,8 +280,8 @@ async def test_run_delegates_parsed_args(
     assert kwargs["token"] == "resolved-token"
     assert kwargs["quiet"] is True
 
-    build_transaction_and_move_funds_mock.assert_awaited_once()
-    kwargs = build_transaction_and_move_funds_mock.await_args.kwargs
+    add_transaction_and_move_funds_mock.assert_awaited_once()
+    kwargs = add_transaction_and_move_funds_mock.await_args.kwargs
     assert kwargs["resolved"] is sync_and_resolve_transaction_mock.return_value
     assert kwargs["token"] == "resolved-token"
     assert kwargs["db"] == Path("/tmp/db.sqlite")
@@ -700,7 +699,7 @@ async def test_add_transaction_returns_one_when_api_raises(
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
 @pytest.mark.asyncio
-async def test_build_transaction_and_move_funds_returns_one_when_funding_fails(
+async def test_add_transaction_and_move_funds_returns_one_when_funding_fails(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
@@ -712,7 +711,7 @@ async def test_build_transaction_and_move_funds_returns_one_when_funding_fails(
 ):
     fund_category_mock.side_effect = err
 
-    ret = await add_transaction_module.build_transaction_and_move_funds(
+    ret = await add_transaction_module.add_transaction_and_move_funds(
         resolved=resolved_dining_transaction,
         token="token",
         db=tmp_path / "add-transaction.sqlite",
