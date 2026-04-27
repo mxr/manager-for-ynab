@@ -55,6 +55,63 @@ INSERT INTO accounts VALUES (
 )
 ;
 
+CREATE TABLE categories (
+    id TEXT PRIMARY KEY
+    , plan_id TEXT
+    , deleted BOOLEAN
+    , category_group_name TEXT
+    , name TEXT
+)
+;
+
+INSERT INTO categories VALUES (
+    '33333333-3333-3333-3333-333333333333'
+    , (
+        SELECT id
+        FROM plans
+        ORDER BY id LIMIT 1
+    )
+    , 0
+    , 'Inflow'
+    , 'Inflow: Ready to Assign'
+)
+;
+
+INSERT INTO categories VALUES (
+    '55555555-5555-5555-5555-555555555555'
+    , (
+        SELECT id
+        FROM plans
+        ORDER BY id LIMIT 1
+    )
+    , 0
+    , 'Credit Card Payments'
+    , 'Credit Card'
+)
+;
+
+CREATE TABLE payees (
+    id TEXT PRIMARY KEY
+    , plan_id TEXT
+    , deleted BOOLEAN
+    , name TEXT
+    , transfer_account_id TEXT
+)
+;
+
+INSERT INTO payees VALUES (
+    '22222222-2222-2222-2222-222222222222'
+    , (
+        SELECT id
+        FROM plans
+        ORDER BY id LIMIT 1
+    )
+    , 0
+    , 'Employer'
+    , NULL
+)
+;
+
 CREATE TABLE transactions (
     id TEXT PRIMARY KEY
     , plan_id TEXT

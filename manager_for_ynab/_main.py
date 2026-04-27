@@ -4,6 +4,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from manager_for_ynab._version import get_version
+from manager_for_ynab.add_transaction import run as run_add_transaction
 from manager_for_ynab.auto_approve import run as run_auto_approve
 from manager_for_ynab.pending_income import run as run_pending_income
 from manager_for_ynab.reconciler import run as run_reconciler
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 _RECONCILER_HELP = "Find and automatically reconciles unreconciled transactions."
 _AUTO_APPROVE_HELP = "Approve matched transactions automatically."
+_ADD_TRANSACTION_HELP = "Create a transaction and optionally fund a category."
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     auto_approve_parser.set_defaults(func=run_auto_approve)
 
+    add_transaction_parser = subparsers.add_parser(
+        "add-transaction",
+        help=_ADD_TRANSACTION_HELP,
+        description=_ADD_TRANSACTION_HELP,
+    )
+    add_transaction_parser.set_defaults(func=run_add_transaction)
+
     zero_out_parser = subparsers.add_parser(
         "zero-out",
         help="Set a category's budgeted amount to zero across a month range.",
@@ -67,6 +76,8 @@ async def async_main(argv: Sequence[str] = ()) -> int:
             return await run_pending_income(argv[1:])
         case "auto-approve":
             return await run_auto_approve(argv[1:])
+        case "add-transaction":
+            return await run_add_transaction(argv[1:])
         case "zero-out":
             return await run_zero_out(argv[1:])
 

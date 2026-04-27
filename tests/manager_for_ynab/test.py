@@ -75,6 +75,16 @@ def test_main_auto_approve_help(capsys):
     assert "--for-real" in out
 
 
+def test_main_add_transaction_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("add-transaction", "--help"))
+
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab add-transaction" in out
+    assert "--for-real" in out
+
+
 def test_main_zero_out_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
         main(("zero-out", "--help"))
@@ -92,6 +102,7 @@ def test_build_parser_registers_expected_subcommands():
     assert actions[0].choices is not None
     assert set(actions[0].choices) == {
         "auto-approve",
+        "add-transaction",
         "pending-income",
         "reconciler",
         "zero-out",
