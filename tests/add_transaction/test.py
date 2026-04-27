@@ -241,16 +241,25 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
     assert kwargs["full_refresh"] is True
 
 
+@pytest.mark.parametrize(
+    ("quiet", "expected_output"),
+    [
+        pytest.param(False, "Dry run, not creating transaction:", id="verbose"),
+        pytest.param(True, "", id="quiet"),
+    ],
+)
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
 @patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_dry_run_returns_without_creating_transaction(
+async def test_add_transaction_dry_run(
     sync_mock,
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
+    quiet,
+    expected_output,
     tmp_path,
     capsys,
 ):
@@ -266,7 +275,7 @@ async def test_add_transaction_dry_run_returns_without_creating_transaction(
         cleared=None,
         amount=Decimal("12.34"),
         for_real=False,
-        quiet=False,
+        quiet=quiet,
         db=db_path,
         full_refresh=False,
         token_override="token",
@@ -274,48 +283,10 @@ async def test_add_transaction_dry_run_returns_without_creating_transaction(
 
     out, err = capsys.readouterr()
     assert ret == 0
-    assert err == ""
-    sync_mock.assert_awaited_once()
-    configuration_cls.assert_not_called()
-    api_client_cls.assert_not_called()
-    transactions_api_cls.assert_not_called()
-    assert "Dry run, not creating transaction:" in out
-
-
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
-@pytest.mark.asyncio
-async def test_add_transaction_dry_run_quiet_suppresses_output(
-    sync_mock,
-    configuration_cls,
-    api_client_cls,
-    transactions_api_cls,
-    tmp_path,
-    capsys,
-):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-
-    ret = await add_transaction(
-        plan_name=None,
-        account_name="Checking",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
-        for_real=False,
-        quiet=True,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
-    )
-
-    out, err = capsys.readouterr()
-    assert ret == 0
-    assert out == ""
+    if quiet:
+        assert out == expected_output
+    else:
+        assert expected_output in out
     assert err == ""
     sync_mock.assert_awaited_once()
     configuration_cls.assert_not_called()
@@ -820,42 +791,6 @@ async def test_resolve_transaction_allows_transfer_without_category(
     assert resolved.category_name is None
 
 
-@patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._load_account_by_id", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._resolve_account_id", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
-@pytest.mark.asyncio
-async def test_resolve_transaction_allows_transfer_without_category_lookup(
-    load_name_to_id_mock,
-    resolve_account_id_mock,
-    load_account_by_id_mock,
-    resolve_payee_mock,
-    tmp_path,
-):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    load_name_to_id_mock.return_value = {"My Plan": "plan-id"}
-    resolve_account_id_mock.return_value = "account-id"
-    load_account_by_id_mock.return_value = ("Checking", "checking")
-    resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
-
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        resolved = await _resolve_transaction(
-            con,
-            plan_name=None,
-            account_name="Checking",
-            payee_name="Transfer",
-            category_name=None,
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-        )
-
-    assert resolved.category_id is None
-    assert resolved.category_name is None
-
-
 @patch("manager_for_ynab.add_transaction._matching_entry", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
 @pytest.mark.asyncio
@@ -1008,6 +943,23 @@ async def test_resolve_payee_returns_fuzzy_match(tmp_path):
     assert transfer_account_id is None
 
 
+@pytest.mark.parametrize(
+    ("payee_name", "closest_match", "expected_error"),
+    [
+        pytest.param(
+            "New Payee",
+            ("payee-id", "Employer", False, 1),
+            "Payee 'New Payee' was not created",
+            id="closest-match",
+        ),
+        pytest.param(
+            "Unknown",
+            None,
+            "Payee 'Unknown' was not created",
+            id="no-closest-match",
+        ),
+    ],
+)
 @patch("manager_for_ynab.add_transaction.confirm", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._closest_match", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._matching_entry", new_callable=AsyncMock)
@@ -1018,44 +970,22 @@ async def test_resolve_payee_rejects_new_payee(
     matching_entry_mock,
     closest_match_mock,
     confirm_mock,
+    payee_name,
+    closest_match,
+    expected_error,
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
     load_payees_mock.return_value = [("Employer", "payee-id", None)]
     matching_entry_mock.side_effect = ValueError("No close match")
-    closest_match_mock.return_value = ("payee-id", "Employer", False, 1)
+    closest_match_mock.return_value = closest_match
     confirm_mock.return_value = False
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
-        with pytest.raises(ValueError, match="Payee 'New Payee' was not created"):
-            await _resolve_payee(con, "plan-id", "New Payee")
-
-
-@patch("manager_for_ynab.add_transaction.confirm", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._closest_match", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._matching_entry", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._load_payees", new_callable=AsyncMock)
-@pytest.mark.asyncio
-async def test_resolve_payee_rejects_new_payee_without_closest_match(
-    load_payees_mock,
-    matching_entry_mock,
-    closest_match_mock,
-    confirm_mock,
-    tmp_path,
-):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    load_payees_mock.return_value = [("Employer", "payee-id", None)]
-    matching_entry_mock.side_effect = ValueError("No close match")
-    closest_match_mock.return_value = None
-    confirm_mock.return_value = False
-
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        with pytest.raises(ValueError, match="Payee 'Unknown' was not created"):
-            await _resolve_payee(con, "plan-id", "Unknown")
+        with pytest.raises(ValueError, match=expected_error):
+            await _resolve_payee(con, "plan-id", payee_name)
 
 
 @patch("manager_for_ynab.add_transaction.confirm", new_callable=AsyncMock)
