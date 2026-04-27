@@ -71,15 +71,15 @@ class ResolvedTransaction:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PACKAGE,
-        description=(
-            "Create a transaction in YNAB and optionally fund a category "
-            "from Ready to Assign."
-        ),
+        description="Create a transaction in YNAB and try to fund a category from Ready to Assign.",
     )
     parser.add_argument("--plan-name", help="YNAB plan name. If omitted, prompts.")
     parser.add_argument("--account-name", help="Account name. If omitted, prompts.")
     parser.add_argument("--payee-name", help="Payee name. If omitted, prompts.")
-    parser.add_argument("--category-name", help="Category name. If omitted, prompts.")
+    parser.add_argument(
+        "--category-name",
+        help="Category name. If omitted, prompts. Not needed for transfer transactions.",
+    )
     parser.add_argument(
         "--date",
         type=datetime.date.fromisoformat,
@@ -150,10 +150,7 @@ async def run(
             for_real=args.for_real,
             quiet=args.quiet,
         )
-    except RuntimeError as err:
-        print(err)
-        return 1
-    except ValueError as err:
+    except Exception as err:
         print(err)
         return 1
 
