@@ -29,7 +29,7 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         found = await fetch_auto_approve_transactions(con)
 
     assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
-        "plan-1": ["pair-a-1"],
+        "plan-1": ["pair-a-1", "unmatched"],
         "plan-2": ["pair-b-1"],
     }
 
@@ -69,6 +69,28 @@ def test_build_updates_groups_by_plan_and_updates_both_ids():
     assert all(txn.approved is True for txns in updates.values() for txn in txns)
 
 
+def test_build_updates_approves_unmatched_scheduled_transactions():
+    txns_by_plan = {
+        "plan-1": [
+            Transaction(
+                id="txn-1",
+                matched_transaction_id=None,
+                plan_id="plan-1",
+                account_name="Checking",
+                payee_name="Apple",
+                amount_formatted="-$21.76",
+                date="2026-04-20",
+            )
+        ]
+    }
+
+    updates = build_updates(txns_by_plan)
+
+    assert {plan_id: [txn.id for txn in txns] for plan_id, txns in updates.items()} == {
+        "plan-1": ["txn-1"],
+    }
+
+
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
 @pytest.mark.asyncio
 async def test_run_requires_token(db):
@@ -104,6 +126,15 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Coffee",
                 amount_formatted="-$4.50",
                 date="2026-04-20",
+            ),
+            Transaction(
+                id="unmatched",
+                matched_transaction_id=None,
+                plan_id="plan-1",
+                account_name="Checking",
+                payee_name="Solo",
+                amount_formatted="-$7.00",
+                date="2026-04-21",
             ),
             Transaction(
                 id="pair-b-1",
@@ -177,9 +208,13 @@ async def test_auto_approve_for_real_returns_updated_count(
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     sync.assert_called_once_with("token", db, False, quiet=True)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
-    assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
+    assert [txn.id for txn in updates[0][1].transactions] == [
+        "pair-a-1",
+        "pair-a-2",
+        "unmatched",
+    ]
     assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]
-    assert result == _expected_auto_approve_result(2)
+    assert result == _expected_auto_approve_result(3)
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -194,7 +229,7 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 2 matched transaction(s) to approve." in out
+    assert "Found 3 transaction(s) to approve." in out
     assert "Use --for-real to actually approve transactions." in out
 
 
@@ -217,7 +252,7 @@ async def test_run_quiet_suppresses_all_output(sync, db, capsys):
 async def test_run_no_matching_transactions(sync, db, capsys):
     with sqlite3.connect(db) as con:
         con.execute(
-            "UPDATE transactions SET approved = 1 WHERE matched_transaction_id IS NOT NULL"
+            "UPDATE transactions SET approved = 1 WHERE matched_transaction_id IS NOT NULL OR id = 'unmatched'"
         )
 
     ret = await run(("--sqlite-export-for-ynab-db", str(db)))
@@ -227,7 +262,7 @@ async def test_run_no_matching_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 0 matched transaction(s) to approve." in out
+    assert "Found 0 transaction(s) to approve." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -248,5 +283,9 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
-    assert [txn.id for txn in updates[0][1].transactions] == ["pair-a-1", "pair-a-2"]
+    assert [txn.id for txn in updates[0][1].transactions] == [
+        "pair-a-1",
+        "pair-a-2",
+        "unmatched",
+    ]
     assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]
