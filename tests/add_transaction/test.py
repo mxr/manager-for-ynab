@@ -22,6 +22,7 @@ from manager_for_ynab.add_transaction import _resolve_category
 from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
 from manager_for_ynab.add_transaction import _resolve_payee
 from manager_for_ynab.add_transaction import _resolve_transaction
+from manager_for_ynab.add_transaction import add_transaction
 from manager_for_ynab.add_transaction import amount_prompt
 from manager_for_ynab.add_transaction import build_parser
 from manager_for_ynab.add_transaction import confirm

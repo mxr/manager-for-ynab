@@ -155,6 +155,48 @@ async def run(
         return 1
 
 
+async def add_transaction(
+    *,
+    plan_name: str | None,
+    account_name: str | None,
+    payee_name: str | None,
+    category_name: str | None,
+    date: datetime.date | None,
+    cleared: TransactionClearedStatus | None,
+    amount: Decimal | None,
+    for_real: bool,
+    quiet: bool,
+    db: Path,
+    full_refresh: bool,
+    token_override: str | None,
+) -> int:
+    token = resolve_token(token_override)
+    try:
+        resolved = await sync_and_resolve_transaction(
+            plan_name=plan_name,
+            account_name=account_name,
+            payee_name=payee_name,
+            category_name=category_name,
+            date=date,
+            cleared=cleared,
+            amount=amount,
+            db=db,
+            full_refresh=full_refresh,
+            token=token,
+            quiet=quiet,
+        )
+        return await add_transaction_and_move_funds(
+            resolved=resolved,
+            token=token,
+            db=db,
+            for_real=for_real,
+            quiet=quiet,
+        )
+    except Exception as err:
+        print(err)
+        return 1
+
+
 async def sync_and_resolve_transaction(
     *,
     plan_name: str | None,
@@ -715,6 +757,7 @@ def edit_distance(left: str, right: str) -> int:
 
 __all__ = [
     build_parser.__name__,
+    add_transaction.__name__,
     add_transaction_and_move_funds.__name__,
     ResolvedAccount.__name__,
     ResolvedCategory.__name__,
