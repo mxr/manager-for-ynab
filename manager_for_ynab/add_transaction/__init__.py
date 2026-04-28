@@ -173,20 +173,16 @@ async def sync_and_resolve_transaction(
     await sync(token, db, full_refresh, quiet=quiet)
     _print("** Done **", quiet=quiet)
 
-    async with aiosqlite.connect(db) as con:
-        con.row_factory = aiosqlite.Row
-        await con.create_function("EDITDISTANCE", 2, edit_distance)
-
-        return await _resolve_transaction(
-            con,
-            plan_name=plan_name,
-            account_name=account_name,
-            payee_name=payee_name,
-            category_name=category_name,
-            date=date,
-            cleared=cleared,
-            amount=amount,
-        )
+    return await _resolve_transaction(
+        db=db,
+        plan_name=plan_name,
+        account_name=account_name,
+        payee_name=payee_name,
+        category_name=category_name,
+        date=date,
+        cleared=cleared,
+        amount=amount,
+    )
 
 
 async def add_transaction_and_move_funds(
@@ -284,8 +280,8 @@ async def add_transaction_and_move_funds(
 
 
 async def _resolve_transaction(
-    con: aiosqlite.Connection,
     *,
+    db: Path,
     plan_name: str | None,
     account_name: str | None,
     payee_name: str | None,
@@ -294,58 +290,62 @@ async def _resolve_transaction(
     cleared: TransactionClearedStatus | None,
     amount: Decimal | None,
 ) -> ResolvedTransaction:
-    plans = await _load_name_to_id(con, "plans", deleted=False)
-    if not plans:
-        raise RuntimeError("No plans found in this YNAB account.")
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
 
-    if plan_name:
-        plan_id = await _matching_entry(con, "plans", plan_name, deleted=False)
-        plan_name = next(
-            name
-            for name, matched_plan_id in plans.items()
-            if matched_plan_id == plan_id
+        plans = await _load_name_to_id(con, "plans", deleted=False)
+        if not plans:
+            raise RuntimeError("No plans found in this YNAB account.")
+
+        if plan_name:
+            plan_id = await _matching_entry(con, "plans", plan_name, deleted=False)
+            plan_name = next(
+                name
+                for name, matched_plan_id in plans.items()
+                if matched_plan_id == plan_id
+            )
+        elif len(plans) == 1:
+            plan_name, plan_id = next(iter(plans.items()))
+        else:
+            plan_name = await _choice_prompt("Plan: ", plans)
+            plan_id = plans[plan_name]
+
+        current_date = date or await date_prompt()
+        account_id = await _resolve_account_id(con, plan_id, account_name)
+        resolved_account_name, resolved_account_type = await _load_account_by_id(
+            con, account_id
         )
-    elif len(plans) == 1:
-        plan_name, plan_id = next(iter(plans.items()))
-    else:
-        plan_name = await _choice_prompt("Plan: ", plans)
-        plan_id = plans[plan_name]
-
-    current_date = date or await date_prompt()
-    account_id = await _resolve_account_id(con, plan_id, account_name)
-    resolved_account_name, resolved_account_type = await _load_account_by_id(
-        con, account_id
-    )
-    payee_id, resolved_payee_name, transfer_account_id = await _resolve_payee(
-        con, plan_id, payee_name
-    )
-
-    resolved_category: ResolvedCategory | None = None
-    if transfer_account_id is not None:
-        if category_name:
-            raise ValueError("Category not allowed for transfer transactions")
-    else:
-        resolved_category_id, resolved_category_name = await _resolve_category(
-            con, plan_id, category_name
-        )
-        resolved_category = ResolvedCategory(
-            id=resolved_category_id, name=resolved_category_name
+        payee_id, resolved_payee_name, transfer_account_id = await _resolve_payee(
+            con, plan_id, payee_name
         )
 
-    resolved_amount = amount if amount is not None else await amount_prompt()
-    return ResolvedTransaction(
-        plan=ResolvedPlan(id=plan_id, name=plan_name),
-        account=ResolvedAccount(
-            id=account_id,
-            name=resolved_account_name,
-            type=resolved_account_type,
-        ),
-        payee=ResolvedPayee(id=payee_id, name=resolved_payee_name),
-        category=resolved_category,
-        date=current_date,
-        cleared=cleared or TransactionClearedStatus.UNCLEARED,
-        amount=resolved_amount,
-    )
+        resolved_category: ResolvedCategory | None = None
+        if transfer_account_id is not None:
+            if category_name:
+                raise ValueError("Category not allowed for transfer transactions")
+        else:
+            resolved_category_id, resolved_category_name = await _resolve_category(
+                con, plan_id, category_name
+            )
+            resolved_category = ResolvedCategory(
+                id=resolved_category_id, name=resolved_category_name
+            )
+
+        resolved_amount = amount if amount is not None else await amount_prompt()
+        return ResolvedTransaction(
+            plan=ResolvedPlan(id=plan_id, name=plan_name),
+            account=ResolvedAccount(
+                id=account_id,
+                name=resolved_account_name,
+                type=resolved_account_type,
+            ),
+            payee=ResolvedPayee(id=payee_id, name=resolved_payee_name),
+            category=resolved_category,
+            date=current_date,
+            cleared=cleared or TransactionClearedStatus.UNCLEARED,
+            amount=resolved_amount,
+        )
 
 
 def _build_transaction(resolved: ResolvedTransaction) -> ynab.NewTransaction:

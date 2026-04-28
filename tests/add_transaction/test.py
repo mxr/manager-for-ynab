@@ -767,19 +767,17 @@ async def test_resolve_transaction_errors_when_no_plans(load_name_to_id_mock, tm
     _create_add_transaction_db(db_path)
     load_name_to_id_mock.return_value = {}
 
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        with pytest.raises(RuntimeError, match="No plans found in this YNAB account."):
-            await _resolve_transaction(
-                con,
-                plan_name=None,
-                account_name="Checking",
-                payee_name="Employer",
-                category_name="Inflow: Ready to Assign",
-                date=date(2026, 4, 26),
-                cleared=None,
-                amount=Decimal("12.34"),
-            )
+    with pytest.raises(RuntimeError, match="No plans found in this YNAB account."):
+        await _resolve_transaction(
+            db=db_path,
+            plan_name=None,
+            account_name="Checking",
+            payee_name="Employer",
+            category_name="Inflow: Ready to Assign",
+            date=date(2026, 4, 26),
+            cleared=None,
+            amount=Decimal("12.34"),
+        )
 
 
 @patch("manager_for_ynab.add_transaction.date_prompt", new_callable=AsyncMock)
@@ -803,18 +801,16 @@ async def test_resolve_transaction_prompts_for_missing_values(
     date_prompt_mock.return_value = date(2026, 4, 26)
     amount_prompt_mock.return_value = Decimal("12.34")
 
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        resolved = await _resolve_transaction(
-            con,
-            plan_name=None,
-            account_name=None,
-            payee_name=None,
-            category_name=None,
-            date=None,
-            cleared=None,
-            amount=None,
-        )
+    resolved = await _resolve_transaction(
+        db=db_path,
+        plan_name=None,
+        account_name=None,
+        payee_name=None,
+        category_name=None,
+        date=None,
+        cleared=None,
+        amount=None,
+    )
 
     assert resolved.plan.id == ids["plan_id"]
     assert resolved.account.id == ids["checking_account_id"]
@@ -850,18 +846,16 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
     resolve_payee_mock.return_value = ("payee-id", "Employer", None)
     resolve_category_mock.return_value = ("category-id", "Dining Out")
 
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        resolved = await _resolve_transaction(
-            con,
-            plan_name=None,
-            account_name="Checking",
-            payee_name="Employer",
-            category_name="Dining Out",
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-        )
+    resolved = await _resolve_transaction(
+        db=db_path,
+        plan_name=None,
+        account_name="Checking",
+        payee_name="Employer",
+        category_name="Dining Out",
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal("12.34"),
+    )
 
     assert resolved.plan.id == "plan-b"
     assert resolved.plan.name == "Plan B"
@@ -886,18 +880,16 @@ async def test_resolve_transaction_allows_transfer_without_category(
     load_account_by_id_mock.return_value = ("Checking", "checking")
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        resolved = await _resolve_transaction(
-            con,
-            plan_name=None,
-            account_name="Checking",
-            payee_name="Transfer",
-            category_name=None,
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-        )
+    resolved = await _resolve_transaction(
+        db=db_path,
+        plan_name=None,
+        account_name="Checking",
+        payee_name="Transfer",
+        category_name=None,
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal("12.34"),
+    )
 
     assert resolved.category is None
 
@@ -916,21 +908,19 @@ async def test_resolve_transaction_rejects_category_for_transfer(
     matching_entry_mock.return_value = ids["checking_account_id"]
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
-        with pytest.raises(
-            ValueError, match="Category not allowed for transfer transactions"
-        ):
-            await _resolve_transaction(
-                con,
-                plan_name=None,
-                account_name="Checking",
-                payee_name="Transfer",
-                category_name="Dining Out",
-                date=date(2026, 4, 26),
-                cleared=None,
-                amount=Decimal("12.34"),
-            )
+    with pytest.raises(
+        ValueError, match="Category not allowed for transfer transactions"
+    ):
+        await _resolve_transaction(
+            db=db_path,
+            plan_name=None,
+            account_name="Checking",
+            payee_name="Transfer",
+            category_name="Dining Out",
+            date=date(2026, 4, 26),
+            cleared=None,
+            amount=Decimal("12.34"),
+        )
 
     resolve_payee_mock.assert_awaited_once()
 
