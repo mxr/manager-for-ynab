@@ -1,5 +1,6 @@
 import sqlite3
 import uuid
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -22,7 +23,6 @@ from manager_for_ynab.add_transaction import _resolve_category
 from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
 from manager_for_ynab.add_transaction import _resolve_payee
 from manager_for_ynab.add_transaction import _resolve_transaction
-from manager_for_ynab.add_transaction import add_transaction
 from manager_for_ynab.add_transaction import amount_prompt
 from manager_for_ynab.add_transaction import build_parser
 from manager_for_ynab.add_transaction import confirm
@@ -30,6 +30,7 @@ from manager_for_ynab.add_transaction import date_prompt
 from manager_for_ynab.add_transaction import decimal
 from manager_for_ynab.add_transaction import edit_distance
 from manager_for_ynab.add_transaction import run
+from manager_for_ynab.add_transaction import sync_and_resolve_transaction
 
 
 def _create_add_transaction_db(path: Path) -> None:
@@ -88,6 +89,58 @@ def resolved_dining_transaction():
     )
 
 
+@pytest.fixture
+def resolved_ready_to_assign_checking_transaction():
+    return add_transaction_module.ResolvedTransaction(
+        plan=add_transaction_module.ResolvedPlan(
+            id="11111111-1111-1111-1111-111111111111",
+            name="My Plan",
+        ),
+        account=add_transaction_module.ResolvedAccount(
+            id="22222222-2222-2222-2222-222222222222",
+            name="Checking",
+            type="checking",
+        ),
+        payee=add_transaction_module.ResolvedPayee(
+            id="33333333-3333-3333-3333-333333333333",
+            name="Employer",
+        ),
+        category=add_transaction_module.ResolvedCategory(
+            id="44444444-4444-4444-4444-444444444444",
+            name="Inflow: Ready to Assign",
+        ),
+        date=date(2026, 4, 26),
+        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        amount=Decimal("12.34"),
+    )
+
+
+@pytest.fixture
+def resolved_ready_to_assign_credit_card_transaction():
+    return add_transaction_module.ResolvedTransaction(
+        plan=add_transaction_module.ResolvedPlan(
+            id="11111111-1111-1111-1111-111111111111",
+            name="My Plan",
+        ),
+        account=add_transaction_module.ResolvedAccount(
+            id="22222222-2222-2222-2222-222222222222",
+            name="Credit Card",
+            type="creditCard",
+        ),
+        payee=add_transaction_module.ResolvedPayee(
+            id="33333333-3333-3333-3333-333333333333",
+            name="Employer",
+        ),
+        category=add_transaction_module.ResolvedCategory(
+            id="44444444-4444-4444-4444-444444444444",
+            name="Inflow: Ready to Assign",
+        ),
+        date=date(2026, 4, 26),
+        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        amount=Decimal("12.34"),
+    )
+
+
 def test_build_parser_uses_expected_prog():
     assert build_parser().prog == "manager-for-ynab add-transaction"
 
@@ -113,41 +166,27 @@ def test_decimal_strips_commas():
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_skips_funding_for_inflow_ready_to_assign(
-    sync_mock,
+async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     categories_api_cls,
+    resolved_ready_to_assign_checking_transaction,
     tmp_path,
 ):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
 
-    assert (
-        await add_transaction(
-            plan_name=None,
-            account_name="Checking",
-            payee_name="Employer",
-            category_name="Inflow: Ready to Assign",
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-            for_real=True,
-            quiet=True,
-            db=db_path,
-            full_refresh=False,
-            token_override="token",
-        )
-        == 0
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved_ready_to_assign_checking_transaction,
+        token="token",
+        db=tmp_path / "add-transaction.sqlite",
+        for_real=True,
+        quiet=True,
     )
 
-    sync_mock.assert_awaited_once()
+    assert ret == 0
     transactions_api.create_transaction.assert_called_once()
     categories_api_cls.assert_not_called()
 
@@ -159,18 +198,24 @@ async def test_add_transaction_skips_funding_for_inflow_ready_to_assign(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_moves_credit_card_payment_back_to_ready_to_assign(
-    sync_mock,
+async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     categories_api_cls,
+    resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction-credit-card.sqlite"
     _create_add_transaction_db(db_path)
+    ids = _seed_ids(db_path)
+    resolved = replace(
+        resolved_ready_to_assign_credit_card_transaction,
+        plan=replace(
+            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
+        ),
+    )
 
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
@@ -191,25 +236,15 @@ async def test_add_transaction_moves_credit_card_payment_back_to_ready_to_assign
         )
     )
 
-    assert (
-        await add_transaction(
-            plan_name=None,
-            account_name="Credit Card",
-            payee_name="Employer",
-            category_name="Inflow: Ready to Assign",
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-            for_real=True,
-            quiet=True,
-            db=db_path,
-            full_refresh=False,
-            token_override="token",
-        )
-        == 0
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved,
+        token="token",
+        db=db_path,
+        for_real=True,
+        quiet=True,
     )
 
-    sync_mock.assert_awaited_once()
+    assert ret == 0
     transactions_api.create_transaction.assert_called_once()
     categories_api.get_month_category_by_id.assert_called_once()
     categories_api.update_month_category.assert_called_once()
@@ -330,34 +365,23 @@ async def test_run_returns_one_when_resolution_stage_fails(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_dry_run(
-    sync_mock,
+async def test_move_funds_dry_run(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
+    resolved_ready_to_assign_checking_transaction,
     quiet,
     expected_output,
     tmp_path,
     capsys,
 ):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-
-    ret = await add_transaction(
-        plan_name=None,
-        account_name="Checking",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved_ready_to_assign_checking_transaction,
+        token="token",
+        db=tmp_path / "add-transaction.sqlite",
         for_real=False,
         quiet=quiet,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
     )
 
     out, err = capsys.readouterr()
@@ -367,7 +391,6 @@ async def test_add_transaction_dry_run(
     else:
         assert expected_output in out
     assert err == ""
-    sync_mock.assert_awaited_once()
     configuration_cls.assert_not_called()
     api_client_cls.assert_not_called()
     transactions_api_cls.assert_not_called()
@@ -380,40 +403,38 @@ async def test_add_transaction_dry_run(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_reports_ready_to_assign_credit_card_payment(
-    sync_mock,
+async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     apply_category_budget_delta_mock,
+    resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
     capsys,
 ):
     db_path = tmp_path / "add-transaction-credit-card-positive.sqlite"
     _create_add_transaction_db(db_path)
+    ids = _seed_ids(db_path)
+    resolved = replace(
+        resolved_ready_to_assign_credit_card_transaction,
+        plan=replace(
+            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
+        ),
+    )
     apply_category_budget_delta_mock.return_value = 12340
 
-    ret = await add_transaction(
-        plan_name="My Plan",
-        account_name="Credit Card",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved,
+        token="token",
+        db=db_path,
         for_real=True,
         quiet=False,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
     )
 
     out, err = capsys.readouterr()
     assert ret == 0
     assert err == ""
-    sync_mock.assert_awaited_once()
     transactions_api_cls.return_value.create_transaction.assert_called_once()
     apply_category_budget_delta_mock.assert_awaited_once()
     assert "Created transaction:" in out
@@ -424,19 +445,25 @@ async def test_add_transaction_reports_ready_to_assign_credit_card_payment(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_reports_returned_credit_card_payment(
-    sync_mock,
+async def test_move_funds_reports_returned_credit_card_payment(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     categories_api_cls,
+    resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
     capsys,
 ):
     db_path = tmp_path / "add-transaction-credit-card-negative.sqlite"
     _create_add_transaction_db(db_path)
+    ids = _seed_ids(db_path)
+    resolved = replace(
+        resolved_ready_to_assign_credit_card_transaction,
+        plan=replace(
+            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
+        ),
+    )
 
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
@@ -457,25 +484,17 @@ async def test_add_transaction_reports_returned_credit_card_payment(
         )
     )
 
-    ret = await add_transaction(
-        plan_name=None,
-        account_name="Credit Card",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved,
+        token="token",
+        db=db_path,
         for_real=True,
         quiet=False,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
     )
 
     out, err = capsys.readouterr()
     assert ret == 0
     assert err == ""
-    sync_mock.assert_awaited_once()
     transactions_api.create_transaction.assert_called_once()
     categories_api.get_month_category_by_id.assert_called_once()
     categories_api.update_month_category.assert_called_once()
@@ -489,42 +508,40 @@ async def test_add_transaction_reports_returned_credit_card_payment(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_reports_returned_budget_delta(
-    sync_mock,
+async def test_move_funds_reports_returned_budget_delta(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     apply_category_budget_delta_mock,
+    resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
     capsys,
 ):
     db_path = tmp_path / "add-transaction-credit-card-returned.sqlite"
     _create_add_transaction_db(db_path)
+    ids = _seed_ids(db_path)
+    resolved = replace(
+        resolved_ready_to_assign_credit_card_transaction,
+        plan=replace(
+            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
+        ),
+    )
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
     apply_category_budget_delta_mock.return_value = -12340
 
-    ret = await add_transaction(
-        plan_name=None,
-        account_name="Credit Card",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved,
+        token="token",
+        db=db_path,
         for_real=True,
         quiet=False,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
     )
 
     out, err = capsys.readouterr()
     assert ret == 0
     assert err == ""
-    sync_mock.assert_awaited_once()
     transactions_api.create_transaction.assert_called_once()
     apply_category_budget_delta_mock.assert_awaited_once()
     assert "Returned 12.34 USD from 'Credit Card' to Ready to Assign." in out
@@ -534,78 +551,42 @@ async def test_add_transaction_reports_returned_budget_delta(
 @patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
-@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_add_transaction_funds_category_from_ready_to_assign(
-    sync_mock,
+async def test_move_funds_funds_category_from_ready_to_assign(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
     fund_category_mock,
+    resolved_dining_transaction,
     tmp_path,
     capsys,
 ):
-    db_path = tmp_path / "add-transaction-category.sqlite"
-    _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "INSERT INTO categories VALUES (?, ?, 0, 'Dining', 'Dining Out')",
-            (str(uuid.uuid4()), ids["plan_id"]),
-        )
-
     fund_category_mock.return_value = 5000
 
-    ret = await add_transaction(
-        plan_name="My Plan",
-        account_name="Checking",
-        payee_name="Employer",
-        category_name="Dining Out",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved_dining_transaction,
+        token="token",
+        db=tmp_path / "add-transaction-category.sqlite",
         for_real=True,
         quiet=False,
-        db=db_path,
-        full_refresh=False,
-        token_override="token",
     )
 
     out, err = capsys.readouterr()
     assert ret == 0
     assert err == ""
-    sync_mock.assert_awaited_once()
     transactions_api_cls.return_value.create_transaction.assert_called_once()
     fund_category_mock.assert_awaited_once()
     assert "Created transaction:" in out
     assert "Funded 'Dining Out' from 'Ready to Assign' by 5.00 USD" in out
 
 
+@pytest.mark.asyncio
 @patch(
     "manager_for_ynab.add_transaction.resolve_token", side_effect=RuntimeError("boom")
 )
-@pytest.mark.asyncio
-async def test_add_transaction_raises_when_token_resolution_fails(
-    resolve_token_mock, tmp_path
-):
-    db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-
+async def test_run_raises_when_token_resolution_fails(resolve_token_mock):
     with pytest.raises(RuntimeError, match="boom"):
-        await add_transaction(
-            plan_name=None,
-            account_name="Checking",
-            payee_name="Employer",
-            category_name="Inflow: Ready to Assign",
-            date=date(2026, 4, 26),
-            cleared=None,
-            amount=Decimal("12.34"),
-            for_real=True,
-            quiet=True,
-            db=db_path,
-            full_refresh=False,
-            token_override=None,
-        )
+        await run(())
 
 
 @patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
@@ -613,20 +594,17 @@ async def test_add_transaction_raises_when_token_resolution_fails(
     "manager_for_ynab.add_transaction._resolve_transaction",
     side_effect=ValueError("boom"),
 )
-@patch("manager_for_ynab.add_transaction.resolve_token")
 @pytest.mark.asyncio
-async def test_add_transaction_returns_one_when_transaction_resolution_fails(
-    resolve_token_mock,
+async def test_sync_and_resolve_transaction_raises_when_transaction_resolution_fails(
     resolve_transaction_mock,
     sync_mock,
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    resolve_token_mock.return_value = "token"
 
-    assert (
-        await add_transaction(
+    with pytest.raises(ValueError, match="boom"):
+        await sync_and_resolve_transaction(
             plan_name=None,
             account_name="Checking",
             payee_name="Employer",
@@ -634,56 +612,76 @@ async def test_add_transaction_returns_one_when_transaction_resolution_fails(
             date=date(2026, 4, 26),
             cleared=None,
             amount=Decimal("12.34"),
-            for_real=True,
-            quiet=True,
             db=db_path,
             full_refresh=False,
-            token_override=None,
+            token="token",
+            quiet=True,
         )
-        == 1
-    )
+
+    sync_mock.assert_awaited_once()
+    resolve_transaction_mock.assert_awaited_once()
 
 
 @patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
 @pytest.mark.asyncio
-async def test_add_transaction_returns_one_when_api_raises(
-    configuration_cls,
-    api_client_cls,
-    transactions_api_cls,
-    sync_mock,
-    tmp_path,
-    capsys,
+async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
+    sync_mock, tmp_path
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    transactions_api = transactions_api_cls.return_value
-    transactions_api.create_transaction.side_effect = ynab.ApiException(
-        status=500, reason="boom"
-    )
+    ids = _seed_ids(db_path)
 
-    ret = await add_transaction(
-        plan_name=None,
+    resolved = await sync_and_resolve_transaction(
+        plan_name="My Plan",
         account_name="Checking",
         payee_name="Employer",
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
         cleared=None,
         amount=Decimal("12.34"),
-        for_real=True,
-        quiet=True,
         db=db_path,
         full_refresh=False,
-        token_override="token",
+        token="token",
+        quiet=True,
+    )
+
+    assert resolved.plan.id == ids["plan_id"]
+    assert resolved.account.id == ids["checking_account_id"]
+    assert resolved.payee.id == ids["employer_payee_id"]
+    assert resolved.category is not None
+    assert resolved.category.id == ids["ready_to_assign_category_id"]
+    sync_mock.assert_awaited_once_with("token", db_path, False, quiet=True)
+
+
+@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
+@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@pytest.mark.asyncio
+async def test_move_funds_returns_one_when_api_raises(
+    configuration_cls,
+    api_client_cls,
+    transactions_api_cls,
+    resolved_ready_to_assign_checking_transaction,
+    tmp_path,
+    capsys,
+):
+    transactions_api = transactions_api_cls.return_value
+    transactions_api.create_transaction.side_effect = ynab.ApiException(
+        status=500, reason="boom"
+    )
+
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=resolved_ready_to_assign_checking_transaction,
+        token="token",
+        db=tmp_path / "add-transaction.sqlite",
+        for_real=True,
+        quiet=True,
     )
 
     out, err = capsys.readouterr()
     assert ret == 1
     assert out == ""
     assert "Failed to create transaction:" in err
-    sync_mock.assert_awaited_once()
     configuration_cls.assert_called_once_with(access_token="token")
     api_client_cls.assert_called_once_with(configuration_cls.return_value)
 
@@ -700,7 +698,7 @@ async def test_add_transaction_returns_one_when_api_raises(
 @patch("manager_for_ynab.add_transaction.ynab.ApiClient")
 @patch("manager_for_ynab.add_transaction.ynab.Configuration")
 @pytest.mark.asyncio
-async def test_add_transaction_and_move_funds_returns_one_when_funding_fails(
+async def test_move_funds_returns_one_when_funding_fails(
     configuration_cls,
     api_client_cls,
     transactions_api_cls,
@@ -734,39 +732,32 @@ async def test_add_transaction_and_move_funds_returns_one_when_funding_fails(
     "manager_for_ynab.add_transaction._resolve_transaction",
     side_effect=RuntimeError("boom"),
 )
-@patch("manager_for_ynab.add_transaction.resolve_token")
 @pytest.mark.asyncio
-async def test_add_transaction_returns_one_when_runtime_error_is_raised(
-    resolve_token_mock,
+async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
     resolve_transaction_mock,
     sync_mock,
     tmp_path,
-    capsys,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    resolve_token_mock.return_value = "token"
 
-    ret = await add_transaction(
-        plan_name=None,
-        account_name="Checking",
-        payee_name="Employer",
-        category_name="Inflow: Ready to Assign",
-        date=date(2026, 4, 26),
-        cleared=None,
-        amount=Decimal("12.34"),
-        for_real=True,
-        quiet=True,
-        db=db_path,
-        full_refresh=False,
-        token_override=None,
-    )
+    with pytest.raises(RuntimeError, match="boom"):
+        await sync_and_resolve_transaction(
+            plan_name=None,
+            account_name="Checking",
+            payee_name="Employer",
+            category_name="Inflow: Ready to Assign",
+            date=date(2026, 4, 26),
+            cleared=None,
+            amount=Decimal("12.34"),
+            db=db_path,
+            full_refresh=False,
+            token="token",
+            quiet=True,
+        )
 
-    out, err = capsys.readouterr()
-    assert ret == 1
-    assert out == "boom\n"
-    assert err == ""
     sync_mock.assert_awaited_once()
+    resolve_transaction_mock.assert_awaited_once()
 
 
 @patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
