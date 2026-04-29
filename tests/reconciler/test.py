@@ -18,6 +18,8 @@ from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
 from manager_for_ynab.reconciler import run
 from manager_for_ynab.reconciler import YnabClient
+from testing.fixtures import CHECKING_ACCOUNT_ID
+from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
 from testing.fixtures import db
 from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
@@ -260,8 +262,9 @@ async def test_run_mode_batch(sync, db):
             """
             UPDATE transactions
             SET cleared = 'reconciled'
-            WHERE account_id = (SELECT id FROM accounts WHERE name = 'Checking')
-            """
+            WHERE account_id = ?
+            """,
+            (CHECKING_ACCOUNT_ID,),
         )
 
     ret = await run(
@@ -290,11 +293,10 @@ async def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
             """
             UPDATE transactions
             SET cleared = 'uncleared'
-            WHERE account_id IN (
-                SELECT id FROM accounts WHERE name IN ('Checking', 'Credit Card')
-            )
+            WHERE account_id IN (?, ?)
             AND cleared != 'reconciled'
-            """
+            """,
+            (CHECKING_ACCOUNT_ID, CREDIT_CARD_ACCOUNT_ID),
         )
 
     ret = await run(
