@@ -29,3 +29,5 @@ Exclude already matched transactions (to avoid changing the date once YNAB picks
 ```console
 $ manager-for-ynab pending-income --skip-matched
 ```
+
+By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to use the existing database contents without syncing.

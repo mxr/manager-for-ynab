@@ -23,3 +23,5 @@ Apply the approval updates:
 ```console
 $ manager-for-ynab auto-approve --for-real
 ```
+
+By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to use the existing database contents without syncing.

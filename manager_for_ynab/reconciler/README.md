@@ -49,6 +49,8 @@ $ manager-for-ynab reconciler --mode interactive-batch --account-likes Checking 
 Target balances in matching order, separated by spaces: 500 290
 ```
 
+By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to use the existing database contents without syncing.
+
 ### All Options
 
 ```console
@@ -59,6 +61,7 @@ usage: manager-for-ynab reconciler [-h] [--mode {single,batch,interactive-batch}
                                    [--for-real]
                                    [--sqlite-export-for-ynab-db SQLITE_EXPORT_FOR_YNAB_DB]
                                    [--sqlite-export-for-ynab-full-refresh]
+                                   [--sync | --no-sync]
 
 Find and automatically reconciles unreconciled transactions.
 
@@ -86,4 +89,5 @@ options:
   --sqlite-export-for-ynab-full-refresh
                         Whether to **DROP ALL TABLES** and fetch all plan data again. If unset, this
                         tool only does an incremental refresh
+  --sync, --no-sync     Refresh the SQLite DB before using it.
 ```
