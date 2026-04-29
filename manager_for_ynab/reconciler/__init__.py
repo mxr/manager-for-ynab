@@ -156,6 +156,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Whether to **DROP ALL TABLES** and fetch all plan data again. If unset, this tool only does an incremental refresh",
     )
+    parser.add_argument(
+        "--sync",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Refresh the SQLite DB before using it.",
+    )
     return parser
 
 
@@ -172,6 +178,7 @@ async def run(
         for_real=args.for_real,
         db=args.sqlite_export_for_ynab_db,
         full_refresh=args.sqlite_export_for_ynab_full_refresh,
+        should_sync=args.sync,
         token_override=token_override,
     )
 
@@ -186,6 +193,7 @@ async def reconciler(
     for_real: bool,
     db: Path,
     full_refresh: bool,
+    should_sync: bool = True,
     token_override: str | None,
 ) -> int:
     target_set = await _resolve_target_set(
@@ -202,9 +210,10 @@ async def reconciler(
 
     token = resolve_token(token_override)
 
-    print("** Refreshing SQLite DB **")
-    await sync(token, db, full_refresh)
-    print("** Done **")
+    if should_sync:
+        print("** Refreshing SQLite DB **")
+        await sync(token, db, full_refresh)
+        print("** Done **")
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row

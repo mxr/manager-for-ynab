@@ -247,6 +247,20 @@ async def test_run_quiet_suppresses_all_output(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch("manager_for_ynab.auto_approve.sync")
+@pytest.mark.asyncio
+async def test_run_no_sync_uses_existing_db(sync, db, capsys):
+    ret = await run(("--sqlite-export-for-ynab-db", str(db), "--no-sync"))
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_not_called()
+    assert "** Refreshing SQLite DB **" not in out
+    assert "Found 3 transaction(s) to approve." in out
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_run_no_matching_transactions(sync, db, capsys):

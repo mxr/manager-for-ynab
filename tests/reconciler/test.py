@@ -103,6 +103,29 @@ async def test_run_nothing_to_do(sync, db):
 
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
+@pytest.mark.asyncio
+async def test_run_no_sync_uses_existing_db(sync, db, capsys):
+    ret = await run(
+        (
+            "--account-like",
+            "Checking",
+            "--target",
+            "500",
+            "--sqlite-export-for-ynab-db",
+            db,
+            "--no-sync",
+        )
+    )
+
+    out, _ = capsys.readouterr()
+    sync.assert_not_called()
+    assert ret == 0
+    assert "** Refreshing SQLite DB **" not in out
+    assert "[Checking] *    -$60.00 - Payee" in out
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
+@patch("manager_for_ynab.reconciler.sync")
 @patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
