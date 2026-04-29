@@ -52,6 +52,7 @@ async def run(
         "--sqlite-export-for-ynab-db", type=Path, default=default_db_path()
     )
     parser.add_argument("--sqlite-export-for-ynab-full-refresh", action="store_true")
+    parser.add_argument("--sync", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--for-real", action="store_true")
     parser.add_argument("--skip-matched", action="store_true")
     parser.add_argument("--quiet", action="store_true")
@@ -59,6 +60,7 @@ async def run(
     args = parser.parse_args(argv)
     db: Path = args.sqlite_export_for_ynab_db
     full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
+    should_sync: bool = args.sync
     for_real: bool = args.for_real
     skip_matched: bool = args.skip_matched
     quiet: bool = args.quiet
@@ -66,6 +68,7 @@ async def run(
     result = await pending_income(
         db=db,
         full_refresh=full_refresh,
+        should_sync=should_sync,
         for_real=for_real,
         skip_matched=skip_matched,
         token_override=token_override,
@@ -83,6 +86,7 @@ async def pending_income(
     *,
     db: Path,
     full_refresh: bool,
+    should_sync: bool = True,
     for_real: bool,
     skip_matched: bool,
     token_override: str | None,
@@ -90,9 +94,10 @@ async def pending_income(
 ) -> PendingIncomeResult:
     token = resolve_token(token_override)
 
-    _print("** Refreshing SQLite DB **", quiet=quiet)
-    await sync(token, db, full_refresh, quiet=quiet)
-    _print("** Done **", quiet=quiet)
+    if should_sync:
+        _print("** Refreshing SQLite DB **", quiet=quiet)
+        await sync(token, db, full_refresh, quiet=quiet)
+        _print("** Done **", quiet=quiet)
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row

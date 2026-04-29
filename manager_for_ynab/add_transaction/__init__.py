@@ -97,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Whether to refresh the SQLite DB from scratch.",
     )
+    parser.add_argument(
+        "--sync",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Refresh the SQLite DB before using it.",
+    )
     return parser
 
 
@@ -120,6 +126,7 @@ async def run(
         quiet=args.quiet,
         db=args.sqlite_export_for_ynab_db,
         full_refresh=args.sqlite_export_for_ynab_full_refresh,
+        should_sync=args.sync,
         token_override=token_override,
     )
 
@@ -137,13 +144,15 @@ async def add_transaction(
     quiet: bool,
     db: Path,
     full_refresh: bool,
+    should_sync: bool = True,
     token_override: str | None,
 ) -> int:
     token = resolve_token(token_override)
 
-    _print("** Refreshing SQLite DB **", quiet=quiet)
-    await sync(token, db, full_refresh, quiet=quiet)
-    _print("** Done **", quiet=quiet)
+    if should_sync:
+        _print("** Refreshing SQLite DB **", quiet=quiet)
+        await sync(token, db, full_refresh, quiet=quiet)
+        _print("** Done **", quiet=quiet)
 
     try:
         async with aiosqlite.connect(db) as con:
