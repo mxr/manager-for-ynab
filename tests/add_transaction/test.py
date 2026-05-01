@@ -353,6 +353,39 @@ async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, cap
 
 
 @patch(
+    "manager_for_ynab.add_transaction.sync_and_resolve_transaction",
+    new_callable=AsyncMock,
+)
+@pytest.mark.asyncio
+async def test_add_transaction_returns_one_when_resolution_fails(
+    sync_and_resolve_transaction_mock,
+    tmp_path,
+    capsys,
+):
+    sync_and_resolve_transaction_mock.side_effect = ValueError("boom")
+
+    ret = await add_transaction(
+        plan_name=None,
+        account_name="Checking",
+        payee_name="Employer",
+        category_name="Inflow: Ready to Assign",
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal("12.34"),
+        for_real=False,
+        quiet=True,
+        db=tmp_path / "add-transaction.sqlite",
+        full_refresh=False,
+        token_override="token",
+    )
+
+    out, err = capsys.readouterr()
+    assert ret == 1
+    assert out == "boom\n"
+    assert err == ""
+
+
+@patch(
     "manager_for_ynab.add_transaction._apply_category_budget_delta",
     new_callable=AsyncMock,
 )
