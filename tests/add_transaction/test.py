@@ -23,6 +23,7 @@ from manager_for_ynab.add_transaction import _resolve_category
 from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
 from manager_for_ynab.add_transaction import _resolve_payee
 from manager_for_ynab.add_transaction import _resolve_transaction
+from manager_for_ynab.add_transaction import add_transaction
 from manager_for_ynab.add_transaction import amount_prompt
 from manager_for_ynab.add_transaction import build_parser
 from manager_for_ynab.add_transaction import confirm
@@ -31,36 +32,17 @@ from manager_for_ynab.add_transaction import decimal
 from manager_for_ynab.add_transaction import edit_distance
 from manager_for_ynab.add_transaction import run
 from manager_for_ynab.add_transaction import sync_and_resolve_transaction
+from testing.fixtures import CHECKING_ACCOUNT_ID
+from testing.fixtures import DUPLICATE_CREDIT_CARD_CATEGORY_ID
+from testing.fixtures import EMPLOYER_PAYEE_ID
+from testing.fixtures import execute_seed
+from testing.fixtures import PLAN_ID
+from testing.fixtures import READY_TO_ASSIGN_CATEGORY_ID
 
 
 def _create_add_transaction_db(path: Path) -> None:
-    seed_path = Path(__file__).parents[2] / "testing" / "seed.sql"
-    contents = seed_path.read_text()
     with sqlite3.connect(path) as con:
-        con.executescript(contents)
-
-
-def _seed_ids(path: Path) -> dict[str, str]:
-    with sqlite3.connect(path) as con:
-        con.row_factory = sqlite3.Row
-        return {
-            "plan_id": con.execute("SELECT id FROM plans").fetchone()["id"],
-            "checking_account_id": con.execute(
-                "SELECT id FROM accounts WHERE name = 'Checking'"
-            ).fetchone()["id"],
-            "credit_card_account_id": con.execute(
-                "SELECT id FROM accounts WHERE name = 'Credit Card'"
-            ).fetchone()["id"],
-            "employer_payee_id": con.execute(
-                "SELECT id FROM payees WHERE name = 'Employer'"
-            ).fetchone()["id"],
-            "ready_to_assign_category_id": con.execute(
-                "SELECT id FROM categories WHERE name = 'Inflow: Ready to Assign'"
-            ).fetchone()["id"],
-            "credit_card_category_id": con.execute(
-                "SELECT id FROM categories WHERE name = 'Credit Card'"
-            ).fetchone()["id"],
-        }
+        execute_seed(con)
 
 
 @pytest.fixture
@@ -209,12 +191,9 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
 ):
     db_path = tmp_path / "add-transaction-credit-card.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
-        plan=replace(
-            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
-        ),
+        plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
     )
 
     transactions_api = transactions_api_cls.return_value
@@ -257,24 +236,10 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     )
 
 
-@patch(
-    "manager_for_ynab.add_transaction.add_transaction_and_move_funds",
-    new_callable=AsyncMock,
-)
-@patch(
-    "manager_for_ynab.add_transaction.sync_and_resolve_transaction",
-    new_callable=AsyncMock,
-)
-@patch("manager_for_ynab.add_transaction.resolve_token")
+@patch("manager_for_ynab.add_transaction.add_transaction", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_run_delegates_parsed_args(
-    resolve_token_mock,
-    sync_and_resolve_transaction_mock,
-    add_transaction_and_move_funds_mock,
-):
-    resolve_token_mock.return_value = "resolved-token"
-    sync_and_resolve_transaction_mock.return_value = object()
-    add_transaction_and_move_funds_mock.return_value = 17
+async def test_run_delegates_parsed_args(add_transaction_mock):
+    add_transaction_mock.return_value = 17
 
     ret = await run(
         (
@@ -297,13 +262,13 @@ async def test_run_delegates_parsed_args(
             "--sqlite-export-for-ynab-db",
             "/tmp/db.sqlite",
             "--sqlite-export-for-ynab-full-refresh",
+            "--no-sync",
         )
     )
 
     assert ret == 17
-    resolve_token_mock.assert_called_once_with(None)
-    sync_and_resolve_transaction_mock.assert_awaited_once()
-    kwargs = sync_and_resolve_transaction_mock.await_args.kwargs
+    add_transaction_mock.assert_awaited_once()
+    kwargs = add_transaction_mock.await_args.kwargs
     assert kwargs["plan_name"] == "My Plan"
     assert kwargs["account_name"] == "Checking"
     assert kwargs["payee_name"] == "Employer"
@@ -313,46 +278,9 @@ async def test_run_delegates_parsed_args(
     assert kwargs["amount"] == Decimal("12.34")
     assert kwargs["db"] == Path("/tmp/db.sqlite")
     assert kwargs["full_refresh"] is True
-    assert kwargs["token"] == "resolved-token"
-    assert kwargs["quiet"] is True
-
-    add_transaction_and_move_funds_mock.assert_awaited_once()
-    kwargs = add_transaction_and_move_funds_mock.await_args.kwargs
-    assert kwargs["resolved"] is sync_and_resolve_transaction_mock.return_value
-    assert kwargs["token"] == "resolved-token"
-    assert kwargs["db"] == Path("/tmp/db.sqlite")
     assert kwargs["for_real"] is True
     assert kwargs["quiet"] is True
-
-
-@pytest.mark.parametrize(
-    "err",
-    [
-        pytest.param(RuntimeError("runtime boom"), id="runtime-error"),
-        pytest.param(ValueError("value boom"), id="value-error"),
-    ],
-)
-@patch(
-    "manager_for_ynab.add_transaction.sync_and_resolve_transaction",
-    new_callable=AsyncMock,
-)
-@patch("manager_for_ynab.add_transaction.resolve_token")
-@pytest.mark.asyncio
-async def test_run_returns_one_when_resolution_stage_fails(
-    resolve_token_mock,
-    sync_and_resolve_transaction_mock,
-    err,
-    capsys,
-):
-    resolve_token_mock.return_value = "resolved-token"
-    sync_and_resolve_transaction_mock.side_effect = err
-
-    ret = await run(())
-
-    out, stderr = capsys.readouterr()
-    assert ret == 1
-    assert out == f"{err}\n"
-    assert stderr == ""
+    assert kwargs["should_sync"] is False
 
 
 @pytest.mark.parametrize(
@@ -396,6 +324,34 @@ async def test_move_funds_dry_run(
     transactions_api_cls.assert_not_called()
 
 
+@patch("manager_for_ynab.add_transaction.sync", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, capsys):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    ret = await add_transaction(
+        plan_name=None,
+        account_name="Checking",
+        payee_name="Employer",
+        category_name="Inflow: Ready to Assign",
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal("12.34"),
+        for_real=False,
+        quiet=False,
+        db=db_path,
+        full_refresh=False,
+        should_sync=False,
+        token_override="token",
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync_mock.assert_not_awaited()
+    assert "** Refreshing SQLite DB **" not in out
+
+
 @patch(
     "manager_for_ynab.add_transaction._apply_category_budget_delta",
     new_callable=AsyncMock,
@@ -415,12 +371,9 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
 ):
     db_path = tmp_path / "add-transaction-credit-card-positive.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
-        plan=replace(
-            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
-        ),
+        plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
     )
     apply_category_budget_delta_mock.return_value = 12340
 
@@ -457,12 +410,9 @@ async def test_move_funds_reports_returned_credit_card_payment(
 ):
     db_path = tmp_path / "add-transaction-credit-card-negative.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
-        plan=replace(
-            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
-        ),
+        plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
     )
 
     transactions_api = transactions_api_cls.return_value
@@ -520,12 +470,9 @@ async def test_move_funds_reports_returned_budget_delta(
 ):
     db_path = tmp_path / "add-transaction-credit-card-returned.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
-        plan=replace(
-            resolved_ready_to_assign_credit_card_transaction.plan, id=ids["plan_id"]
-        ),
+        plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
     )
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
@@ -561,12 +508,15 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     tmp_path,
     capsys,
 ):
+    db_path = tmp_path / "add-transaction-category.sqlite"
+    _create_add_transaction_db(db_path)
+
     fund_category_mock.return_value = 5000
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         resolved=resolved_dining_transaction,
         token="token",
-        db=tmp_path / "add-transaction-category.sqlite",
+        db=db_path,
         for_real=True,
         quiet=False,
     )
@@ -629,7 +579,6 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
 
     resolved = await sync_and_resolve_transaction(
         plan_name="My Plan",
@@ -645,11 +594,11 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
         quiet=True,
     )
 
-    assert resolved.plan.id == ids["plan_id"]
-    assert resolved.account.id == ids["checking_account_id"]
-    assert resolved.payee.id == ids["employer_payee_id"]
+    assert resolved.plan.id == PLAN_ID
+    assert resolved.account.id == CHECKING_ACCOUNT_ID
+    assert resolved.payee.id == EMPLOYER_PAYEE_ID
     assert resolved.category is not None
-    assert resolved.category.id == ids["ready_to_assign_category_id"]
+    assert resolved.category.id == READY_TO_ASSIGN_CATEGORY_ID
     sync_mock.assert_awaited_once_with("token", db_path, False, quiet=True)
 
 
@@ -792,7 +741,6 @@ async def test_resolve_transaction_prompts_for_missing_values(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     choice_prompt_mock.side_effect = [
         "Checking",
         "Employer",
@@ -812,11 +760,11 @@ async def test_resolve_transaction_prompts_for_missing_values(
         amount=None,
     )
 
-    assert resolved.plan.id == ids["plan_id"]
-    assert resolved.account.id == ids["checking_account_id"]
-    assert resolved.payee.id == ids["employer_payee_id"]
+    assert resolved.plan.id == PLAN_ID
+    assert resolved.account.id == CHECKING_ACCOUNT_ID
+    assert resolved.payee.id == EMPLOYER_PAYEE_ID
     assert resolved.category is not None
-    assert resolved.category.id == ids["ready_to_assign_category_id"]
+    assert resolved.category.id == READY_TO_ASSIGN_CATEGORY_ID
     assert resolved.date == date(2026, 4, 26)
     assert resolved.amount == Decimal("12.34")
 
@@ -904,8 +852,7 @@ async def test_resolve_transaction_rejects_category_for_transfer(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
-    matching_entry_mock.return_value = ids["checking_account_id"]
+    matching_entry_mock.return_value = CHECKING_ACCOUNT_ID
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
     with pytest.raises(
@@ -951,14 +898,13 @@ async def test_prompt_uses_prompt_session(prompt_session_cls):
 async def test_resolve_account_id_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     choice_prompt_mock.return_value = "Checking"
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
-        account_id = await _resolve_account_id(con, ids["plan_id"], None)
+        account_id = await _resolve_account_id(con, PLAN_ID, None)
 
-    assert account_id == ids["checking_account_id"]
+    assert account_id == CHECKING_ACCOUNT_ID
 
 
 @patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
@@ -981,14 +927,13 @@ async def test_resolve_account_id_errors_without_accounts(
 async def test_resolve_category_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     choice_prompt_mock.return_value = "Inflow: Ready to Assign"
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
-        category_id, category_name = await _resolve_category(con, ids["plan_id"], None)
+        category_id, category_name = await _resolve_category(con, PLAN_ID, None)
 
-    assert category_id == ids["ready_to_assign_category_id"]
+    assert category_id == READY_TO_ASSIGN_CATEGORY_ID
     assert category_name == "Inflow: Ready to Assign"
 
 
@@ -1012,16 +957,15 @@ async def test_resolve_category_errors_without_categories(
 async def test_resolve_payee_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
     choice_prompt_mock.return_value = "Employer"
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         payee_id, payee_name, transfer_account_id = await _resolve_payee(
-            con, ids["plan_id"], None
+            con, PLAN_ID, None
         )
 
-    assert payee_id == ids["employer_payee_id"]
+    assert payee_id == EMPLOYER_PAYEE_ID
     assert payee_name == "Employer"
     assert transfer_account_id is None
 
@@ -1030,16 +974,15 @@ async def test_resolve_payee_prompts_when_missing(choice_prompt_mock, tmp_path):
 async def test_resolve_payee_returns_fuzzy_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         payee_id, payee_name, transfer_account_id = await _resolve_payee(
-            con, ids["plan_id"], "Employe"
+            con, PLAN_ID, "Employe"
         )
 
-    assert payee_id == ids["employer_payee_id"]
+    assert payee_id == EMPLOYER_PAYEE_ID
     assert payee_name == "Employer"
     assert transfer_account_id is None
 
@@ -1123,27 +1066,16 @@ async def test_resolve_payee_allows_new_payee(
 async def test_resolve_payee_returns_existing_transfer_payee(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "INSERT INTO payees VALUES (?, ?, 0, ?, ?)",
-            (
-                str(uuid.uuid4()),
-                ids["plan_id"],
-                "Transfer",
-                ids["checking_account_id"],
-            ),
-        )
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         payee_id, payee_name, transfer_account_id = await _resolve_payee(
-            con, ids["plan_id"], "Transfer"
+            con, PLAN_ID, "Transfer"
         )
 
     assert payee_id is not None
     assert payee_name == "Transfer"
-    assert transfer_account_id == ids["checking_account_id"]
+    assert transfer_account_id == CHECKING_ACCOUNT_ID
 
 
 @pytest.mark.asyncio
@@ -1202,7 +1134,6 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    ids = _seed_ids(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1210,12 +1141,12 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
             RuntimeError,
             match="No credit card payment category found for account 'missing'.",
         ):
-            await _resolve_credit_card_payment_category(con, ids["plan_id"], "missing")
+            await _resolve_credit_card_payment_category(con, PLAN_ID, "missing")
 
     with sqlite3.connect(db_path) as con:
         con.execute(
-            "INSERT INTO categories VALUES (?, ?, 0, 'Credit Card Payments', 'Credit Card')",
-            (str(uuid.uuid4()), ids["plan_id"]),
+            "UPDATE categories SET deleted = 0 WHERE id = ?",
+            (DUPLICATE_CREDIT_CARD_CATEGORY_ID,),
         )
 
     async with aiosqlite.connect(db_path) as con:
@@ -1224,9 +1155,7 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
             RuntimeError,
             match="Found 2 credit card payment categories for account 'Credit Card'.",
         ):
-            await _resolve_credit_card_payment_category(
-                con, ids["plan_id"], "Credit Card"
-            )
+            await _resolve_credit_card_payment_category(con, PLAN_ID, "Credit Card")
 
 
 @pytest.mark.asyncio

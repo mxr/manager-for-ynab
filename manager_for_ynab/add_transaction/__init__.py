@@ -117,6 +117,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Whether to refresh the SQLite DB from scratch.",
     )
+    parser.add_argument(
+        "--sync",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Refresh the SQLite DB before using it.",
+    )
     return parser
 
 
@@ -128,27 +134,61 @@ async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
+    return await add_transaction(
+        plan_name=args.plan_name,
+        account_name=args.account_name,
+        payee_name=args.payee_name,
+        category_name=args.category_name,
+        date=args.date,
+        cleared=args.cleared,
+        amount=args.amount,
+        for_real=args.for_real,
+        quiet=args.quiet,
+        db=args.sqlite_export_for_ynab_db,
+        full_refresh=args.sqlite_export_for_ynab_full_refresh,
+        should_sync=args.sync,
+        token_override=token_override,
+    )
+
+
+async def add_transaction(
+    *,
+    plan_name: str | None,
+    account_name: str | None,
+    payee_name: str | None,
+    category_name: str | None,
+    date: datetime.date | None,
+    cleared: TransactionClearedStatus | None,
+    amount: Decimal | None,
+    for_real: bool,
+    quiet: bool,
+    db: Path,
+    full_refresh: bool,
+    should_sync: bool = True,
+    token_override: str | None,
+) -> int:
     token = resolve_token(token_override)
     try:
         resolved = await sync_and_resolve_transaction(
-            plan_name=args.plan_name,
-            account_name=args.account_name,
-            payee_name=args.payee_name,
-            category_name=args.category_name,
-            date=args.date,
-            cleared=args.cleared,
-            amount=args.amount,
-            quiet=args.quiet,
-            db=args.sqlite_export_for_ynab_db,
-            full_refresh=args.sqlite_export_for_ynab_full_refresh,
+            plan_name=plan_name,
+            account_name=account_name,
+            payee_name=payee_name,
+            category_name=category_name,
+            date=date,
+            cleared=cleared,
+            amount=amount,
+            quiet=quiet,
+            db=db,
+            full_refresh=full_refresh,
+            should_sync=should_sync,
             token=token,
         )
         return await add_transaction_and_move_funds(
             resolved=resolved,
             token=token,
-            db=args.sqlite_export_for_ynab_db,
-            for_real=args.for_real,
-            quiet=args.quiet,
+            db=db,
+            for_real=for_real,
+            quiet=quiet,
         )
     except Exception as err:
         print(err)
@@ -166,12 +206,14 @@ async def sync_and_resolve_transaction(
     amount: Decimal | None,
     db: Path,
     full_refresh: bool,
+    should_sync: bool = True,
     token: str,
     quiet: bool,
 ) -> ResolvedTransaction:
-    _print("** Refreshing SQLite DB **", quiet=quiet)
-    await sync(token, db, full_refresh, quiet=quiet)
-    _print("** Done **", quiet=quiet)
+    if should_sync:
+        _print("** Refreshing SQLite DB **", quiet=quiet)
+        await sync(token, db, full_refresh, quiet=quiet)
+        _print("** Done **", quiet=quiet)
 
     return await _resolve_transaction(
         db=db,
@@ -714,6 +756,7 @@ def edit_distance(left: str, right: str) -> int:
 
 
 __all__ = [
+    add_transaction.__name__,
     build_parser.__name__,
     add_transaction_and_move_funds.__name__,
     ResolvedAccount.__name__,
