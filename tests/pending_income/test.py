@@ -1,6 +1,5 @@
 import sqlite3
 from datetime import date
-from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -103,7 +102,7 @@ def _expected_pending_income_result(
     *,
     include_matched: bool = True,
 ) -> PendingIncomeResult:
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    seed_date = date.today().replace(day=1).isoformat()
     transactions = [
         Transaction(
             id="keep-1",
@@ -111,7 +110,7 @@ def _expected_pending_income_result(
             account_name="Checking",
             payee_name="Employer",
             amount_formatted="$100.00",
-            date=yesterday,
+            date=seed_date,
         ),
         Transaction(
             id="keep-2",
@@ -119,7 +118,7 @@ def _expected_pending_income_result(
             account_name="Savings",
             payee_name="Employer",
             amount_formatted="$55.00",
-            date=yesterday,
+            date=seed_date,
         ),
     ]
     if include_matched:
@@ -131,7 +130,7 @@ def _expected_pending_income_result(
                 account_name="Checking",
                 payee_name="Employer",
                 amount_formatted="$65.00",
-                date=yesterday,
+                date=seed_date,
             ),
         )
     return PendingIncomeResult(transactions=transactions, updated_count=updated_count)
