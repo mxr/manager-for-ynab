@@ -33,16 +33,36 @@ _CLEARED_CHOICES = {status.name.lower(): status for status in TransactionCleared
 
 
 @dataclass(frozen=True)
+class ResolvedPlan:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class ResolvedAccount:
+    id: str
+    name: str
+    type: str
+
+
+@dataclass(frozen=True)
+class ResolvedPayee:
+    id: str | None
+    name: str
+
+
+@dataclass(frozen=True)
+class ResolvedCategory:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
 class ResolvedTransaction:
-    plan_id: str
-    plan_name: str
-    account_id: str
-    account_name: str
-    account_type: str
-    payee_id: str | None
-    payee_name: str
-    category_id: str | None
-    category_name: str | None
+    plan: ResolvedPlan
+    account: ResolvedAccount
+    payee: ResolvedPayee
+    category: ResolvedCategory | None
     date: datetime.date
     cleared: TransactionClearedStatus
     amount: Decimal
@@ -51,15 +71,15 @@ class ResolvedTransaction:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PACKAGE,
-        description=(
-            "Create a transaction in YNAB and optionally fund a category "
-            "from Ready to Assign."
-        ),
+        description="Create a transaction in YNAB and try to fund a category from Ready to Assign.",
     )
     parser.add_argument("--plan-name", help="YNAB plan name. If omitted, prompts.")
     parser.add_argument("--account-name", help="Account name. If omitted, prompts.")
     parser.add_argument("--payee-name", help="Payee name. If omitted, prompts.")
-    parser.add_argument("--category-name", help="Category name. If omitted, prompts.")
+    parser.add_argument(
+        "--category-name",
+        help="Category name. If omitted, prompts. Not needed for transfer transactions.",
+    )
     parser.add_argument(
         "--date",
         type=datetime.date.fromisoformat,
@@ -148,124 +168,34 @@ async def add_transaction(
     token_override: str | None,
 ) -> int:
     token = resolve_token(token_override)
-
-    if should_sync:
-        _print("** Refreshing SQLite DB **", quiet=quiet)
-        await sync(token, db, full_refresh, quiet=quiet)
-        _print("** Done **", quiet=quiet)
-
     try:
-        async with aiosqlite.connect(db) as con:
-            con.row_factory = aiosqlite.Row
-            await con.create_function("EDITDISTANCE", 2, edit_distance)
-
-            resolved = await _resolve_transaction(
-                con,
-                plan_name=plan_name,
-                account_name=account_name,
-                payee_name=payee_name,
-                category_name=category_name,
-                date=date,
-                cleared=cleared,
-                amount=amount,
-            )
-
-            txn = _build_transaction(resolved)
-            if not for_real:
-                _print("Dry run, not creating transaction:", quiet=quiet)
-                if not quiet:
-                    rich.print(txn)
-                return 0
-
-            applied_delta = 0
-            try:
-                with ynab.ApiClient(
-                    ynab.Configuration(access_token=token)
-                ) as api_client:
-                    transactions_api = ynab.TransactionsApi(api_client)
-                    await asyncio.to_thread(
-                        transactions_api.create_transaction,
-                        resolved.plan_id,
-                        ynab.PostTransactionsWrapper(transaction=txn),
-                    )
-
-                    if (
-                        resolved.category_id is not None
-                        and resolved.category_name is not None
-                        and resolved.category_name == "Inflow: Ready to Assign"
-                        and resolved.account_type == "creditCard"
-                    ):
-                        (
-                            payment_category_id,
-                            payment_category_name,
-                        ) = await _resolve_credit_card_payment_category(
-                            con, resolved.plan_id, resolved.account_name
-                        )
-                        assert txn.amount is not None
-                        applied_delta = await _apply_category_budget_delta(
-                            api_client,
-                            resolved.plan_id,
-                            resolved.date,
-                            payment_category_id,
-                            txn.amount,
-                        )
-                        _print("Created transaction:", quiet=quiet)
-                        if not quiet:
-                            rich.print(txn)
-                        if applied_delta > 0:
-                            print(
-                                f"Applied {applied_delta / 1000:.2f} USD to "
-                                f"{payment_category_name!r} from Ready to Assign."
-                            )
-                        if applied_delta < 0:
-                            print(
-                                f"Returned {abs(applied_delta) / 1000:.2f} USD from "
-                                f"{payment_category_name!r} to Ready to Assign."
-                            )
-                        return 0
-
-                    if (
-                        resolved.category_id is not None
-                        and resolved.category_name is not None
-                        and resolved.category_name != "Inflow: Ready to Assign"
-                    ):
-                        assert txn.amount is not None
-                        applied_delta = await _fund_category(
-                            api_client,
-                            resolved.plan_id,
-                            resolved.date,
-                            resolved.category_id,
-                            txn.amount,
-                        )
-            except ynab.ApiException as err:
-                print(f"Failed to create transaction: {err}", file=sys.stderr)
-                return 1
-
-            _print("Created transaction:", quiet=quiet)
-            if not quiet:
-                rich.print(txn)
-
-            if (
-                resolved.category_id is not None
-                and resolved.category_name is not None
-                and applied_delta > 0
-            ):
-                print(
-                    f"Funded {resolved.category_name!r} from 'Ready to Assign' "
-                    f"by {applied_delta / 1000:.2f} USD"
-                )
-
-            return 0
-    except RuntimeError as err:
-        print(err)
-        return 1
-    except ValueError as err:
+        resolved = await sync_and_resolve_transaction(
+            plan_name=plan_name,
+            account_name=account_name,
+            payee_name=payee_name,
+            category_name=category_name,
+            date=date,
+            cleared=cleared,
+            amount=amount,
+            quiet=quiet,
+            db=db,
+            full_refresh=full_refresh,
+            should_sync=should_sync,
+            token=token,
+        )
+        return await add_transaction_and_move_funds(
+            resolved=resolved,
+            token=token,
+            db=db,
+            for_real=for_real,
+            quiet=quiet,
+        )
+    except Exception as err:
         print(err)
         return 1
 
 
-async def _resolve_transaction(
-    con: aiosqlite.Connection,
+async def sync_and_resolve_transaction(
     *,
     plan_name: str | None,
     account_name: str | None,
@@ -274,73 +204,203 @@ async def _resolve_transaction(
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
     amount: Decimal | None,
+    db: Path,
+    full_refresh: bool,
+    should_sync: bool = True,
+    token: str,
+    quiet: bool,
 ) -> ResolvedTransaction:
-    plans = await _load_name_to_id(con, "plans", deleted=False)
-    if not plans:
-        raise RuntimeError("No plans found in this YNAB account.")
+    if should_sync:
+        _print("** Refreshing SQLite DB **", quiet=quiet)
+        await sync(token, db, full_refresh, quiet=quiet)
+        _print("** Done **", quiet=quiet)
 
-    if plan_name:
-        plan_id = await _matching_entry(con, "plans", plan_name, deleted=False)
-        plan_name = next(
-            name
-            for name, matched_plan_id in plans.items()
-            if matched_plan_id == plan_id
-        )
-    elif len(plans) == 1:
-        plan_name, plan_id = next(iter(plans.items()))
-    else:
-        plan_name = await _choice_prompt("Plan: ", plans)
-        plan_id = plans[plan_name]
-
-    current_date = date or await date_prompt()
-    account_id = await _resolve_account_id(con, plan_id, account_name)
-    resolved_account_name, resolved_account_type = await _load_account_by_id(
-        con, account_id
-    )
-    payee_id, resolved_payee_name, transfer_account_id = await _resolve_payee(
-        con, plan_id, payee_name
-    )
-
-    resolved_category_id: str | None = None
-    resolved_category_name: str | None = None
-    if transfer_account_id is not None:
-        if category_name:
-            raise ValueError("Category not allowed for transfer transactions")
-    else:
-        resolved_category_id, resolved_category_name = await _resolve_category(
-            con, plan_id, category_name
-        )
-
-    resolved_amount = amount if amount is not None else await amount_prompt()
-    return ResolvedTransaction(
-        plan_id=plan_id,
+    return await _resolve_transaction(
+        db=db,
         plan_name=plan_name,
-        account_id=account_id,
-        account_name=resolved_account_name,
-        account_type=resolved_account_type,
-        payee_id=payee_id,
-        payee_name=resolved_payee_name,
-        category_id=resolved_category_id,
-        category_name=resolved_category_name,
-        date=current_date,
-        cleared=cleared or TransactionClearedStatus.UNCLEARED,
-        amount=resolved_amount,
+        account_name=account_name,
+        payee_name=payee_name,
+        category_name=category_name,
+        date=date,
+        cleared=cleared,
+        amount=amount,
     )
+
+
+async def add_transaction_and_move_funds(
+    *,
+    resolved: ResolvedTransaction,
+    token: str,
+    db: Path,
+    for_real: bool,
+    quiet: bool,
+) -> int:
+    txn = _build_transaction(resolved)
+    if not for_real:
+        _print("Dry run, not creating transaction:", quiet=quiet)
+        if not quiet:
+            rich.print(txn)
+        return 0
+
+    applied_delta = 0
+    try:
+        async with aiosqlite.connect(db) as con:
+            con.row_factory = aiosqlite.Row
+            with ynab.ApiClient(ynab.Configuration(access_token=token)) as api_client:
+                transactions_api = ynab.TransactionsApi(api_client)
+                await asyncio.to_thread(
+                    transactions_api.create_transaction,
+                    resolved.plan.id,
+                    ynab.PostTransactionsWrapper(transaction=txn),
+                )
+
+                if (
+                    resolved.category is not None
+                    and resolved.category.name == "Inflow: Ready to Assign"
+                    and resolved.account.type == "creditCard"
+                ):
+                    (
+                        payment_category_id,
+                        payment_category_name,
+                    ) = await _resolve_credit_card_payment_category(
+                        con, resolved.plan.id, resolved.account.name
+                    )
+                    assert txn.amount is not None
+                    applied_delta = await _apply_category_budget_delta(
+                        api_client,
+                        resolved.plan.id,
+                        resolved.date,
+                        payment_category_id,
+                        txn.amount,
+                    )
+                    _print("Created transaction:", quiet=quiet)
+                    if not quiet:
+                        rich.print(txn)
+                    if applied_delta > 0:
+                        print(
+                            f"Applied {applied_delta / 1000:.2f} USD to {payment_category_name!r} from Ready to Assign."
+                        )
+                    if applied_delta < 0:
+                        print(
+                            f"Returned {abs(applied_delta) / 1000:.2f} USD from "
+                            f"{payment_category_name!r} to Ready to Assign."
+                        )
+                    return 0
+
+                if (
+                    resolved.category is not None
+                    and resolved.category.name != "Inflow: Ready to Assign"
+                ):
+                    assert txn.amount is not None
+                    applied_delta = await _fund_category(
+                        api_client,
+                        resolved.plan.id,
+                        resolved.date,
+                        resolved.category.id,
+                        txn.amount,
+                    )
+    except ynab.ApiException as err:
+        print(f"Failed to create transaction: {err}", file=sys.stderr)
+        return 1
+    except RuntimeError as err:
+        print(err)
+        return 1
+    except ValueError as err:
+        print(err)
+        return 1
+
+    _print("Created transaction:", quiet=quiet)
+    if not quiet:
+        rich.print(txn)
+
+    if resolved.category is not None and applied_delta > 0:
+        print(
+            f"Funded {resolved.category.name!r} from 'Ready to Assign' by {applied_delta / 1000:.2f} USD"
+        )
+
+    return 0
+
+
+async def _resolve_transaction(
+    *,
+    db: Path,
+    plan_name: str | None,
+    account_name: str | None,
+    payee_name: str | None,
+    category_name: str | None,
+    date: datetime.date | None,
+    cleared: TransactionClearedStatus | None,
+    amount: Decimal | None,
+) -> ResolvedTransaction:
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+
+        plans = await _load_name_to_id(con, "plans", deleted=False)
+        if not plans:
+            raise RuntimeError("No plans found in this YNAB account.")
+
+        if plan_name:
+            plan_id = await _matching_entry(con, "plans", plan_name, deleted=False)
+            plan_name = next(
+                name
+                for name, matched_plan_id in plans.items()
+                if matched_plan_id == plan_id
+            )
+        elif len(plans) == 1:
+            plan_name, plan_id = next(iter(plans.items()))
+        else:
+            plan_name = await _choice_prompt("Plan: ", plans)
+            plan_id = plans[plan_name]
+
+        current_date = date or await date_prompt()
+        account_id = await _resolve_account_id(con, plan_id, account_name)
+        resolved_account_name, resolved_account_type = await _load_account_by_id(
+            con, account_id
+        )
+        payee_id, resolved_payee_name, transfer_account_id = await _resolve_payee(
+            con, plan_id, payee_name
+        )
+
+        resolved_category: ResolvedCategory | None = None
+        if transfer_account_id is not None:
+            if category_name:
+                raise ValueError("Category not allowed for transfer transactions")
+        else:
+            resolved_category_id, resolved_category_name = await _resolve_category(
+                con, plan_id, category_name
+            )
+            resolved_category = ResolvedCategory(
+                id=resolved_category_id, name=resolved_category_name
+            )
+
+        resolved_amount = amount if amount is not None else await amount_prompt()
+        return ResolvedTransaction(
+            plan=ResolvedPlan(id=plan_id, name=plan_name),
+            account=ResolvedAccount(
+                id=account_id,
+                name=resolved_account_name,
+                type=resolved_account_type,
+            ),
+            payee=ResolvedPayee(id=payee_id, name=resolved_payee_name),
+            category=resolved_category,
+            date=current_date,
+            cleared=cleared or TransactionClearedStatus.UNCLEARED,
+            amount=resolved_amount,
+        )
 
 
 def _build_transaction(resolved: ResolvedTransaction) -> ynab.NewTransaction:
     return ynab.NewTransaction(
-        account_id=uuid.UUID(resolved.account_id),
+        account_id=uuid.UUID(resolved.account.id),
         date=resolved.date,
         payee_id=(
-            uuid.UUID(resolved.payee_id) if resolved.payee_id is not None else None
+            uuid.UUID(resolved.payee.id) if resolved.payee.id is not None else None
         ),
-        payee_name=resolved.payee_name,
+        payee_name=resolved.payee.name,
         amount=int(-1 * 1000 * resolved.amount),
         category_id=(
-            uuid.UUID(resolved.category_id)
-            if resolved.category_id is not None
-            else None
+            uuid.UUID(resolved.category.id) if resolved.category is not None else None
         ),
         cleared=resolved.cleared,
         approved=True,
@@ -695,4 +755,15 @@ def edit_distance(left: str, right: str) -> int:
     return previous[-1]
 
 
-__all__ = [add_transaction.__name__, build_parser.__name__, run.__name__]
+__all__ = [
+    add_transaction.__name__,
+    build_parser.__name__,
+    add_transaction_and_move_funds.__name__,
+    ResolvedAccount.__name__,
+    ResolvedCategory.__name__,
+    ResolvedPayee.__name__,
+    ResolvedPlan.__name__,
+    ResolvedTransaction.__name__,
+    run.__name__,
+    sync_and_resolve_transaction.__name__,
+]
