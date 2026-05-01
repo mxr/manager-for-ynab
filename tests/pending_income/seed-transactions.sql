@@ -17,7 +17,7 @@ INSERT INTO transactions (
     , :test_plan_id_1
     , NULL
     , 'Checking'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , 100000
     , '$100.00'
     , 'Employer'
@@ -31,7 +31,7 @@ INSERT INTO transactions (
     , :test_plan_id_2
     , NULL
     , 'Savings'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , 55000
     , '$55.00'
     , 'Employer'
@@ -59,7 +59,7 @@ INSERT INTO transactions (
     , :test_plan_id_1
     , NULL
     , 'Checking'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , -20000
     , '-$20.00'
     , 'Refund'
@@ -73,7 +73,7 @@ INSERT INTO transactions (
     , :test_plan_id_1
     , NULL
     , 'Checking'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , 10000
     , '$10.00'
     , 'Cleared'
@@ -101,7 +101,7 @@ INSERT INTO transactions (
     , :test_plan_id_1
     , NULL
     , 'Checking'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , 40000
     , '$40.00'
     , 'Transfer'
@@ -115,7 +115,7 @@ INSERT INTO transactions (
     , :test_plan_id_1
     , NULL
     , 'Checking'
-    , DATE('now', 'localtime', '-1 day')
+    , DATE('now', 'localtime', 'start of month')
     , 65000
     , '$65.00'
     , 'Employer'
