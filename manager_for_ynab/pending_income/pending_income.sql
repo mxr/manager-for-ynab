@@ -12,7 +12,15 @@ WHERE
     AND transactions."date" < DATE('now', 'localtime')
     AND transactions.amount > 0
     AND NOT transactions.deleted
-    AND SUBSTR(transactions."date", 6, 2) = SUBSTR(DATE(), 6, 2)
+    AND (
+        SUBSTR(transactions."date", 1, 7)
+        = SUBSTR(DATE('now', 'localtime'), 1, 7)
+        OR (
+            DATE('now', 'localtime')
+            = DATE('now', 'localtime', 'start of month')
+            AND transactions."date" = DATE('now', 'localtime', '-1 day')
+        )
+    )
     AND (:skip_matched = 0 OR transactions.matched_transaction_id IS NULL)
     AND transactions.id NOT IN (
         SELECT subtransactions.transfer_transaction_id
