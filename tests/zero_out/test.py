@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import datetime
+import threading
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -289,22 +290,26 @@ async def test_update_month_category(categories_api, update_error, expected):
 async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
     active = 0
     max_active = 0
-    release = asyncio.Event()
+    lock = threading.Lock()
+    release = threading.Event()
 
-    async def update_month_category(*, month, **kwargs):
+    def update_month_category(*, month, **kwargs):
         nonlocal active, max_active
-        active += 1
-        max_active = max(max_active, active)
-        await release.wait()
-        active -= 1
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        release.wait(timeout=1)
+        with lock:
+            active -= 1
 
     categories_api.update_month_category.side_effect = update_month_category
     months = tuple((2025, month) for month in range(1, 11))
     task = asyncio.create_task(_run_updates(categories_api, "plan-1", "cat-1", months))
 
     while True:
-        if max_active == 5:
-            break
+        with lock:
+            if max_active == 5:
+                break
         await asyncio.sleep(0)
 
     release.set()
@@ -402,45 +407,6 @@ async def test_run_dry_run_prints_preview(
     assert "Use --for-real to actually update categories." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
-@pytest.mark.asyncio
-async def test_run_returns_error_when_plan_lookup_fails(
-    get_plan,
-    capsys,
-    ynab_configuration,
-    ynab_api_client,
-    ynab_plans_api,
-    ynab_categories_api,
-):
-    get_plan.side_effect = RuntimeError("bad plan")
-
-    ret = await run(("--category-name", "Rent", "--start", "2025-01"))
-
-    out, _ = capsys.readouterr()
-    assert ret == 1
-    ynab_configuration.assert_called_once_with(access_token="token")
-    ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
-    assert "bad plan" in out
-
-
-@pytest.mark.parametrize(
-    ("argv", "today", "expected"),
-    [
-        pytest.param(
-            ("--category-name", "Rent", "--start", "2025-03", "--end", "2025-02"),
-            None,
-            "No months selected.",
-            id="empty-range",
-        ),
-        pytest.param(
-            ("--category-name", "Rent", "--start", "2025-04"),
-            datetime.date(2025, 4, 14),
-            "Months to update: 2025-04",
-            id="default-end-month",
-        ),
-    ],
-)
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_category_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)

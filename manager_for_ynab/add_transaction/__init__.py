@@ -396,9 +396,7 @@ async def _resolve_transaction(
         )
 
 
-def _build_transaction(
-    resolved: ResolvedTransaction,
-) -> NewTransaction:
+def _build_transaction(resolved: ResolvedTransaction) -> NewTransaction:
     return NewTransaction(
         account_id=uuid.UUID(resolved.account.id),
         date=resolved.date,
