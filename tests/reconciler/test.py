@@ -1,5 +1,3 @@
-import json
-import re
 import sqlite3
 from contextlib import nullcontext
 from decimal import Decimal
@@ -7,8 +5,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-import aiohttp
 import aiosqlite
+import asyncio_for_ynab
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -17,11 +15,9 @@ from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
 from manager_for_ynab.reconciler import run
-from manager_for_ynab.reconciler import YnabClient
 from testing.fixtures import CHECKING_ACCOUNT_ID
 from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
 from testing.fixtures import db
-from testing.fixtures import mock_aioresponses
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
 from testing.fixtures import TOKEN_OVERRIDE
@@ -125,11 +121,11 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
+@patch("manager_for_ynab.reconciler.do_reconcile", new_callable=AsyncMock)
 @patch("manager_for_ynab.reconciler.sync")
-@patch.object(YnabClient, "reconcile")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
-async def test_run_reconciles_with_for_real(reconcile, sync, db):
+async def test_run_reconciles_with_for_real(sync, do_reconcile_mock, db):
     ret = await run(
         (
             "--account-like",
@@ -143,7 +139,7 @@ async def test_run_reconciles_with_for_real(reconcile, sync, db):
     )
     sync.assert_called()
     assert ret == 0
-    reconcile.assert_called()
+    do_reconcile_mock.assert_called()
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
@@ -430,63 +426,14 @@ async def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
 @pytest.mark.asyncio
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
-@pytest.mark.usefixtures(mock_aioresponses.__name__)
-async def test_run_do_reconcile(sync, db, mock_aioresponses):
+async def test_run_do_reconcile(sync, db):
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         transactions = (
             await fetch_transactions(con, await fetch_plan_accts(con, ["%checking%"]))
         )[0]
 
-    mock_aioresponses.patch(
-        re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
-        body=json.dumps(
-            {
-                "data": {
-                    "transactions": [
-                        {"id": t.id, "cleared": "reconciled"} for t in transactions
-                    ]
-                }
-            }
-        ),
-    )
+    transactions_api = AsyncMock(spec=asyncio_for_ynab.TransactionsApi)
+    await do_reconcile(transactions_api, PLAN_ID, transactions, "Reconciling")
 
-    async with aiohttp.ClientSession() as session:
-        await do_reconcile(session, TOKEN, PLAN_ID, transactions, "Reconciling")
-
-
-@pytest.mark.asyncio
-@patch("manager_for_ynab.reconciler.sync")
-@pytest.mark.usefixtures(db.__name__)
-@pytest.mark.usefixtures(mock_aioresponses.__name__)
-async def test_run_do_reconcile_error_4034(sync, db, mock_aioresponses):
-    async with aiosqlite.connect(db) as con:
-        con.row_factory = aiosqlite.Row
-        transactions = (
-            await fetch_transactions(con, await fetch_plan_accts(con, ["%checking%"]))
-        )[0]
-
-    mock_aioresponses.patch(
-        re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
-        body=json.dumps(
-            {
-                "data": {
-                    "transactions": [
-                        {"id": t.id, "cleared": "reconciled"} for t in transactions
-                    ]
-                }
-            }
-        ),
-        payload={"error": {"id": "403.4"}},
-    )
-
-    for t in transactions:
-        mock_aioresponses.patch(
-            re.compile("https://api.ynab.com/v1/plans/.+/transactions"),
-            body=json.dumps(
-                {"data": {"transactions": [{"id": t.id, "cleared": "reconciled"}]}}
-            ),
-        )
-
-    async with aiohttp.ClientSession() as session:
-        await do_reconcile(session, TOKEN, PLAN_ID, transactions, "Reconciling")
+    transactions_api.update_transactions.assert_awaited_once()

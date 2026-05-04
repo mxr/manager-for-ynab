@@ -3,6 +3,7 @@ from typing import Any
 from unittest.mock import patch
 
 import aiosqlite
+import asyncio_for_ynab
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -12,7 +13,6 @@ from manager_for_ynab.auto_approve import build_updates
 from manager_for_ynab.auto_approve import fetch_auto_approve_transactions
 from manager_for_ynab.auto_approve import run
 from manager_for_ynab.auto_approve import Transaction
-from manager_for_ynab.auto_approve import ynab
 
 
 pytest_plugins = ("tests.auto_approve.fixtures",)
@@ -150,7 +150,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
     )
 
 
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_auto_approve_uses_token_override(sync, db):
@@ -167,7 +167,7 @@ async def test_auto_approve_uses_token_override(sync, db):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_auto_approve_quiet_suppresses_refresh_logs(sync, db, capsys):
@@ -218,7 +218,7 @@ async def test_auto_approve_for_real_returns_updated_count(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
@@ -234,7 +234,7 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_run_quiet_suppresses_all_output(sync, db, capsys):
@@ -247,7 +247,7 @@ async def test_run_quiet_suppresses_all_output(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.auto_approve.sync")
 @pytest.mark.asyncio
 async def test_run_no_sync_uses_existing_db(sync, db, capsys):

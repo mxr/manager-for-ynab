@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import patch
 
 import aiosqlite
+import asyncio_for_ynab
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
@@ -13,7 +14,6 @@ from manager_for_ynab.pending_income import pending_income
 from manager_for_ynab.pending_income import PendingIncomeResult
 from manager_for_ynab.pending_income import run
 from manager_for_ynab.pending_income import Transaction
-from manager_for_ynab.pending_income import ynab
 
 
 pytest_plugins = ("tests.pending_income.fixtures",)
@@ -136,7 +136,7 @@ def _expected_pending_income_result(
     return PendingIncomeResult(transactions=transactions, updated_count=updated_count)
 
 
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_pending_income_uses_token_override(sync, db):
@@ -154,7 +154,7 @@ async def test_pending_income_uses_token_override(sync, db):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_pending_income_skip_matched_excludes_matched_transactions(sync, db):
@@ -172,7 +172,7 @@ async def test_pending_income_skip_matched_excludes_matched_transactions(sync, d
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_pending_income_quiet_suppresses_refresh_logs(sync, db, capsys):
@@ -222,7 +222,7 @@ async def test_pending_income_for_real_returns_updated_count(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
@@ -238,7 +238,7 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_quiet_suppresses_all_output(sync, db, capsys):
@@ -251,7 +251,7 @@ async def test_run_quiet_suppresses_all_output(sync, db, capsys):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_no_sync_uses_existing_db(sync, db, capsys):
@@ -305,7 +305,7 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch.object(ynab, "TransactionsApi", unexpected_transactions_api)
+@patch.object(asyncio_for_ynab, "TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_skip_matched_excludes_matched_transactions(sync, db, capsys):

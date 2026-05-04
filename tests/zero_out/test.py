@@ -1,12 +1,11 @@
 import argparse
 import asyncio
 import datetime
-import threading
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
+import asyncio_for_ynab
 import pytest
-import ynab
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
@@ -94,7 +93,9 @@ async def test_get_plan_errors_when_explicit_plan_id_is_missing(
 
 @pytest.mark.asyncio
 async def test_get_plan_wraps_api_exception(plans_api):
-    plans_api.get_plans.side_effect = ynab.ApiException(status=500, reason="boom")
+    plans_api.get_plans.side_effect = asyncio_for_ynab.ApiException(
+        status=500, reason="boom"
+    )
 
     with pytest.raises(RuntimeError) as excinfo:
         await _get_plan(plans_api, None)
@@ -248,7 +249,7 @@ async def test_get_category_id_errors(
 
 @pytest.mark.asyncio
 async def test_get_category_id_wraps_api_exception(categories_api):
-    categories_api.get_categories.side_effect = ynab.ApiException(
+    categories_api.get_categories.side_effect = asyncio_for_ynab.ApiException(
         status=500, reason="boom"
     )
 
@@ -263,7 +264,7 @@ async def test_get_category_id_wraps_api_exception(categories_api):
     [
         pytest.param(None, ("2025-02", None), id="success"),
         pytest.param(
-            ynab.ApiException(status=400, reason="bad request"),
+            asyncio_for_ynab.ApiException(status=400, reason="bad request"),
             ("2025-02", "error"),
             id="api-error",
         ),
@@ -292,26 +293,22 @@ async def test_update_month_category(categories_api, update_error, expected):
 async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
     active = 0
     max_active = 0
-    lock = threading.Lock()
-    release = threading.Event()
+    release = asyncio.Event()
 
-    def update_month_category(*, month, **kwargs):
+    async def update_month_category(*, month, **kwargs):
         nonlocal active, max_active
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
-        release.wait(timeout=1)
-        with lock:
-            active -= 1
+        active += 1
+        max_active = max(max_active, active)
+        await release.wait()
+        active -= 1
 
     categories_api.update_month_category.side_effect = update_month_category
     months = tuple((2025, month) for month in range(1, 11))
     task = asyncio.create_task(_run_updates(categories_api, "plan-1", "cat-1", months))
 
     while True:
-        with lock:
-            if max_active == 5:
-                break
+        if max_active == 5:
+            break
         await asyncio.sleep(0)
 
     release.set()
@@ -501,7 +498,7 @@ async def test_run_for_real_runs_updates(
 
     def update_month_category(*, month, **kwargs):
         if month == datetime.date(2025, 2, 1):
-            raise ynab.ApiException(status=400, reason="bad request")
+            raise asyncio_for_ynab.ApiException(status=400, reason="bad request")
 
     ynab_categories_api.update_month_category.side_effect = update_month_category
     ret = await run(

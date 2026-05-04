@@ -1,5 +1,4 @@
 import argparse
-import asyncio
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,8 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
+import asyncio_for_ynab
 import rich
-import ynab
 from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
@@ -107,21 +106,22 @@ async def auto_approve(
 
         if for_real:
             grouped = build_updates(txns_by_plan)
-            api_client = ynab.TransactionsApi(
-                ynab.ApiClient(ynab.Configuration(access_token=token))
-            )
-
-            with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
-                task_id = progress.add_task(
-                    f"Approving {total_txns} transaction(s)", total=total_txns
-                )
-                for plan_id, txns in grouped.items():
-                    await asyncio.to_thread(
-                        api_client.update_transactions,
-                        plan_id,
-                        ynab.PatchTransactionsWrapper(transactions=txns),
+            async with asyncio_for_ynab.ApiClient(
+                asyncio_for_ynab.Configuration(access_token=token)
+            ) as api_client:
+                transactions_api = asyncio_for_ynab.TransactionsApi(api_client)
+                with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
+                    task_id = progress.add_task(
+                        f"Approving {total_txns} transaction(s)", total=total_txns
                     )
-                    progress.update(task_id, advance=len(txns) // 2)
+                    for plan_id, txns in grouped.items():
+                        await transactions_api.update_transactions(
+                            plan_id,
+                            asyncio_for_ynab.PatchTransactionsWrapper(
+                                transactions=txns
+                            ),
+                        )
+                        progress.update(task_id, advance=len(txns) // 2)
             _print("Done", quiet=quiet)
 
     return AutoApproveResult(
@@ -137,11 +137,13 @@ def _print(message: str, *, quiet: bool) -> None:
 
 def build_updates(
     txns_by_plan: dict[str, list[Transaction]],
-) -> dict[str, list[ynab.SaveTransactionWithIdOrImportId]]:
-    grouped: dict[str, list[ynab.SaveTransactionWithIdOrImportId]] = defaultdict(list)
+) -> dict[str, list[asyncio_for_ynab.SaveTransactionWithIdOrImportId]]:
+    grouped: dict[str, list[asyncio_for_ynab.SaveTransactionWithIdOrImportId]] = (
+        defaultdict(list)
+    )
     for plan_id, txns in txns_by_plan.items():
         grouped[plan_id].extend(
-            ynab.SaveTransactionWithIdOrImportId(id=txn_id, approved=True)
+            asyncio_for_ynab.SaveTransactionWithIdOrImportId(id=txn_id, approved=True)
             for txn in txns
             for txn_id in (txn.id, txn.matched_transaction_id)
             if txn_id is not None

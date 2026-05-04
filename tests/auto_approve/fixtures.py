@@ -1,10 +1,11 @@
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
+import asyncio_for_ynab
 import pytest
 
-from manager_for_ynab.auto_approve import ynab
 from testing.fixtures import execute_seed
 
 
@@ -21,17 +22,19 @@ def db(tmp_path):
 
 @pytest.fixture
 def ynab_configuration():
-    with patch.object(ynab, "Configuration") as configuration:
+    with patch.object(asyncio_for_ynab, "Configuration") as configuration:
         yield configuration
 
 
 @pytest.fixture
 def ynab_api_client():
-    with patch.object(ynab, "ApiClient") as api_client:
+    with patch.object(asyncio_for_ynab, "ApiClient") as api_client:
+        api_client.return_value = AsyncMock()
         yield api_client
 
 
 @pytest.fixture
 def transactions_api():
-    with patch.object(ynab, "TransactionsApi") as transactions_api_cls:
+    with patch.object(asyncio_for_ynab, "TransactionsApi") as transactions_api_cls:
+        transactions_api_cls.return_value = AsyncMock()
         yield transactions_api_cls.return_value
