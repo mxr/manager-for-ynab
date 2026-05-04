@@ -10,11 +10,15 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 import rich
-import ynab
 from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
+from ynab import ApiClient
+from ynab import Configuration
+from ynab import PatchTransactionsWrapper
+from ynab import SaveTransactionWithIdOrImportId
+from ynab import TransactionsApi
 
 from manager_for_ynab._auth import resolve_token
 
@@ -112,9 +116,7 @@ async def pending_income(
 
         if for_real:
             grouped = build_updates(txns_by_plan, date.today())
-            api_client = ynab.TransactionsApi(
-                ynab.ApiClient(ynab.Configuration(access_token=token))
-            )
+            api_client = TransactionsApi(ApiClient(Configuration(access_token=token)))
 
             with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
                 task_id = progress.add_task(
@@ -124,7 +126,7 @@ async def pending_income(
                     await asyncio.to_thread(
                         api_client.update_transactions,
                         plan_id,
-                        ynab.PatchTransactionsWrapper(transactions=txns),
+                        PatchTransactionsWrapper(transactions=txns),
                     )
                     progress.update(task_id, advance=len(txns))
             _print("Done", quiet=quiet)
@@ -142,11 +144,11 @@ def _print(message: str, *, quiet: bool) -> None:
 
 def build_updates(
     txns_by_plan: dict[str, list[Transaction]], today: date
-) -> dict[str, list[ynab.SaveTransactionWithIdOrImportId]]:
-    grouped: dict[str, list[ynab.SaveTransactionWithIdOrImportId]] = defaultdict(list)
+) -> dict[str, list[SaveTransactionWithIdOrImportId]]:
+    grouped: dict[str, list[SaveTransactionWithIdOrImportId]] = defaultdict(list)
     for plan_id, txns in txns_by_plan.items():
         grouped[plan_id].extend(
-            ynab.SaveTransactionWithIdOrImportId(id=txn.id, date=today) for txn in txns
+            SaveTransactionWithIdOrImportId(id=txn.id, date=today) for txn in txns
         )
     return grouped
 

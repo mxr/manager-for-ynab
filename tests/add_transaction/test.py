@@ -10,7 +10,12 @@ from unittest.mock import patch
 
 import aiosqlite
 import pytest
-import ynab
+from ynab import ApiClient
+from ynab import ApiException
+from ynab import Category
+from ynab import CategoryResponse
+from ynab import CategoryResponseData
+from ynab import TransactionClearedStatus
 
 import manager_for_ynab.add_transaction as add_transaction_module
 from manager_for_ynab.add_transaction import _apply_category_budget_delta
@@ -66,7 +71,7 @@ def resolved_dining_transaction():
             name="Dining Out",
         ),
         date=date(2026, 4, 26),
-        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        cleared=TransactionClearedStatus.UNCLEARED,
         amount=Decimal("12.34"),
     )
 
@@ -92,7 +97,7 @@ def resolved_ready_to_assign_checking_transaction():
             name="Inflow: Ready to Assign",
         ),
         date=date(2026, 4, 26),
-        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        cleared=TransactionClearedStatus.UNCLEARED,
         amount=Decimal("12.34"),
     )
 
@@ -118,7 +123,7 @@ def resolved_ready_to_assign_credit_card_transaction():
             name="Inflow: Ready to Assign",
         ),
         date=date(2026, 4, 26),
-        cleared=ynab.TransactionClearedStatus.UNCLEARED,
+        cleared=TransactionClearedStatus.UNCLEARED,
         amount=Decimal("12.34"),
     )
 
@@ -144,10 +149,10 @@ def test_decimal_strips_commas():
     assert decimal("1,234.56") == Decimal("1234.56")
 
 
-@patch("manager_for_ynab.add_transaction.ynab.CategoriesApi")
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.CategoriesApi")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     configuration_cls,
@@ -176,10 +181,10 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     assert created_wrapper.transaction.amount == -12340
 
 
-@patch("manager_for_ynab.add_transaction.ynab.CategoriesApi")
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.CategoriesApi")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     configuration_cls,
@@ -199,9 +204,9 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
     categories_api = categories_api_cls.return_value
-    categories_api.get_month_category_by_id.return_value = ynab.CategoryResponse(
-        data=ynab.CategoryResponseData(
-            category=ynab.Category(
+    categories_api.get_month_category_by_id.return_value = CategoryResponse(
+        data=CategoryResponseData(
+            category=Category(
                 id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
                 category_group_id=uuid.UUID("66666666-6666-6666-6666-666666666666"),
                 category_group_name="Credit Card Payments",
@@ -290,9 +295,9 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
         pytest.param(True, "", id="quiet"),
     ],
 )
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_dry_run(
     configuration_cls,
@@ -389,9 +394,9 @@ async def test_add_transaction_returns_one_when_resolution_fails(
     "manager_for_ynab.add_transaction._apply_category_budget_delta",
     new_callable=AsyncMock,
 )
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     configuration_cls,
@@ -427,10 +432,10 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     assert "Applied 12.34 USD to 'Credit Card' from Ready to Assign." in out
 
 
-@patch("manager_for_ynab.add_transaction.ynab.CategoriesApi")
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.CategoriesApi")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_reports_returned_credit_card_payment(
     configuration_cls,
@@ -451,9 +456,9 @@ async def test_move_funds_reports_returned_credit_card_payment(
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
     categories_api = categories_api_cls.return_value
-    categories_api.get_month_category_by_id.return_value = ynab.CategoryResponse(
-        data=ynab.CategoryResponseData(
-            category=ynab.Category(
+    categories_api.get_month_category_by_id.return_value = CategoryResponse(
+        data=CategoryResponseData(
+            category=Category(
                 id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
                 category_group_id=uuid.UUID("66666666-6666-6666-6666-666666666666"),
                 category_group_name="Credit Card Payments",
@@ -488,9 +493,9 @@ async def test_move_funds_reports_returned_credit_card_payment(
     "manager_for_ynab.add_transaction._apply_category_budget_delta",
     new_callable=AsyncMock,
 )
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_reports_returned_budget_delta(
     configuration_cls,
@@ -528,9 +533,9 @@ async def test_move_funds_reports_returned_budget_delta(
 
 
 @patch("manager_for_ynab.add_transaction._fund_category", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_funds_category_from_ready_to_assign(
     configuration_cls,
@@ -635,9 +640,9 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
     sync_mock.assert_awaited_once_with("token", db_path, False, quiet=True)
 
 
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_returns_one_when_api_raises(
     configuration_cls,
@@ -648,7 +653,7 @@ async def test_move_funds_returns_one_when_api_raises(
     capsys,
 ):
     transactions_api = transactions_api_cls.return_value
-    transactions_api.create_transaction.side_effect = ynab.ApiException(
+    transactions_api.create_transaction.side_effect = ApiException(
         status=500, reason="boom"
     )
 
@@ -676,9 +681,9 @@ async def test_move_funds_returns_one_when_api_raises(
     ],
 )
 @patch("manager_for_ynab.add_transaction._fund_category", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction.ynab.TransactionsApi")
-@patch("manager_for_ynab.add_transaction.ynab.ApiClient")
-@patch("manager_for_ynab.add_transaction.ynab.Configuration")
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
 @pytest.mark.asyncio
 async def test_move_funds_returns_one_when_funding_fails(
     configuration_cls,
@@ -1193,7 +1198,7 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
 
 @pytest.mark.asyncio
 async def test_apply_category_budget_delta_zero_short_circuits():
-    api_client = cast("ynab.ApiClient", object())
+    api_client = cast("ApiClient", object())
     assert (
         await _apply_category_budget_delta(
             api_client=api_client,
@@ -1215,7 +1220,7 @@ async def test_fund_category_converts_negative_amount_to_positive_budget_delta(
     apply_category_budget_delta_mock,
 ):
     apply_category_budget_delta_mock.return_value = 12340
-    api_client = cast("ynab.ApiClient", object())
+    api_client = cast("ApiClient", object())
 
     assert (
         await _fund_category(

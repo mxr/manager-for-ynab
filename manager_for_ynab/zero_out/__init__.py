@@ -4,7 +4,13 @@ import datetime
 import re
 from typing import TYPE_CHECKING
 
-import ynab
+from ynab import ApiClient
+from ynab import ApiException
+from ynab import CategoriesApi
+from ynab import Configuration
+from ynab import PatchMonthCategoryWrapper
+from ynab import PlansApi
+from ynab import SaveMonthCategory
 
 from manager_for_ynab._auth import resolve_token
 
@@ -81,7 +87,7 @@ def _regex_search(value: str, pattern: str) -> bool:
 
 
 async def _update_month_category(
-    categories_api: ynab.CategoriesApi,
+    categories_api: CategoriesApi,
     plan_id: str,
     category_id: str,
     year: int,
@@ -94,19 +100,17 @@ async def _update_month_category(
             plan_id=plan_id,
             month=datetime.date(year, month, 1),
             category_id=category_id,
-            data=ynab.PatchMonthCategoryWrapper(
-                category=ynab.SaveMonthCategory(budgeted=0)
-            ),
+            data=PatchMonthCategoryWrapper(category=SaveMonthCategory(budgeted=0)),
         )
         return month_str, None
-    except ynab.ApiException as e:
+    except ApiException as e:
         return month_str, f"{e}"
 
 
-async def _get_plan(plans_api: ynab.PlansApi, plan_id: str | None) -> tuple[str, str]:
+async def _get_plan(plans_api: PlansApi, plan_id: str | None) -> tuple[str, str]:
     try:
         plans_response = await asyncio.to_thread(plans_api.get_plans)
-    except ynab.ApiException as e:
+    except ApiException as e:
         raise RuntimeError(f"Failed to fetch plans: {e}") from e
 
     plans = plans_response.data.plans
@@ -124,14 +128,14 @@ async def _get_plan(plans_api: ynab.PlansApi, plan_id: str | None) -> tuple[str,
 
 
 async def _get_category_id(
-    categories_api: ynab.CategoriesApi,
+    categories_api: CategoriesApi,
     plan_id: str,
     category_group: str | None,
     category_name: str,
 ) -> tuple[str, str, str]:
     try:
         cats_resp = await asyncio.to_thread(categories_api.get_categories, plan_id)
-    except ynab.ApiException as e:
+    except ApiException as e:
         raise RuntimeError(f"Failed to fetch categories: {e}") from e
 
     matching = [
@@ -166,7 +170,7 @@ async def _get_category_id(
 
 
 async def _run_updates(
-    categories_api: ynab.CategoriesApi,
+    categories_api: CategoriesApi,
     plan_id: str,
     category_id: str,
     months: tuple[tuple[int, int], ...],
@@ -201,11 +205,11 @@ async def zero_out(
 ) -> int:
     token = resolve_token(token_override)
 
-    configuration = ynab.Configuration(access_token=token)
+    configuration = Configuration(access_token=token)
 
-    with ynab.ApiClient(configuration) as api_client:
-        plans_api = ynab.PlansApi(api_client)
-        categories_api = ynab.CategoriesApi(api_client)
+    with ApiClient(configuration) as api_client:
+        plans_api = PlansApi(api_client)
+        categories_api = CategoriesApi(api_client)
 
         try:
             resolved_plan_id, plan_name = await _get_plan(plans_api, plan_id)
