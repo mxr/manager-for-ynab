@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import aiosqlite
-import asyncio_for_ynab
 import pytest
+from asyncio_for_ynab import TransactionsApi
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
@@ -433,7 +433,7 @@ async def test_run_do_reconcile(sync, db):
             await fetch_transactions(con, await fetch_plan_accts(con, ["%checking%"]))
         )[0]
 
-    transactions_api = AsyncMock(spec=asyncio_for_ynab.TransactionsApi)
+    transactions_api = AsyncMock(spec=TransactionsApi)
     await do_reconcile(transactions_api, PLAN_ID, transactions, "Reconciling")
 
     transactions_api.update_transactions.assert_awaited_once()

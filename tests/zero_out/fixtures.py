@@ -3,8 +3,16 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-import asyncio_for_ynab
 import pytest
+from asyncio_for_ynab import CategoriesApi
+from asyncio_for_ynab import CategoriesResponse
+from asyncio_for_ynab import CategoriesResponseData
+from asyncio_for_ynab import Category
+from asyncio_for_ynab import CategoryGroupWithCategories
+from asyncio_for_ynab import PlansApi
+from asyncio_for_ynab import PlanSummary
+from asyncio_for_ynab import PlanSummaryResponse
+from asyncio_for_ynab import PlanSummaryResponseData
 
 if TYPE_CHECKING:
     import datetime
@@ -17,8 +25,8 @@ def plan_summary():
         *,
         last_modified_on: datetime.datetime,
         plan_id: uuid.UUID | None = None,
-    ) -> asyncio_for_ynab.PlanSummary:
-        return asyncio_for_ynab.PlanSummary(
+    ) -> PlanSummary:
+        return PlanSummary(
             id=plan_id or uuid.uuid4(), name=name, last_modified_on=last_modified_on
         )
 
@@ -27,12 +35,8 @@ def plan_summary():
 
 @pytest.fixture
 def plan_summary_response():
-    def build(
-        plans: list[asyncio_for_ynab.PlanSummary],
-    ) -> asyncio_for_ynab.PlanSummaryResponse:
-        return asyncio_for_ynab.PlanSummaryResponse(
-            data=asyncio_for_ynab.PlanSummaryResponseData(plans=plans)
-        )
+    def build(plans: list[PlanSummary]) -> PlanSummaryResponse:
+        return PlanSummaryResponse(data=PlanSummaryResponseData(plans=plans))
 
     return build
 
@@ -41,15 +45,15 @@ def plan_summary_response():
 def category_group():
     def build(
         name: str, category_names: list[str], *, group_id: uuid.UUID | None = None
-    ) -> asyncio_for_ynab.CategoryGroupWithCategories:
+    ) -> CategoryGroupWithCategories:
         group_id = group_id or uuid.uuid4()
-        return asyncio_for_ynab.CategoryGroupWithCategories(
+        return CategoryGroupWithCategories(
             id=group_id,
             name=name,
             hidden=False,
             deleted=False,
             categories=[
-                asyncio_for_ynab.Category(
+                Category(
                     id=uuid.uuid4(),
                     category_group_id=group_id,
                     category_group_name=name,
@@ -70,12 +74,10 @@ def category_group():
 @pytest.fixture
 def categories_response():
     def build(
-        groups: list[asyncio_for_ynab.CategoryGroupWithCategories],
-    ) -> asyncio_for_ynab.CategoriesResponse:
-        return asyncio_for_ynab.CategoriesResponse(
-            data=asyncio_for_ynab.CategoriesResponseData(
-                category_groups=groups, server_knowledge=0
-            )
+        groups: list[CategoryGroupWithCategories],
+    ) -> CategoriesResponse:
+        return CategoriesResponse(
+            data=CategoriesResponseData(category_groups=groups, server_knowledge=0)
         )
 
     return build
@@ -83,36 +85,36 @@ def categories_response():
 
 @pytest.fixture
 def plans_api():
-    return AsyncMock(spec=asyncio_for_ynab.PlansApi)
+    return AsyncMock(spec=PlansApi)
 
 
 @pytest.fixture
 def categories_api():
-    return AsyncMock(spec=asyncio_for_ynab.CategoriesApi)
+    return AsyncMock(spec=CategoriesApi)
 
 
 @pytest.fixture
 def ynab_configuration():
-    with patch.object(asyncio_for_ynab, "Configuration") as configuration:
+    with patch("manager_for_ynab.zero_out.Configuration") as configuration:
         yield configuration
 
 
 @pytest.fixture
 def ynab_api_client():
-    with patch.object(asyncio_for_ynab, "ApiClient") as api_client:
+    with patch("manager_for_ynab.zero_out.ApiClient") as api_client:
         api_client.return_value = AsyncMock()
         yield api_client
 
 
 @pytest.fixture
 def ynab_plans_api():
-    with patch.object(asyncio_for_ynab, "PlansApi") as plans_api_cls:
+    with patch("manager_for_ynab.zero_out.PlansApi") as plans_api_cls:
         plans_api_cls.return_value = AsyncMock()
         yield plans_api_cls.return_value
 
 
 @pytest.fixture
 def ynab_categories_api():
-    with patch.object(asyncio_for_ynab, "CategoriesApi") as categories_api_cls:
+    with patch("manager_for_ynab.zero_out.CategoriesApi") as categories_api_cls:
         categories_api_cls.return_value = AsyncMock()
         yield categories_api_cls.return_value

@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
-import asyncio_for_ynab
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import Configuration
+from asyncio_for_ynab import PatchTransactionsWrapper
+from asyncio_for_ynab import SaveTransactionWithIdOrImportId
+from asyncio_for_ynab import TransactionClearedStatus
+from asyncio_for_ynab import TransactionsApi
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -219,10 +224,8 @@ async def reconciler(
         plan_accts = await fetch_plan_accts(con, account_likes)
         transactions = await fetch_transactions(con, plan_accts)
 
-    async with asyncio_for_ynab.ApiClient(
-        asyncio_for_ynab.Configuration(access_token=token)
-    ) as api_client:
-        transactions_api = asyncio_for_ynab.TransactionsApi(api_client)
+    async with ApiClient(Configuration(access_token=token)) as api_client:
+        transactions_api = TransactionsApi(api_client)
         rets = list(
             await asyncio.gather(
                 *(
@@ -323,7 +326,7 @@ def _normalize_account_like(account_like: str) -> str:
 
 
 async def _reconcile_account(
-    transactions_api: asyncio_for_ynab.TransactionsApi,
+    transactions_api: TransactionsApi,
     plan_acct: PlanAccount,
     transactions: list[Transaction],
     target: Decimal,
@@ -503,7 +506,7 @@ def find_to_reconcile(
 
 
 async def do_reconcile(
-    transactions_api: asyncio_for_ynab.TransactionsApi,
+    transactions_api: TransactionsApi,
     plan_id: str,
     to_reconcile: Sequence[Transaction],
     progress_desc: str,
@@ -512,11 +515,10 @@ async def do_reconcile(
         task_id = progress.add_task(progress_desc, total=len(to_reconcile))
         await transactions_api.update_transactions(
             plan_id,
-            asyncio_for_ynab.PatchTransactionsWrapper(
+            PatchTransactionsWrapper(
                 transactions=[
-                    asyncio_for_ynab.SaveTransactionWithIdOrImportId(
-                        id=t.id,
-                        cleared=asyncio_for_ynab.TransactionClearedStatus.RECONCILED,
+                    SaveTransactionWithIdOrImportId(
+                        id=t.id, cleared=TransactionClearedStatus.RECONCILED
                     )
                     for t in to_reconcile
                 ]

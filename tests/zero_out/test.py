@@ -4,8 +4,8 @@ import datetime
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-import asyncio_for_ynab
 import pytest
+from asyncio_for_ynab import ApiException
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
@@ -93,9 +93,7 @@ async def test_get_plan_errors_when_explicit_plan_id_is_missing(
 
 @pytest.mark.asyncio
 async def test_get_plan_wraps_api_exception(plans_api):
-    plans_api.get_plans.side_effect = asyncio_for_ynab.ApiException(
-        status=500, reason="boom"
-    )
+    plans_api.get_plans.side_effect = ApiException(status=500, reason="boom")
 
     with pytest.raises(RuntimeError) as excinfo:
         await _get_plan(plans_api, None)
@@ -249,9 +247,7 @@ async def test_get_category_id_errors(
 
 @pytest.mark.asyncio
 async def test_get_category_id_wraps_api_exception(categories_api):
-    categories_api.get_categories.side_effect = asyncio_for_ynab.ApiException(
-        status=500, reason="boom"
-    )
+    categories_api.get_categories.side_effect = ApiException(status=500, reason="boom")
 
     with pytest.raises(RuntimeError) as excinfo:
         await _get_category_id(categories_api, "plan-1", None, "rent")
@@ -264,7 +260,7 @@ async def test_get_category_id_wraps_api_exception(categories_api):
     [
         pytest.param(None, ("2025-02", None), id="success"),
         pytest.param(
-            asyncio_for_ynab.ApiException(status=400, reason="bad request"),
+            ApiException(status=400, reason="bad request"),
             ("2025-02", "error"),
             id="api-error",
         ),
@@ -498,7 +494,7 @@ async def test_run_for_real_runs_updates(
 
     def update_month_category(*, month, **kwargs):
         if month == datetime.date(2025, 2, 1):
-            raise asyncio_for_ynab.ApiException(status=400, reason="bad request")
+            raise ApiException(status=400, reason="bad request")
 
     ynab_categories_api.update_month_category.side_effect = update_month_category
     ret = await run(

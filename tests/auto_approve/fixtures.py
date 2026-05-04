@@ -3,11 +3,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
-import asyncio_for_ynab
 import pytest
 
 from testing.fixtures import execute_seed
-
 
 _SEED_TRANSACTIONS_SQL = Path(__file__).with_name("seed-transactions.sql")
 
@@ -22,19 +20,19 @@ def db(tmp_path):
 
 @pytest.fixture
 def ynab_configuration():
-    with patch.object(asyncio_for_ynab, "Configuration") as configuration:
+    with patch("manager_for_ynab.auto_approve.Configuration") as configuration:
         yield configuration
 
 
 @pytest.fixture
 def ynab_api_client():
-    with patch.object(asyncio_for_ynab, "ApiClient") as api_client:
+    with patch("manager_for_ynab.auto_approve.ApiClient") as api_client:
         api_client.return_value = AsyncMock()
         yield api_client
 
 
 @pytest.fixture
 def transactions_api():
-    with patch.object(asyncio_for_ynab, "TransactionsApi") as transactions_api_cls:
+    with patch("manager_for_ynab.auto_approve.TransactionsApi") as transactions_api_cls:
         transactions_api_cls.return_value = AsyncMock()
         yield transactions_api_cls.return_value
