@@ -11,13 +11,21 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 import rich
-import ynab
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import FuzzyWordCompleter
 from prompt_toolkit.validation import Validator
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from ynab.models.transaction_cleared_status import TransactionClearedStatus
+from ynab import ApiClient
+from ynab import ApiException
+from ynab import CategoriesApi
+from ynab import Configuration
+from ynab import NewTransaction
+from ynab import PatchMonthCategoryWrapper
+from ynab import PostTransactionsWrapper
+from ynab import SaveMonthCategory
+from ynab import TransactionClearedStatus
+from ynab import TransactionsApi
 
 from manager_for_ynab._auth import resolve_token
 
@@ -246,12 +254,12 @@ async def add_transaction_and_move_funds(
     try:
         async with aiosqlite.connect(db) as con:
             con.row_factory = aiosqlite.Row
-            with ynab.ApiClient(ynab.Configuration(access_token=token)) as api_client:
-                transactions_api = ynab.TransactionsApi(api_client)
+            with ApiClient(Configuration(access_token=token)) as api_client:
+                transactions_api = TransactionsApi(api_client)
                 await asyncio.to_thread(
                     transactions_api.create_transaction,
                     resolved.plan.id,
-                    ynab.PostTransactionsWrapper(transaction=txn),
+                    PostTransactionsWrapper(transaction=txn),
                 )
 
                 if (
@@ -299,7 +307,7 @@ async def add_transaction_and_move_funds(
                         resolved.category.id,
                         txn.amount,
                     )
-    except ynab.ApiException as err:
+    except ApiException as err:
         print(f"Failed to create transaction: {err}", file=sys.stderr)
         return 1
     except RuntimeError as err:
@@ -390,8 +398,8 @@ async def _resolve_transaction(
         )
 
 
-def _build_transaction(resolved: ResolvedTransaction) -> ynab.NewTransaction:
-    return ynab.NewTransaction(
+def _build_transaction(resolved: ResolvedTransaction) -> NewTransaction:
+    return NewTransaction(
         account_id=uuid.UUID(resolved.account.id),
         date=resolved.date,
         payee_id=(
@@ -481,7 +489,7 @@ async def _resolve_payee(
 
 
 async def _fund_category(
-    api_client: ynab.ApiClient,
+    api_client: ApiClient,
     plan_id: str,
     date: datetime.date,
     category_id: str,
@@ -493,7 +501,7 @@ async def _fund_category(
 
 
 async def _apply_category_budget_delta(
-    api_client: ynab.ApiClient,
+    api_client: ApiClient,
     plan_id: str,
     date: datetime.date,
     category_id: str,
@@ -503,7 +511,7 @@ async def _apply_category_budget_delta(
         return 0
 
     month = date.replace(day=1)
-    categories_api = ynab.CategoriesApi(api_client)
+    categories_api = CategoriesApi(api_client)
     category = await asyncio.to_thread(
         categories_api.get_month_category_by_id, plan_id, month, category_id
     )
@@ -512,8 +520,8 @@ async def _apply_category_budget_delta(
         plan_id=plan_id,
         month=month,
         category_id=category_id,
-        data=ynab.PatchMonthCategoryWrapper(
-            category=ynab.SaveMonthCategory(
+        data=PatchMonthCategoryWrapper(
+            category=SaveMonthCategory(
                 budgeted=category.data.category.budgeted + budget_delta
             )
         ),

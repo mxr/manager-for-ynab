@@ -4,7 +4,15 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-import ynab
+from ynab import CategoriesApi
+from ynab import CategoriesResponse
+from ynab import CategoriesResponseData
+from ynab import Category
+from ynab import CategoryGroupWithCategories
+from ynab import PlansApi
+from ynab import PlanSummary
+from ynab import PlanSummaryResponse
+from ynab import PlanSummaryResponseData
 
 if TYPE_CHECKING:
     import datetime
@@ -17,8 +25,8 @@ def plan_summary():
         *,
         last_modified_on: datetime.datetime,
         plan_id: uuid.UUID | None = None,
-    ) -> ynab.PlanSummary:
-        return ynab.PlanSummary(
+    ) -> PlanSummary:
+        return PlanSummary(
             id=plan_id or uuid.uuid4(), name=name, last_modified_on=last_modified_on
         )
 
@@ -27,8 +35,8 @@ def plan_summary():
 
 @pytest.fixture
 def plan_summary_response():
-    def build(plans: list[ynab.PlanSummary]) -> ynab.PlanSummaryResponse:
-        return ynab.PlanSummaryResponse(data=ynab.PlanSummaryResponseData(plans=plans))
+    def build(plans: list[PlanSummary]) -> PlanSummaryResponse:
+        return PlanSummaryResponse(data=PlanSummaryResponseData(plans=plans))
 
     return build
 
@@ -37,15 +45,15 @@ def plan_summary_response():
 def category_group():
     def build(
         name: str, category_names: list[str], *, group_id: uuid.UUID | None = None
-    ) -> ynab.CategoryGroupWithCategories:
+    ) -> CategoryGroupWithCategories:
         group_id = group_id or uuid.uuid4()
-        return ynab.CategoryGroupWithCategories(
+        return CategoryGroupWithCategories(
             id=group_id,
             name=name,
             hidden=False,
             deleted=False,
             categories=[
-                ynab.Category(
+                Category(
                     id=uuid.uuid4(),
                     category_group_id=group_id,
                     category_group_name=name,
@@ -66,10 +74,10 @@ def category_group():
 @pytest.fixture
 def categories_response():
     def build(
-        groups: list[ynab.CategoryGroupWithCategories],
-    ) -> ynab.CategoriesResponse:
-        return ynab.CategoriesResponse(
-            data=ynab.CategoriesResponseData(category_groups=groups, server_knowledge=0)
+        groups: list[CategoryGroupWithCategories],
+    ) -> CategoriesResponse:
+        return CategoriesResponse(
+            data=CategoriesResponseData(category_groups=groups, server_knowledge=0)
         )
 
     return build
@@ -77,33 +85,33 @@ def categories_response():
 
 @pytest.fixture
 def plans_api():
-    return MagicMock(spec=ynab.PlansApi)
+    return MagicMock(spec=PlansApi)
 
 
 @pytest.fixture
 def categories_api():
-    return MagicMock(spec=ynab.CategoriesApi)
+    return MagicMock(spec=CategoriesApi)
 
 
 @pytest.fixture
 def ynab_configuration():
-    with patch.object(ynab, "Configuration") as configuration:
+    with patch("manager_for_ynab.zero_out.Configuration") as configuration:
         yield configuration
 
 
 @pytest.fixture
 def ynab_api_client():
-    with patch.object(ynab, "ApiClient") as api_client:
+    with patch("manager_for_ynab.zero_out.ApiClient") as api_client:
         yield api_client
 
 
 @pytest.fixture
 def ynab_plans_api():
-    with patch.object(ynab, "PlansApi") as plans_api_cls:
+    with patch("manager_for_ynab.zero_out.PlansApi") as plans_api_cls:
         yield plans_api_cls.return_value
 
 
 @pytest.fixture
 def ynab_categories_api():
-    with patch.object(ynab, "CategoriesApi") as categories_api_cls:
+    with patch("manager_for_ynab.zero_out.CategoriesApi") as categories_api_cls:
         yield categories_api_cls.return_value
