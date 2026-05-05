@@ -4,13 +4,14 @@ import datetime
 import re
 from typing import TYPE_CHECKING
 
-from ynab import ApiClient
-from ynab import ApiException
-from ynab import CategoriesApi
-from ynab import Configuration
-from ynab import PatchMonthCategoryWrapper
-from ynab import PlansApi
-from ynab import SaveMonthCategory
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import ApiException
+from asyncio_for_ynab import CategoriesApi
+from asyncio_for_ynab import Configuration
+from asyncio_for_ynab import PatchMonthCategoryWrapper
+from asyncio_for_ynab import PlansApi
+from asyncio_for_ynab import PlanSummaryResponse
+from asyncio_for_ynab import SaveMonthCategory
 
 from manager_for_ynab._auth import resolve_token
 
@@ -95,8 +96,7 @@ async def _update_month_category(
 ) -> tuple[str, str | None]:
     month_str = f"{year}-{month:02d}"
     try:
-        await asyncio.to_thread(
-            categories_api.update_month_category,
+        await categories_api.update_month_category(
             plan_id=plan_id,
             month=datetime.date(year, month, 1),
             category_id=category_id,
@@ -109,7 +109,7 @@ async def _update_month_category(
 
 async def _get_plan(plans_api: PlansApi, plan_id: str | None) -> tuple[str, str]:
     try:
-        plans_response = await asyncio.to_thread(plans_api.get_plans)
+        plans_response: PlanSummaryResponse = await plans_api.get_plans()
     except ApiException as e:
         raise RuntimeError(f"Failed to fetch plans: {e}") from e
 
@@ -134,7 +134,7 @@ async def _get_category_id(
     category_name: str,
 ) -> tuple[str, str, str]:
     try:
-        cats_resp = await asyncio.to_thread(categories_api.get_categories, plan_id)
+        cats_resp = await categories_api.get_categories(plan_id)
     except ApiException as e:
         raise RuntimeError(f"Failed to fetch categories: {e}") from e
 
@@ -206,8 +206,7 @@ async def zero_out(
     token = resolve_token(token_override)
 
     configuration = Configuration(access_token=token)
-
-    with ApiClient(configuration) as api_client:
+    async with ApiClient(configuration) as api_client:
         plans_api = PlansApi(api_client)
         categories_api = CategoriesApi(api_client)
 

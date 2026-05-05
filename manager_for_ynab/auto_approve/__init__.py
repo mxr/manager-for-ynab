@@ -1,7 +1,7 @@
 import argparse
-import asyncio
 import sys
 from collections import defaultdict
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -9,15 +9,15 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 import rich
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import Configuration
+from asyncio_for_ynab import PatchTransactionsWrapper
+from asyncio_for_ynab import SaveTransactionWithIdOrImportId
+from asyncio_for_ynab import TransactionsApi
 from rich.progress import Progress
 from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
-from ynab import ApiClient
-from ynab import Configuration
-from ynab import PatchTransactionsWrapper
-from ynab import SaveTransactionWithIdOrImportId
-from ynab import TransactionsApi
 
 from manager_for_ynab._auth import resolve_token
 
@@ -111,15 +111,20 @@ async def auto_approve(
 
         if for_real:
             grouped = build_updates(txns_by_plan)
-            api_client = TransactionsApi(ApiClient(Configuration(access_token=token)))
+            async with AsyncExitStack() as stack:
+                api_client = await stack.enter_async_context(
+                    ApiClient(Configuration(access_token=token))
+                )
+                progress = stack.enter_context(
+                    Progress(disable=quiet or not sys.stderr.isatty())
+                )
 
-            with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
+                transactions_api = TransactionsApi(api_client)
                 task_id = progress.add_task(
                     f"Approving {total_txns} transaction(s)", total=total_txns
                 )
                 for plan_id, txns in grouped.items():
-                    await asyncio.to_thread(
-                        api_client.update_transactions,
+                    await transactions_api.update_transactions(
                         plan_id,
                         PatchTransactionsWrapper(transactions=txns),
                     )

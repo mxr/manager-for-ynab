@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -27,10 +28,12 @@ def ynab_configuration():
 @pytest.fixture
 def ynab_api_client():
     with patch("manager_for_ynab.auto_approve.ApiClient") as api_client:
+        api_client.return_value = AsyncMock()
         yield api_client
 
 
 @pytest.fixture
 def transactions_api():
     with patch("manager_for_ynab.auto_approve.TransactionsApi") as transactions_api_cls:
+        transactions_api_cls.return_value = AsyncMock()
         yield transactions_api_cls.return_value

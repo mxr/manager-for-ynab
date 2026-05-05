@@ -4,7 +4,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from aioresponses import aioresponses
 
 
 PLAN_ID_1 = str(uuid4())
@@ -55,12 +54,6 @@ def db(tmpdir):
             con, _TESTING.parent / "tests" / "reconciler" / "seed-transactions.sql"
         )
     yield str(path)
-
-
-@pytest.fixture
-def mock_aioresponses():
-    with aioresponses() as m:
-        yield m
 
 
 TOKEN = f"token-{uuid4()}"

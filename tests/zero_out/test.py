@@ -1,12 +1,11 @@
 import argparse
 import asyncio
 import datetime
-import threading
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from ynab import ApiException
+from asyncio_for_ynab import ApiException
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
@@ -290,28 +289,25 @@ async def test_update_month_category(categories_api, update_error, expected):
 async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
     active = 0
     max_active = 0
-    lock = threading.Lock()
-    release = threading.Event()
+    reached_limit = asyncio.Event()
+    release = asyncio.Event()
 
-    def update_month_category(*, month, **kwargs):
+    async def update_month_category(*, month, **kwargs):
         nonlocal active, max_active
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
-        release.wait(timeout=1)
-        with lock:
+        active += 1
+        max_active = max(max_active, active)
+        if max_active == 5:
+            reached_limit.set()
+        try:
+            await release.wait()
+        finally:
             active -= 1
 
     categories_api.update_month_category.side_effect = update_month_category
     months = tuple((2025, month) for month in range(1, 11))
     task = asyncio.create_task(_run_updates(categories_api, "plan-1", "cat-1", months))
 
-    while True:
-        with lock:
-            if max_active == 5:
-                break
-        await asyncio.sleep(0)
-
+    await asyncio.wait_for(reached_limit.wait(), timeout=1)
     release.set()
     await task
 

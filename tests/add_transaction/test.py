@@ -10,12 +10,12 @@ from unittest.mock import patch
 
 import aiosqlite
 import pytest
-from ynab import ApiClient
-from ynab import ApiException
-from ynab import Category
-from ynab import CategoryResponse
-from ynab import CategoryResponseData
-from ynab import TransactionClearedStatus
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import ApiException
+from asyncio_for_ynab import Category
+from asyncio_for_ynab import CategoryResponse
+from asyncio_for_ynab import CategoryResponseData
+from asyncio_for_ynab import TransactionClearedStatus
 
 import manager_for_ynab.add_transaction as add_transaction_module
 from manager_for_ynab.add_transaction import _apply_category_budget_delta
@@ -162,6 +162,10 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     resolved_ready_to_assign_checking_transaction,
     tmp_path,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
 
@@ -194,6 +198,10 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -407,6 +415,9 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-positive.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -446,6 +457,10 @@ async def test_move_funds_reports_returned_credit_card_payment(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-negative.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -506,6 +521,9 @@ async def test_move_funds_reports_returned_budget_delta(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-returned.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -546,6 +564,9 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-category.sqlite"
     _create_add_transaction_db(db_path)
 
@@ -652,6 +673,9 @@ async def test_move_funds_returns_one_when_api_raises(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.side_effect = ApiException(
         status=500, reason="boom"
@@ -695,6 +719,9 @@ async def test_move_funds_returns_one_when_funding_fails(
     tmp_path,
     capsys,
 ):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     fund_category_mock.side_effect = err
 
     ret = await add_transaction_module.add_transaction_and_move_funds(

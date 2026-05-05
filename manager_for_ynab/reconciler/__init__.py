@@ -7,20 +7,23 @@ import shlex
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
-from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import aiohttp
 import aiosqlite
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import Configuration
+from asyncio_for_ynab import PatchTransactionsWrapper
+from asyncio_for_ynab import SaveTransactionWithIdOrImportId
+from asyncio_for_ynab import TransactionClearedStatus
+from asyncio_for_ynab import TransactionsApi
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich.progress import BarColumn
 from rich.progress import MofNCompleteColumn
 from rich.progress import Progress
-from rich.progress import TaskID
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
 from sqlite_export_for_ynab import default_db_path
@@ -221,18 +224,18 @@ async def reconciler(
         plan_accts = await fetch_plan_accts(con, account_likes)
         transactions = await fetch_transactions(con, plan_accts)
 
-    async with aiohttp.ClientSession() as session:
+    async with ApiClient(Configuration(access_token=token)) as api_client:
+        transactions_api = TransactionsApi(api_client)
         rets = list(
             await asyncio.gather(
                 *(
                     asyncio.create_task(
                         _reconcile_account(
-                            token,
+                            transactions_api,
                             acct,
                             txns,
                             t * (-1 if acct.account_type in _NEG_BAL_ACCT_TYPES else 1),
                             for_real,
-                            session,
                         )
                     )
                     for t, acct, txns in zip(
@@ -323,12 +326,11 @@ def _normalize_account_like(account_like: str) -> str:
 
 
 async def _reconcile_account(
-    token: str,
+    transactions_api: TransactionsApi,
     plan_acct: PlanAccount,
     transactions: list[Transaction],
     target: Decimal,
     for_real: bool,
-    session: aiohttp.ClientSession,
 ) -> int:
     prefix = f"[{plan_acct.account_name}]"
 
@@ -360,8 +362,7 @@ async def _reconcile_account(
 
     if for_real:
         await do_reconcile(
-            session,
-            token,
+            transactions_api,
             plan_acct.plan_id,
             to_reconcile,
             progress_desc=f"{prefix} Reconciling",
@@ -505,28 +506,25 @@ def find_to_reconcile(
 
 
 async def do_reconcile(
-    session: aiohttp.ClientSession,
-    token: str,
+    transactions_api: TransactionsApi,
     plan_id: str,
     to_reconcile: Sequence[Transaction],
     progress_desc: str,
 ) -> None:
-    yc = YnabClient(token)
     with Progress(*_PROGRESS_COLUMNS, disable=not sys.stderr.isatty()) as progress:
         task_id = progress.add_task(progress_desc, total=len(to_reconcile))
-        try:
-            await yc.reconcile(
-                session, progress, task_id, plan_id, [t.id for t in to_reconcile]
-            )
-        except Error4034:
-            await asyncio.gather(
-                *(
-                    yc.reconcile(
-                        session, progress, task_id, to_reconcile[0].plan_id, [t.id]
+        await transactions_api.update_transactions(
+            plan_id,
+            PatchTransactionsWrapper(
+                transactions=[
+                    SaveTransactionWithIdOrImportId(
+                        id=t.id, cleared=TransactionClearedStatus.RECONCILED
                     )
                     for t in to_reconcile
-                )
-            )
+                ]
+            ),
+        )
+        progress.update(task_id, advance=len(to_reconcile))
 
 
 def partition[T](
@@ -536,44 +534,6 @@ def partition[T](
     for i in items:
         parts[func(i)].append(i)
     return parts[True], parts[False]
-
-
-class Error4034(Exception):
-    """Raised when an internal YNAB rate-limit is reached. A workaround is to reconcile one-at-a-time."""
-
-
-@dataclass
-class YnabClient:
-    token: str
-    headers: dict[str, str] = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
-        }
-
-    async def reconcile(
-        self,
-        session: aiohttp.ClientSession,
-        progress: Progress,
-        task_id: TaskID,
-        plan_id: str,
-        transaction_ids: list[str],
-    ) -> None:
-        reconciled = [{"id": t, "cleared": "reconciled"} for t in transaction_ids]
-
-        url = f"https://api.ynab.com/v1/plans/{plan_id}/transactions"
-
-        async with session.request(
-            "PATCH", url, headers=self.headers, json={"transactions": reconciled}
-        ) as resp:
-            body = await resp.json()
-
-        if body.get("error", {}).get("id") == "403.4":
-            raise Error4034()
-
-        progress.update(task_id, advance=len(transaction_ids))
 
 
 __all__ = [reconciler.__name__, run.__name__, sync.__name__]

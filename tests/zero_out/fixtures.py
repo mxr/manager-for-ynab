@@ -1,18 +1,18 @@
 import uuid
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from ynab import CategoriesApi
-from ynab import CategoriesResponse
-from ynab import CategoriesResponseData
-from ynab import Category
-from ynab import CategoryGroupWithCategories
-from ynab import PlansApi
-from ynab import PlanSummary
-from ynab import PlanSummaryResponse
-from ynab import PlanSummaryResponseData
+from asyncio_for_ynab import CategoriesApi
+from asyncio_for_ynab import CategoriesResponse
+from asyncio_for_ynab import CategoriesResponseData
+from asyncio_for_ynab import Category
+from asyncio_for_ynab import CategoryGroupWithCategories
+from asyncio_for_ynab import PlansApi
+from asyncio_for_ynab import PlanSummary
+from asyncio_for_ynab import PlanSummaryResponse
+from asyncio_for_ynab import PlanSummaryResponseData
 
 if TYPE_CHECKING:
     import datetime
@@ -85,12 +85,12 @@ def categories_response():
 
 @pytest.fixture
 def plans_api():
-    return MagicMock(spec=PlansApi)
+    return AsyncMock(spec=PlansApi)
 
 
 @pytest.fixture
 def categories_api():
-    return MagicMock(spec=CategoriesApi)
+    return AsyncMock(spec=CategoriesApi)
 
 
 @pytest.fixture
@@ -102,16 +102,19 @@ def ynab_configuration():
 @pytest.fixture
 def ynab_api_client():
     with patch("manager_for_ynab.zero_out.ApiClient") as api_client:
+        api_client.return_value = AsyncMock()
         yield api_client
 
 
 @pytest.fixture
 def ynab_plans_api():
     with patch("manager_for_ynab.zero_out.PlansApi") as plans_api_cls:
+        plans_api_cls.return_value = AsyncMock()
         yield plans_api_cls.return_value
 
 
 @pytest.fixture
 def ynab_categories_api():
     with patch("manager_for_ynab.zero_out.CategoriesApi") as categories_api_cls:
+        categories_api_cls.return_value = AsyncMock()
         yield categories_api_cls.return_value
