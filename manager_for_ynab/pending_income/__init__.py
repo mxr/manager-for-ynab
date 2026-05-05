@@ -1,6 +1,7 @@
 import argparse
 import sys
 from collections import defaultdict
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
@@ -115,18 +116,24 @@ async def pending_income(
 
         if for_real:
             grouped = build_updates(txns_by_plan, date.today())
-            async with ApiClient(Configuration(access_token=token)) as api_client:
+            async with AsyncExitStack() as stack:
+                api_client = await stack.enter_async_context(
+                    ApiClient(Configuration(access_token=token))
+                )
+                progress = stack.enter_context(
+                    Progress(disable=quiet or not sys.stderr.isatty())
+                )
+
                 transactions_api = TransactionsApi(api_client)
-                with Progress(disable=quiet or not sys.stderr.isatty()) as progress:
-                    task_id = progress.add_task(
-                        f"Updating {total_txns} transaction(s)", total=total_txns
+                task_id = progress.add_task(
+                    f"Updating {total_txns} transaction(s)", total=total_txns
+                )
+                for plan_id, txns in grouped.items():
+                    await transactions_api.update_transactions(
+                        plan_id,
+                        PatchTransactionsWrapper(transactions=txns),
                     )
-                    for plan_id, txns in grouped.items():
-                        await transactions_api.update_transactions(
-                            plan_id,
-                            PatchTransactionsWrapper(transactions=txns),
-                        )
-                        progress.update(task_id, advance=len(txns))
+                    progress.update(task_id, advance=len(txns))
             _print("Done", quiet=quiet)
 
     return PendingIncomeResult(

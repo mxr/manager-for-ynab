@@ -50,11 +50,6 @@ def _create_add_transaction_db(path: Path) -> None:
         execute_seed(con)
 
 
-def _configure_ynab_api_mocks(*mocks):
-    for mock in mocks:
-        mock.return_value = AsyncMock()
-
-
 @pytest.fixture
 def resolved_dining_transaction():
     return add_transaction_module.ResolvedTransaction(
@@ -167,9 +162,10 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     resolved_ready_to_assign_checking_transaction,
     tmp_path,
 ):
-    _configure_ynab_api_mocks(
-        configuration_cls, api_client_cls, transactions_api_cls, categories_api_cls
-    )
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.return_value = None
 
@@ -202,9 +198,10 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     resolved_ready_to_assign_credit_card_transaction,
     tmp_path,
 ):
-    _configure_ynab_api_mocks(
-        configuration_cls, api_client_cls, transactions_api_cls, categories_api_cls
-    )
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -418,7 +415,9 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(configuration_cls, api_client_cls, transactions_api_cls)
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-positive.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -458,9 +457,10 @@ async def test_move_funds_reports_returned_credit_card_payment(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(
-        configuration_cls, api_client_cls, transactions_api_cls, categories_api_cls
-    )
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-negative.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -521,7 +521,9 @@ async def test_move_funds_reports_returned_budget_delta(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(configuration_cls, api_client_cls, transactions_api_cls)
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-returned.sqlite"
     _create_add_transaction_db(db_path)
     resolved = replace(
@@ -562,7 +564,9 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(configuration_cls, api_client_cls, transactions_api_cls)
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-category.sqlite"
     _create_add_transaction_db(db_path)
 
@@ -669,7 +673,9 @@ async def test_move_funds_returns_one_when_api_raises(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(configuration_cls, api_client_cls, transactions_api_cls)
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     transactions_api = transactions_api_cls.return_value
     transactions_api.create_transaction.side_effect = ApiException(
         status=500, reason="boom"
@@ -713,7 +719,9 @@ async def test_move_funds_returns_one_when_funding_fails(
     tmp_path,
     capsys,
 ):
-    _configure_ynab_api_mocks(configuration_cls, api_client_cls, transactions_api_cls)
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
     fund_category_mock.side_effect = err
 
     ret = await add_transaction_module.add_transaction_and_move_funds(

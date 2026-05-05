@@ -3,6 +3,7 @@ import datetime
 import re
 import sys
 import uuid
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -251,60 +252,67 @@ async def add_transaction_and_move_funds(
 
     applied_delta = 0
     try:
-        async with aiosqlite.connect(db) as con:
+        async with AsyncExitStack() as stack:
+            con = await stack.enter_async_context(aiosqlite.connect(db))
+            api_client = await stack.enter_async_context(
+                ApiClient(Configuration(access_token=token))
+            )
+
             con.row_factory = aiosqlite.Row
-            async with ApiClient(Configuration(access_token=token)) as api_client:
-                transactions_api = TransactionsApi(api_client)
-                await transactions_api.create_transaction(
-                    resolved.plan.id,
-                    PostTransactionsWrapper(transaction=txn),
+            transactions_api = TransactionsApi(api_client)
+
+            await transactions_api.create_transaction(
+                resolved.plan.id,
+                PostTransactionsWrapper(transaction=txn),
+            )
+
+            if (
+                resolved.category is not None
+                and resolved.category.name == "Inflow: Ready to Assign"
+                and resolved.account.type == "creditCard"
+            ):
+                (
+                    payment_category_id,
+                    payment_category_name,
+                ) = await _resolve_credit_card_payment_category(
+                    con, resolved.plan.id, resolved.account.name
                 )
+                assert txn.amount is not None
+                applied_delta = await _apply_category_budget_delta(
+                    api_client,
+                    resolved.plan.id,
+                    resolved.date,
+                    payment_category_id,
+                    txn.amount,
+                )
+                _print("Created transaction:", quiet=quiet)
+                if not quiet:
+                    rich.print(txn)
+                if applied_delta > 0:
+                    _print(
+                        f"Applied {applied_delta / 1000:.2f} USD to {payment_category_name!r} from Ready to Assign.",
+                        quiet=quiet,
+                    )
+                if applied_delta < 0:
+                    _print(
+                        f"Returned {abs(applied_delta) / 1000:.2f} USD from "
+                        f"{payment_category_name!r} to Ready to Assign.",
+                        quiet=quiet,
+                    )
+                return 0
 
-                if (
-                    resolved.category is not None
-                    and resolved.category.name == "Inflow: Ready to Assign"
-                    and resolved.account.type == "creditCard"
-                ):
-                    (
-                        payment_category_id,
-                        payment_category_name,
-                    ) = await _resolve_credit_card_payment_category(
-                        con, resolved.plan.id, resolved.account.name
-                    )
-                    assert txn.amount is not None
-                    applied_delta = await _apply_category_budget_delta(
-                        api_client,
-                        resolved.plan.id,
-                        resolved.date,
-                        payment_category_id,
-                        txn.amount,
-                    )
-                    _print("Created transaction:", quiet=quiet)
-                    if not quiet:
-                        rich.print(txn)
-                    if applied_delta > 0:
-                        print(
-                            f"Applied {applied_delta / 1000:.2f} USD to {payment_category_name!r} from Ready to Assign."
-                        )
-                    if applied_delta < 0:
-                        print(
-                            f"Returned {abs(applied_delta) / 1000:.2f} USD from "
-                            f"{payment_category_name!r} to Ready to Assign."
-                        )
-                    return 0
-
-                if (
-                    resolved.category is not None
-                    and resolved.category.name != "Inflow: Ready to Assign"
-                ):
-                    assert txn.amount is not None
-                    applied_delta = await _fund_category(
-                        api_client,
-                        resolved.plan.id,
-                        resolved.date,
-                        resolved.category.id,
-                        txn.amount,
-                    )
+            if (
+                resolved.category is not None
+                and resolved.category.name != "Inflow: Ready to Assign"
+            ):
+                assert txn.amount is not None
+                applied_delta = await _fund_category(
+                    api_client,
+                    resolved.plan.id,
+                    resolved.date,
+                    resolved.category.id,
+                    txn.amount,
+                )
     except ApiException as err:
         print(f"Failed to create transaction: {err}", file=sys.stderr)
         return 1
