@@ -257,8 +257,8 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 5 transaction(s) to approve or delete." in out
-    assert "Use --for-real to actually approve or delete transactions." in out
+    assert "Found 5 transaction(s) to update." in out
+    assert "Use --for-real to actually update transactions." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -285,7 +285,7 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
     assert ret == 0
     sync.assert_not_called()
     assert "** Refreshing SQLite DB **" not in out
-    assert "Found 5 transaction(s) to approve or delete." in out
+    assert "Found 5 transaction(s) to update." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -304,7 +304,7 @@ async def test_run_no_matching_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 0 transaction(s) to approve or delete." in out
+    assert "Found 0 transaction(s) to update." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})

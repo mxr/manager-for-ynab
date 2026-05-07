@@ -85,9 +85,7 @@ async def run(
     )
 
     if len(result.transactions) and not for_real:
-        _print(
-            "Use --for-real to actually approve or delete transactions.", quiet=quiet
-        )
+        _print("Use --for-real to actually update transactions.", quiet=quiet)
 
     return 0
 
@@ -114,7 +112,7 @@ async def auto_approve(
 
     total_txns = len(found_txns)
 
-    _print(f"Found {total_txns} transaction(s) to approve or delete.", quiet=quiet)
+    _print(f"Found {total_txns} transaction(s) to update.", quiet=quiet)
     if found_txns:
         print_found_txns(found_txns, quiet=quiet)
 
@@ -142,7 +140,7 @@ async def auto_approve(
                 transactions_api = TransactionsApi(api_client)
                 semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REQUESTS)
                 task_id = progress.add_task(
-                    f"Approving or deleting {total_txns} transaction(s)",
+                    f"Updating {total_txns} transaction(s)",
                     total=total_txns,
                 )
 
@@ -226,7 +224,7 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     if quiet:
         return
 
-    table = Table(title="Transactions To Approve")
+    table = Table(title="Transactions To Update")
     table.add_column("Date")
     table.add_column("Account")
     table.add_column("Payee")
