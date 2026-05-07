@@ -1,10 +1,13 @@
 import argparse
+import asyncio
+import json
 import sys
 from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from typing import cast
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -26,6 +29,7 @@ if TYPE_CHECKING:
 
 
 _PACKAGE = "manager-for-ynab auto-approve"
+_MAX_CONCURRENT_REQUESTS = 5
 _AUTO_APPROVE_SQL = (
     files("manager_for_ynab.auto_approve").joinpath("auto_approve.sql").read_text()
 )
@@ -34,12 +38,16 @@ _AUTO_APPROVE_SQL = (
 @dataclass(frozen=True)
 class Transaction:
     id: str
-    matched_transaction_id: str | None
     plan_id: str
     account_name: str
     payee_name: str
     amount_formatted: str
     date: str
+    delete_transaction_id: str | None = None
+
+    @property
+    def should_delete(self) -> bool:
+        return self.delete_transaction_id == self.id
 
 
 @dataclass(frozen=True)
@@ -77,7 +85,9 @@ async def run(
     )
 
     if len(result.transactions) and not for_real:
-        _print("Use --for-real to actually approve transactions.", quiet=quiet)
+        _print(
+            "Use --for-real to actually approve or delete transactions.", quiet=quiet
+        )
 
     return 0
 
@@ -100,17 +110,27 @@ async def auto_approve(
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        txns_by_plan = await fetch_auto_approve_transactions(con)
+        found_txns = await fetch_auto_approve_transactions(con)
 
-    found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
 
-    _print(f"Found {total_txns} transaction(s) to approve.", quiet=quiet)
+    _print(f"Found {total_txns} transaction(s) to approve or delete.", quiet=quiet)
     if found_txns:
         print_found_txns(found_txns, quiet=quiet)
 
         if for_real:
-            grouped = build_updates(txns_by_plan)
+            txns_by_plan: defaultdict[
+                str, tuple[list[str], list[SaveTransactionWithIdOrImportId]]
+            ] = defaultdict(lambda: ([], []))
+            for txn in found_txns:
+                delete_txn_ids, update_txns = txns_by_plan[txn.plan_id]
+                if txn.should_delete:
+                    delete_txn_ids.append(txn.id)
+                else:
+                    update_txns.append(
+                        SaveTransactionWithIdOrImportId(id=txn.id, approved=True)
+                    )
+
             async with AsyncExitStack() as stack:
                 api_client = await stack.enter_async_context(
                     ApiClient(Configuration(access_token=token))
@@ -120,15 +140,42 @@ async def auto_approve(
                 )
 
                 transactions_api = TransactionsApi(api_client)
+                semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REQUESTS)
                 task_id = progress.add_task(
-                    f"Approving {total_txns} transaction(s)", total=total_txns
+                    f"Approving or deleting {total_txns} transaction(s)",
+                    total=total_txns,
                 )
-                for plan_id, txns in grouped.items():
-                    await transactions_api.update_transactions(
-                        plan_id,
-                        PatchTransactionsWrapper(transactions=txns),
+
+                async def delete_transaction(plan_id: str, txn_id: str) -> None:
+                    async with semaphore:
+                        await transactions_api.delete_transaction(plan_id, txn_id)
+                        progress.update(task_id, advance=1)
+
+                async def update_transactions(
+                    plan_id: str, update_txns: list[SaveTransactionWithIdOrImportId]
+                ) -> None:
+                    if not update_txns:
+                        return
+
+                    async with semaphore:
+                        await transactions_api.update_transactions(
+                            plan_id,
+                            PatchTransactionsWrapper(transactions=update_txns),
+                        )
+                        progress.update(task_id, advance=len(update_txns))
+
+                requests: list[asyncio.Task[None]] = []
+                for plan_id, (delete_txn_ids, update_txns) in txns_by_plan.items():
+                    for txn_id in delete_txn_ids:
+                        requests.append(
+                            asyncio.create_task(delete_transaction(plan_id, txn_id))
+                        )
+
+                    requests.append(
+                        asyncio.create_task(update_transactions(plan_id, update_txns))
                     )
-                    progress.update(task_id, advance=len(txns) // 2)
+
+                await asyncio.gather(*requests)
             _print("Done", quiet=quiet)
 
     return AutoApproveResult(
@@ -142,41 +189,37 @@ def _print(message: str, *, quiet: bool) -> None:
         print(message)
 
 
-def build_updates(
-    txns_by_plan: dict[str, list[Transaction]],
-) -> dict[str, list[SaveTransactionWithIdOrImportId]]:
-    grouped: dict[str, list[SaveTransactionWithIdOrImportId]] = defaultdict(list)
-    for plan_id, txns in txns_by_plan.items():
-        grouped[plan_id].extend(
-            SaveTransactionWithIdOrImportId(id=txn_id, approved=True)
-            for txn in txns
-            for txn_id in (txn.id, txn.matched_transaction_id)
-            if txn_id is not None
-        )
-    return grouped
-
-
 async def fetch_auto_approve_transactions(
     con: aiosqlite.Connection,
-) -> dict[str, list[Transaction]]:
+) -> list[Transaction]:
     async with con.execute(_AUTO_APPROVE_SQL) as cur:
         txns = await cur.fetchall()
 
-    txns_by_plan: dict[str, list[Transaction]] = defaultdict(list)
-    for txn in txns:
-        txns_by_plan[txn["plan_id"]].append(
-            Transaction(
-                id=txn["id"],
-                matched_transaction_id=txn["matched_transaction_id"],
-                plan_id=txn["plan_id"],
-                account_name=txn["account_name"],
-                payee_name=txn["payee_name"],
-                amount_formatted=txn["amount_formatted"],
-                date=txn["date"],
-            )
-        )
+    return [_transaction_from_row(dict(txn)) for txn in txns]
 
-    return txns_by_plan
+
+def _transaction_from_row(txn: dict[str, object]) -> Transaction:
+    return Transaction(
+        id=cast("str", txn["id"]),
+        plan_id=cast("str", txn["plan_id"]),
+        account_name=cast("str", txn["account_name"]),
+        payee_name=cast("str", txn["payee_name"]),
+        amount_formatted=cast("str", txn["amount_formatted"]),
+        date=cast("str", txn["date"]),
+        delete_transaction_id=cast("str", txn["id"])
+        if _is_json_dict(txn["import_payee_name"])
+        else None,
+    )
+
+
+def _is_json_dict(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    try:
+        return isinstance(json.loads(value), dict)
+    except json.JSONDecodeError:
+        return False
 
 
 def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:

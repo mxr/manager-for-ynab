@@ -51,6 +51,7 @@ INSERT INTO transactions (
     , amount
     , amount_formatted
     , payee_name
+    , import_payee_name
     , cleared
     , approved
     , matched_transaction_id
@@ -65,6 +66,7 @@ INSERT INTO transactions (
     , -4500
     , '-$4.50'
     , 'Coffee'
+    , NULL
     , 'uncleared'
     , 0
     , 'pair-a-2'
@@ -79,6 +81,7 @@ INSERT INTO transactions (
     , -4500
     , '-$4.50'
     , 'Coffee'
+    , '{"payee_name": "Coffee"}'
     , 'uncleared'
     , 0
     , 'pair-a-1'
@@ -93,6 +96,7 @@ INSERT INTO transactions (
     , -12000
     , '-$12.00'
     , 'Lunch'
+    , '{"payee_name": "Lunch"}'
     , 'uncleared'
     , 0
     , 'pair-b-2'
@@ -107,6 +111,7 @@ INSERT INTO transactions (
     , -12000
     , '-$12.00'
     , 'Lunch'
+    , NULL
     , 'uncleared'
     , 0
     , 'pair-b-1'
@@ -121,6 +126,7 @@ INSERT INTO transactions (
     , -3000
     , '-$3.00'
     , 'Done'
+    , NULL
     , 'uncleared'
     , 1
     , 'approved-2'
@@ -135,6 +141,7 @@ INSERT INTO transactions (
     , -3000
     , '-$3.00'
     , 'Done'
+    , '{"payee_name": "Done"}'
     , 'uncleared'
     , 0
     , 'approved-1'
@@ -149,6 +156,7 @@ INSERT INTO transactions (
     , -7000
     , '-$7.00'
     , 'Solo'
+    , NULL
     , 'uncleared'
     , 0
     , NULL
@@ -163,6 +171,7 @@ INSERT INTO transactions (
     , -5000
     , '-$5.00'
     , 'Gone'
+    , NULL
     , 'uncleared'
     , 0
     , 'deleted-2'
@@ -177,6 +186,7 @@ INSERT INTO transactions (
     , -5000
     , '-$5.00'
     , 'Gone'
+    , '{"payee_name": "Gone"}'
     , 'uncleared'
     , 0
     , 'deleted-1'
