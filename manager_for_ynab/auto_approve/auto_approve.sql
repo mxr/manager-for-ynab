@@ -1,21 +1,24 @@
 SELECT
     transactions.id
-    , transactions.matched_transaction_id
     , transactions.plan_id
     , transactions.account_name
     , transactions.payee_name
     , transactions.amount_formatted
     , transactions."date"
+    , transactions.import_payee_name
 FROM transactions
+LEFT JOIN transactions AS matched_transactions
+    ON
+        transactions.matched_transaction_id = matched_transactions.id
+        AND transactions.plan_id = matched_transactions.plan_id
 WHERE
     transactions.deleted = 0
     AND transactions.approved = 0
     AND (
         (
             transactions.matched_transaction_id IS NOT NULL
-            -- matched pairs reference each other
-            -- so keep one stable row per pair
-            AND transactions.id < transactions.matched_transaction_id
+            AND matched_transactions.approved = 0
+            AND matched_transactions.deleted = 0
         )
         OR EXISTS (
             SELECT 1
@@ -36,4 +39,5 @@ ORDER BY
     , transactions.account_name ASC
     , transactions.payee_name ASC
     , transactions.amount DESC
+    , transactions.id ASC
 ;

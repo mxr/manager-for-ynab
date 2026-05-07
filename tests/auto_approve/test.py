@@ -1,14 +1,15 @@
 import sqlite3
 from typing import Any
+from unittest.mock import call
 from unittest.mock import patch
 
 import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.auto_approve import _transaction_from_row
 from manager_for_ynab.auto_approve import auto_approve
 from manager_for_ynab.auto_approve import AutoApproveResult
-from manager_for_ynab.auto_approve import build_updates
 from manager_for_ynab.auto_approve import fetch_auto_approve_transactions
 from manager_for_ynab.auto_approve import run
 from manager_for_ynab.auto_approve import Transaction
@@ -21,73 +22,54 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
 
+def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
+    with sqlite3.connect(":memory:") as con:
+        con.row_factory = sqlite3.Row
+        row = con.execute(
+            """
+            SELECT
+                'txn-1' AS id
+                , 'plan-1' AS plan_id
+                , 'Checking' AS account_name
+                , 'Coffee' AS payee_name
+                , '-$4.50' AS amount_formatted
+                , '2026-04-20' AS date
+                , 'not-json' AS import_payee_name
+            """
+        ).fetchone()
+
+    txn = _transaction_from_row(row)
+
+    assert txn == Transaction(
+        id="txn-1",
+        plan_id="plan-1",
+        account_name="Checking",
+        payee_name="Coffee",
+        amount_formatted="-$4.50",
+        date="2026-04-20",
+    )
+
+
 @pytest.mark.asyncio
 async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         found = await fetch_auto_approve_transactions(con)
 
-    assert {plan_id: [txn.id for txn in txns] for plan_id, txns in found.items()} == {
-        "plan-1": ["pair-a-1", "unmatched"],
-        "plan-2": ["pair-b-1"],
-    }
-
-
-def test_build_updates_groups_by_plan_and_updates_both_ids():
-    txns_by_plan = {
-        "plan-1": [
-            Transaction(
-                id="txn-1",
-                matched_transaction_id="txn-2",
-                plan_id="plan-1",
-                account_name="Checking",
-                payee_name="Coffee",
-                amount_formatted="-$4.50",
-                date="2026-04-20",
-            )
-        ],
-        "plan-2": [
-            Transaction(
-                id="txn-3",
-                matched_transaction_id="txn-4",
-                plan_id="plan-2",
-                account_name="Card",
-                payee_name="Lunch",
-                amount_formatted="-$12.00",
-                date="2026-04-21",
-            )
-        ],
-    }
-
-    updates = build_updates(txns_by_plan)
-
-    assert {plan_id: [txn.id for txn in txns] for plan_id, txns in updates.items()} == {
-        "plan-1": ["txn-1", "txn-2"],
-        "plan-2": ["txn-3", "txn-4"],
-    }
-    assert all(txn.approved is True for txns in updates.values() for txn in txns)
-
-
-def test_build_updates_approves_unmatched_scheduled_transactions():
-    txns_by_plan = {
-        "plan-1": [
-            Transaction(
-                id="txn-1",
-                matched_transaction_id=None,
-                plan_id="plan-1",
-                account_name="Checking",
-                payee_name="Apple",
-                amount_formatted="-$21.76",
-                date="2026-04-20",
-            )
-        ]
-    }
-
-    updates = build_updates(txns_by_plan)
-
-    assert {plan_id: [txn.id for txn in txns] for plan_id, txns in updates.items()} == {
-        "plan-1": ["txn-1"],
-    }
+    assert [txn.id for txn in found] == [
+        "pair-a-1",
+        "pair-a-2",
+        "pair-b-1",
+        "pair-b-2",
+        "unmatched",
+    ]
+    assert [txn.should_delete for txn in found] == [
+        False,
+        True,
+        True,
+        False,
+        False,
+    ]
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: ""})
@@ -119,7 +101,6 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
         transactions=[
             Transaction(
                 id="pair-a-1",
-                matched_transaction_id="pair-a-2",
                 plan_id="plan-1",
                 account_name="Checking",
                 payee_name="Coffee",
@@ -127,21 +108,37 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 date="2026-04-20",
             ),
             Transaction(
-                id="unmatched",
-                matched_transaction_id=None,
+                id="pair-a-2",
                 plan_id="plan-1",
                 account_name="Checking",
-                payee_name="Solo",
-                amount_formatted="-$7.00",
-                date="2026-04-21",
+                payee_name="Coffee",
+                amount_formatted="-$4.50",
+                date="2026-04-20",
+                should_delete=True,
             ),
             Transaction(
                 id="pair-b-1",
-                matched_transaction_id="pair-b-2",
                 plan_id="plan-2",
                 account_name="Card",
                 payee_name="Lunch",
                 amount_formatted="-$12.00",
+                date="2026-04-21",
+                should_delete=True,
+            ),
+            Transaction(
+                id="pair-b-2",
+                plan_id="plan-2",
+                account_name="Card",
+                payee_name="Lunch",
+                amount_formatted="-$12.00",
+                date="2026-04-21",
+            ),
+            Transaction(
+                id="unmatched",
+                plan_id="plan-1",
+                account_name="Checking",
+                payee_name="Solo",
+                amount_formatted="-$7.00",
                 date="2026-04-21",
             ),
         ],
@@ -209,11 +206,48 @@ async def test_auto_approve_for_real_returns_updated_count(
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == [
         "pair-a-1",
-        "pair-a-2",
         "unmatched",
     ]
-    assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]
-    assert result == _expected_auto_approve_result(3)
+    assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-2"]
+    assert transactions_api.delete_transaction.call_args_list == [
+        call("plan-1", "pair-a-2"),
+        call("plan-2", "pair-b-1"),
+    ]
+    assert result == _expected_auto_approve_result(5)
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.auto_approve.sync")
+@pytest.mark.asyncio
+async def test_auto_approve_for_real_skips_update_when_plan_only_deletes(
+    sync, transactions_api, db
+):
+    with sqlite3.connect(db) as con:
+        con.execute(
+            "UPDATE transactions SET import_payee_name = '{\"payee_name\": \"Lunch\"}' WHERE id = 'pair-b-2'"
+        )
+
+    updates: list[tuple[str, Any]] = []
+    transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
+        updates.append((plan_id, wrapper))
+    )
+
+    result = await auto_approve(
+        db=db,
+        full_refresh=False,
+        for_real=True,
+        token_override=None,
+        quiet=True,
+    )
+
+    sync.assert_called_once_with("token", db, False, quiet=True)
+    assert [plan_id for plan_id, _ in updates] == ["plan-1"]
+    assert transactions_api.delete_transaction.call_args_list == [
+        call("plan-1", "pair-a-2"),
+        call("plan-2", "pair-b-1"),
+        call("plan-2", "pair-b-2"),
+    ]
+    assert result.updated_count == 5
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -228,8 +262,11 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 3 transaction(s) to approve." in out
-    assert "Use --for-real to actually approve transactions." in out
+    assert "Found 5 transaction(s) to update." in out
+    assert "Transactions To Update" in out
+    assert "Delete" in out
+    assert "Update" in out
+    assert "Use --for-real to actually update transactions." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -256,7 +293,7 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
     assert ret == 0
     sync.assert_not_called()
     assert "** Refreshing SQLite DB **" not in out
-    assert "Found 3 transaction(s) to approve." in out
+    assert "Found 5 transaction(s) to update." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -275,7 +312,7 @@ async def test_run_no_matching_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 0 transaction(s) to approve." in out
+    assert "Found 0 transaction(s) to update." in out
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -298,7 +335,10 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
     assert [plan_id for plan_id, _ in updates] == ["plan-1", "plan-2"]
     assert [txn.id for txn in updates[0][1].transactions] == [
         "pair-a-1",
-        "pair-a-2",
         "unmatched",
     ]
-    assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-1", "pair-b-2"]
+    assert [txn.id for txn in updates[1][1].transactions] == ["pair-b-2"]
+    assert transactions_api.delete_transaction.call_args_list == [
+        call("plan-1", "pair-a-2"),
+        call("plan-2", "pair-b-1"),
+    ]

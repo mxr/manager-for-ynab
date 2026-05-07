@@ -128,6 +128,7 @@ CREATE TABLE transactions (
     , amount INT
     , amount_formatted TEXT
     , payee_name TEXT
+    , import_payee_name TEXT
     , cleared TEXT
     , approved BOOLEAN
     , matched_transaction_id TEXT
