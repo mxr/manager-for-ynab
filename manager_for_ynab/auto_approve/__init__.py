@@ -7,7 +7,6 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import cast
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -104,19 +103,19 @@ async def auto_approve(
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        found_txns = await fetch_auto_approve_transactions(con)
+        transactions = await fetch_auto_approve_transactions(con)
 
-    total_txns = len(found_txns)
+    total = len(transactions)
 
-    _print(f"Found {total_txns} transaction(s) to update.", quiet=quiet)
-    if found_txns:
-        print_found_txns(found_txns, quiet=quiet)
+    _print(f"Found {total} transaction(s) to update.", quiet=quiet)
+    if transactions:
+        print_transactions(transactions, quiet=quiet)
 
         if for_real:
             txns_by_plan: defaultdict[
                 str, tuple[list[str], list[SaveTransactionWithIdOrImportId]]
             ] = defaultdict(lambda: ([], []))
-            for txn in found_txns:
+            for txn in transactions:
                 delete_txn_ids, update_txns = txns_by_plan[txn.plan_id]
                 if txn.should_delete:
                     delete_txn_ids.append(txn.id)
@@ -136,8 +135,7 @@ async def auto_approve(
                 transactions_api = TransactionsApi(api_client)
                 semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REQUESTS)
                 task_id = progress.add_task(
-                    f"Updating {total_txns} transaction(s)",
-                    total=total_txns,
+                    f"Updating {total} transaction(s)", total=total
                 )
 
                 async def delete_transaction(plan_id: str, txn_id: str) -> None:
@@ -173,8 +171,8 @@ async def auto_approve(
             _print("Done", quiet=quiet)
 
     return AutoApproveResult(
-        transactions=found_txns,
-        updated_count=total_txns if for_real else 0,
+        transactions=transactions,
+        updated_count=total if for_real else 0,
     )
 
 
@@ -189,17 +187,17 @@ async def fetch_auto_approve_transactions(
     async with con.execute(_AUTO_APPROVE_SQL) as cur:
         txns = await cur.fetchall()
 
-    return [_transaction_from_row(dict(txn)) for txn in txns]
+    return [_transaction_from_row(txn) for txn in txns]
 
 
-def _transaction_from_row(txn: dict[str, object]) -> Transaction:
+def _transaction_from_row(txn: aiosqlite.Row) -> Transaction:
     return Transaction(
-        id=cast("str", txn["id"]),
-        plan_id=cast("str", txn["plan_id"]),
-        account_name=cast("str", txn["account_name"]),
-        payee_name=cast("str", txn["payee_name"]),
-        amount_formatted=cast("str", txn["amount_formatted"]),
-        date=cast("str", txn["date"]),
+        id=txn["id"],
+        plan_id=txn["plan_id"],
+        account_name=txn["account_name"],
+        payee_name=txn["payee_name"],
+        amount_formatted=txn["amount_formatted"],
+        date=txn["date"],
         should_delete=_is_json_dict(txn["import_payee_name"]),
     )
 
@@ -214,7 +212,7 @@ def _is_json_dict(value: object) -> bool:
         return False
 
 
-def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
+def print_transactions(transactions: list[Transaction], *, quiet: bool) -> None:
     if quiet:
         return
 
@@ -225,7 +223,7 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     table.add_column("Payee")
     table.add_column("Amount", justify="right")
 
-    for txn in found_txns:
+    for txn in transactions:
         table.add_row(
             "Delete" if txn.should_delete else "Update",
             txn.date,

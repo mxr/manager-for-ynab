@@ -23,17 +23,22 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
 
 
 def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
-    txn = _transaction_from_row(
-        {
-            "id": "txn-1",
-            "plan_id": "plan-1",
-            "account_name": "Checking",
-            "payee_name": "Coffee",
-            "amount_formatted": "-$4.50",
-            "date": "2026-04-20",
-            "import_payee_name": "not-json",
-        }
-    )
+    with sqlite3.connect(":memory:") as con:
+        con.row_factory = sqlite3.Row
+        row = con.execute(
+            """
+            SELECT
+                'txn-1' AS id
+                , 'plan-1' AS plan_id
+                , 'Checking' AS account_name
+                , 'Coffee' AS payee_name
+                , '-$4.50' AS amount_formatted
+                , '2026-04-20' AS date
+                , 'not-json' AS import_payee_name
+            """
+        ).fetchone()
+
+    txn = _transaction_from_row(row)
 
     assert txn == Transaction(
         id="txn-1",
