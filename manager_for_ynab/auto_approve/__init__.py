@@ -43,11 +43,7 @@ class Transaction:
     payee_name: str
     amount_formatted: str
     date: str
-    delete_transaction_id: str | None = None
-
-    @property
-    def should_delete(self) -> bool:
-        return self.delete_transaction_id == self.id
+    should_delete: bool = False
 
 
 @dataclass(frozen=True)
@@ -204,9 +200,7 @@ def _transaction_from_row(txn: dict[str, object]) -> Transaction:
         payee_name=cast("str", txn["payee_name"]),
         amount_formatted=cast("str", txn["amount_formatted"]),
         date=cast("str", txn["date"]),
-        delete_transaction_id=cast("str", txn["id"])
-        if _is_json_dict(txn["import_payee_name"])
-        else None,
+        should_delete=_is_json_dict(txn["import_payee_name"]),
     )
 
 
@@ -225,6 +219,7 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
         return
 
     table = Table(title="Transactions To Update")
+    table.add_column("Action")
     table.add_column("Date")
     table.add_column("Account")
     table.add_column("Payee")
@@ -232,7 +227,11 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
 
     for txn in found_txns:
         table.add_row(
-            txn.date, txn.account_name, txn.payee_name or "", txn.amount_formatted
+            "Delete" if txn.should_delete else "Update",
+            txn.date,
+            txn.account_name,
+            txn.payee_name or "",
+            txn.amount_formatted,
         )
 
     rich.print(table)

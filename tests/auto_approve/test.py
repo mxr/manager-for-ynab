@@ -58,12 +58,12 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         "pair-b-2",
         "unmatched",
     ]
-    assert [txn.delete_transaction_id for txn in found] == [
-        None,
-        "pair-a-2",
-        "pair-b-1",
-        None,
-        None,
+    assert [txn.should_delete for txn in found] == [
+        False,
+        True,
+        True,
+        False,
+        False,
     ]
 
 
@@ -109,7 +109,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Coffee",
                 amount_formatted="-$4.50",
                 date="2026-04-20",
-                delete_transaction_id="pair-a-2",
+                should_delete=True,
             ),
             Transaction(
                 id="pair-b-1",
@@ -118,7 +118,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Lunch",
                 amount_formatted="-$12.00",
                 date="2026-04-21",
-                delete_transaction_id="pair-b-1",
+                should_delete=True,
             ),
             Transaction(
                 id="pair-b-2",
@@ -258,6 +258,9 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
     assert "Found 5 transaction(s) to update." in out
+    assert "Transactions To Update" in out
+    assert "Delete" in out
+    assert "Update" in out
     assert "Use --for-real to actually update transactions." in out
 
 
