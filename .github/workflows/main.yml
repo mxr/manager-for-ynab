@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       project_files: ${{ steps.filter.outputs.project_files }}
+      mypy_linting_files: ${{ steps.filter.outputs.mypy_linting_files }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
@@ -20,23 +21,50 @@ jobs:
       id: filter
       with:
         filters: |
+          mypy_linting_files:
+            - '**/*.py'
+            - .pre-commit-config.yaml
           project_files:
             - .github/workflows/**
             - '**/*.py'
-            - '**/*.sql'
             - '**/*.toml'
             - '**/*requirements*.txt'
             - '**/setup.cfg'
-            - setup.py
-  zizmor:
+            - custom_components/*/manifest.json
+  pre-commit-mypy-real:
+    needs: [changes]
+    if: needs.changes.outputs.mypy_linting_files == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd   # v6.0.2
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         persist-credentials: false
-    - uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e   # v0.5.3
+    - id: python-version
+      run: |
+        version="$(sed -nE 's/^  python: python(.*)$/\1/p' .pre-commit-config.yaml)"
+        test -n "$version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ steps.python-version.outputs.version }}
+    - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      with:
+        extra_args: mypy --all-files  # venv is too large to run with pre-commit.ci
+  pre-commit-mypy:
+    needs: [changes, pre-commit-mypy-real]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - env:
+        MYPY_LINTING_FILES: ${{ needs.changes.outputs.mypy_linting_files }}
+        PRE_COMMIT_MYPY_REAL_RESULT: ${{ needs.pre-commit-mypy-real.result }}
+      run: |
+        if [ "$MYPY_LINTING_FILES" != "true" ]; then
+          exit 0
+        fi
+        if [ "$PRE_COMMIT_MYPY_REAL_RESULT" != "success" ]; then
+          exit 1
+        fi
   main-real:
     needs: [changes]
     if: needs.changes.outputs.project_files == 'true'
@@ -56,27 +84,5 @@ jobs:
           exit 0
         fi
         if [ "$MAIN_REAL_RESULT" != "success" ]; then
-          exit 1
-        fi
-  main-win-real:
-    needs: [changes]
-    if: needs.changes.outputs.project_files == 'true'
-    uses: asottile/workflows/.github/workflows/tox.yml@adfec6a1ccb5d6b189aa153676d4f0743afa21c1 # v1.11.0
-    with:
-      env: '["py314"]'
-      os: windows-latest
-  main-win:
-    needs: [changes, main-win-real]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-    - env:
-        PROJECT_FILES: ${{ needs.changes.outputs.project_files }}
-        MAIN_WIN_REAL_RESULT: ${{ needs.main-win-real.result }}
-      run: |
-        if [ "$PROJECT_FILES" != "true" ]; then
-          exit 0
-        fi
-        if [ "$MAIN_WIN_REAL_RESULT" != "success" ]; then
           exit 1
         fi
