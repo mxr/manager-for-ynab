@@ -90,8 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--date",
-        type=datetime.date.fromisoformat,
-        help="Transaction date in YYYY-MM-DD format.",
+        type=parse_date,
+        help="Transaction date in YYYY-MM-DD format, or 'today'.",
     )
     parser.add_argument(
         "--cleared",
@@ -136,6 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def decimal(raw_decimal: str) -> Decimal:
     return Decimal(raw_decimal.replace(",", ""))
+
+
+def parse_date(raw_date: str) -> datetime.date:
+    if raw_date == "today":
+        return datetime.date.today()
+    return datetime.date.fromisoformat(raw_date)
 
 
 async def run(
@@ -699,10 +705,10 @@ async def _choice_prompt(message: str, options: Mapping[str, object]) -> str:
 
 
 async def date_prompt() -> datetime.date:
-    return datetime.date.fromisoformat(
+    return parse_date(
         await _prompt(
             "Date: ",
-            lambda text: _DATE_RE.match(text) is not None,
+            lambda text: text == "today" or _DATE_RE.match(text) is not None,
             default=datetime.date.today().isoformat(),
         )
     )

@@ -35,6 +35,7 @@ from manager_for_ynab.add_transaction import confirm
 from manager_for_ynab.add_transaction import date_prompt
 from manager_for_ynab.add_transaction import decimal
 from manager_for_ynab.add_transaction import edit_distance
+from manager_for_ynab.add_transaction import parse_date
 from manager_for_ynab.add_transaction import run
 from manager_for_ynab.add_transaction import sync_and_resolve_transaction
 from testing.fixtures import CHECKING_ACCOUNT_ID
@@ -294,6 +295,10 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
     assert kwargs["for_real"] is True
     assert kwargs["quiet"] is True
     assert kwargs["should_sync"] is False
+
+
+def test_parse_date_accepts_today():
+    assert parse_date("today") == date.today()
 
 
 @pytest.mark.parametrize(
@@ -940,10 +945,10 @@ async def test_resolve_transaction_rejects_category_for_transfer(
 @patch("manager_for_ynab.add_transaction._prompt", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_shared_prompt_helpers_use_prompt_value(prompt_mock):
-    prompt_mock.side_effect = ["Checking", "2026-04-26", "12.34", "yes"]
+    prompt_mock.side_effect = ["Checking", "today", "12.34", "yes"]
 
     assert await _choice_prompt("Account: ", {"Checking": "account-id"}) == "Checking"
-    assert await date_prompt() == date(2026, 4, 26)
+    assert await date_prompt() == date.today()
     assert await amount_prompt() == Decimal("12.34")
     assert await confirm("Proceed?") is True
 
