@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.sankey import build_echarts_html
 from manager_for_ynab.sankey import build_figure
 from manager_for_ynab.sankey import build_sankey_data
 from manager_for_ynab.sankey import fetch_sankey_rows
@@ -239,6 +240,36 @@ def test_build_figure_uses_fixed_node_positions():
     assert tuple(sankey.node.y) == tuple(data.y)
 
 
+def test_build_echarts_html_uses_node_keys_and_labels():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "State",
+                "taxes-group",
+                "Taxes",
+                "taxes-category",
+                "Taxes",
+                Decimal("120"),
+            ),
+        ]
+    )
+
+    html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
+
+    assert "Spending Sankey: 2026-04-01 to 2026-04-30" in html
+    assert "category_group:taxes-group" in html
+    assert "category:taxes-category" in html
+    assert "function(params) { return params.data.label; }" in html
+
+
 @pytest.mark.asyncio
 async def test_run_rejects_end_before_start(db):
     with pytest.raises(SystemExit) as excinfo:
@@ -250,6 +281,25 @@ async def test_run_rejects_end_before_start(db):
                 "2026-04-30",
                 "--end",
                 "2026-04-01",
+            )
+        )
+
+    assert excinfo.value.code == 2
+
+
+@pytest.mark.asyncio
+async def test_run_rejects_echarts_without_html(db):
+    with pytest.raises(SystemExit) as excinfo:
+        await run(
+            (
+                "--sqlite-export-for-ynab-db",
+                str(db),
+                "--start",
+                "2026-04-01",
+                "--end",
+                "2026-04-30",
+                "--renderer",
+                "echarts",
             )
         )
 
@@ -299,6 +349,34 @@ async def test_run_html_writes_stdout(to_html, sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     to_html.assert_called_once()
     assert out.endswith("<html></html>")
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
+@patch("manager_for_ynab.sankey.sync")
+@pytest.mark.asyncio
+async def test_run_echarts_html_writes_stdout(
+    sync, build_echarts_html_mock, db, capsys
+):
+    ret = await run(
+        (
+            "--sqlite-export-for-ynab-db",
+            str(db),
+            "--start",
+            "2026-04-01",
+            "--end",
+            "2026-04-30",
+            "--html",
+            "--renderer",
+            "echarts",
+        )
+    )
+
+    assert ret == 0
+    out, _ = capsys.readouterr()
+    sync.assert_called_once_with("token", db, False, quiet=False)
+    build_echarts_html_mock.assert_called_once()
+    assert out.endswith("<echarts></echarts>")
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})

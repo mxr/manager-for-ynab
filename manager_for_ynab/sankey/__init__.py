@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 import plotly.graph_objects as go
+from pyecharts import charts
+from pyecharts import options
+from pyecharts.commons import utils
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
@@ -22,6 +25,10 @@ if TYPE_CHECKING:
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
+_RENDERERS = ("plotly", "echarts")
+_MIN_FIGURE_HEIGHT = 700
+_CATEGORY_ROW_HEIGHT = 36
+_FIGURE_VERTICAL_MARGIN = 220
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,7 @@ class SankeyRow:
 
 @dataclass(frozen=True)
 class SankeyData:
+    keys: list[str]
     labels: list[str]
     sources: list[int]
     targets: list[int]
@@ -74,6 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write HTML to stdout instead of opening the figure with Plotly.",
     )
     parser.add_argument(
+        "--renderer",
+        choices=_RENDERERS,
+        default="plotly",
+        help="Sankey renderer to use. `echarts` is only supported with --html.",
+    )
+    parser.add_argument(
         "--sqlite-export-for-ynab-db",
         type=Path,
         default=default_db_path(),
@@ -104,6 +118,8 @@ async def run(
     args = build_parser().parse_args(argv)
     if args.start > args.end:
         build_parser().error("--start must be before or equal to --end")
+    if args.renderer == "echarts" and not args.html:
+        build_parser().error("--renderer echarts requires --html")
 
     return await sankey(
         db=args.sqlite_export_for_ynab_db,
@@ -112,6 +128,7 @@ async def run(
         start=args.start,
         end=args.end,
         html=args.html,
+        renderer=args.renderer,
         quiet=args.quiet,
         token_override=token_override,
     )
@@ -125,6 +142,7 @@ async def sankey(
     start: date,
     end: date,
     html: bool,
+    renderer: str = "plotly",
     quiet: bool,
     token_override: str | None,
 ) -> int:
@@ -144,10 +162,13 @@ async def sankey(
         _print("No Sankey data found.", quiet=quiet)
         return 0
 
-    fig = build_figure(data, start=start, end=end)
-    if html:
+    if renderer == "echarts":
+        sys.stdout.write(build_echarts_html(data, start=start, end=end))
+    elif html:
+        fig = build_figure(data, start=start, end=end)
         sys.stdout.write(fig.to_html())
     else:
+        fig = build_figure(data, start=start, end=end)
         fig.show()
 
     return 0
@@ -259,7 +280,13 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         values.append(value)
 
     return SankeyData(
-        labels=labels, sources=sources, targets=targets, values=values, x=x, y=y
+        keys=[node.key for node in indexes],
+        labels=labels,
+        sources=sources,
+        targets=targets,
+        values=values,
+        x=x,
+        y=y,
     )
 
 
@@ -316,10 +343,52 @@ def build_figure(data: SankeyData, *, start: date, end: date) -> go.Figure:
     )
 
 
+def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
+    chart = charts.Sankey(
+        init_opts=options.InitOpts(width="100%", height=f"{_figure_height(data)}px")
+    )
+    chart.add(
+        "",
+        nodes=[
+            {"name": key, "label": label}
+            for key, label in zip(data.keys, data.labels, strict=True)
+        ],
+        links=[
+            {
+                "source": data.keys[source],
+                "target": data.keys[target],
+                "value": float(value),
+            }
+            for source, target, value in zip(
+                data.sources, data.targets, data.values, strict=True
+            )
+        ],
+        label_opts=options.LabelOpts(
+            formatter=utils.JsCode("function(params) { return params.data.label; }")
+        ),
+        layout_iterations=0,
+    )
+    chart.set_global_opts(
+        title_opts=options.TitleOpts(
+            title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}"
+        )
+    )
+    return chart.render_embed()
+
+
+def _figure_height(data: SankeyData) -> int:
+    category_count = sum(node_x == 1.0 for node_x in data.x)
+    return max(
+        _MIN_FIGURE_HEIGHT,
+        _FIGURE_VERTICAL_MARGIN + (category_count * _CATEGORY_ROW_HEIGHT),
+    )
+
+
 __all__ = [
     SankeyData.__name__,
     SankeyNode.__name__,
     SankeyRow.__name__,
+    build_echarts_html.__name__,
     build_figure.__name__,
     build_sankey_data.__name__,
     fetch_sankey_rows.__name__,

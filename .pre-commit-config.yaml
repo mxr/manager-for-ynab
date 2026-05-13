@@ -45,6 +45,7 @@ repos:
     - aiohttp
     - Babel
     - plotly
+    - pyecharts
     - rich>=10
     - sqlite-export-for-ynab>=2.7.1
     - asyncio-for-ynab>=1.83.0

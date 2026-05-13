@@ -105,6 +105,7 @@ def test_main_sankey_help(capsys):
     assert "manager-for-ynab sankey" in out
     assert "--start" in out
     assert "--end" in out
+    assert "--renderer" in out
 
 
 def test_build_parser_registers_expected_subcommands():
