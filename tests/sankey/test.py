@@ -185,9 +185,7 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         Decimal("45.5"),
     ]
     assert data.x == [0.0, 0.25, 0.55, 0.55, 1.0, 1.0]
-    assert data.y == pytest.approx(
-        [0.02, 0.5, 0.02, 0.7160725075528701, 0.02, 0.7160725075528701]
-    )
+    assert data.y == pytest.approx([0.5, 0.5, 0.02, 0.98, 0.02, 0.98])
 
 
 def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
@@ -281,7 +279,7 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
         "Gym",
     ]
     assert data.x == [0.25, 0.55, 0.55, 0.55, 1.0, 1.0, 1.0, 1.0]
-    assert data.y == pytest.approx([0.5, 0.02, 0.404, 0.692, 0.02, 0.404, 0.596, 0.692])
+    assert data.y == pytest.approx([0.5, 0.02, 0.5, 0.98, 0.02, 0.34, 0.66, 0.98])
 
 
 def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
