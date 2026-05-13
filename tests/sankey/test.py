@@ -26,7 +26,9 @@ def db(tmp_path: Path) -> Path:
         con.execute(
             """
             CREATE TABLE flat_transactions (
-                category_group_name TEXT
+                category_group_id TEXT
+                , category_group_name TEXT
+                , category_id TEXT
                 , category_name TEXT
                 , amount INT
                 , cleared TEXT
@@ -37,31 +39,73 @@ def db(tmp_path: Path) -> Path:
         )
         con.executemany(
             """
-            INSERT INTO flat_transactions VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO flat_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
+                    "internal-group",
                     "Internal Master Category",
+                    "ready-to-assign",
                     "Inflow: Ready to Assign",
                     500000,
                     "reconciled",
                     "2026-04-01",
                     "Employer",
                 ),
-                ("Bills", "Rent", -120000, "reconciled", "2026-04-02", "Landlord"),
-                ("Food", "Groceries", -45500, "Reconciled", "2026-04-03", "Market"),
-                ("Food", "Restaurants", -20000, "cleared", "2026-04-03", "Cafe"),
                 (
+                    "bills-group",
+                    "Bills",
+                    "rent",
+                    "Rent",
+                    -120000,
+                    "reconciled",
+                    "2026-04-02",
+                    "Landlord",
+                ),
+                (
+                    "food-group",
+                    "Food",
+                    "groceries",
+                    "Groceries",
+                    -45500,
+                    "Reconciled",
+                    "2026-04-03",
+                    "Market",
+                ),
+                (
+                    "food-group",
+                    "Food",
+                    "restaurants",
+                    "Restaurants",
+                    -20000,
+                    "cleared",
+                    "2026-04-03",
+                    "Cafe",
+                ),
+                (
+                    "internal-group",
                     "Internal Master Category",
+                    "hidden",
                     "Hidden",
                     -10000,
                     "reconciled",
                     "2026-04-03",
                     "Hidden",
                 ),
-                ("Bills", "Rent", -10000, "reconciled", "2026-05-01", "Landlord"),
                 (
+                    "bills-group",
+                    "Bills",
+                    "rent",
+                    "Rent",
+                    -10000,
+                    "reconciled",
+                    "2026-05-01",
+                    "Landlord",
+                ),
+                (
+                    "inflow-group",
                     "Inflow",
+                    "ready-to-assign",
                     "Inflow: Ready to Assign",
                     100000,
                     "reconciled",
@@ -82,11 +126,15 @@ async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
         )
 
     assert rows == [
-        SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
-        SankeyRow("Market", "Food", "Groceries", Decimal("45.5")),
+        SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")),
+        SankeyRow(
+            "Market", "food-group", "Food", "groceries", "Groceries", Decimal("45.5")
+        ),
         SankeyRow(
             "Employer",
+            "internal-group",
             "Internal Master Category",
+            "ready-to-assign",
             "Inflow: Ready to Assign",
             Decimal("-500"),
         ),
@@ -96,9 +144,25 @@ async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
 def test_build_sankey_data_links_income_to_groups_to_categories():
     data = build_sankey_data(
         [
-            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-500")),
-            SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
-            SankeyRow("Market", "Food", "Groceries", Decimal("45.5")),
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")
+            ),
+            SankeyRow(
+                "Market",
+                "food-group",
+                "Food",
+                "groceries",
+                "Groceries",
+                Decimal("45.5"),
+            ),
         ]
     )
 
@@ -106,12 +170,12 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         "Employer",
         "Ready to Assign",
         "Bills",
-        "Rent",
         "Food",
+        "Rent",
         "Groceries",
     ]
-    assert data.sources == [0, 1, 2, 1, 4]
-    assert data.targets == [1, 2, 3, 4, 5]
+    assert data.sources == [0, 1, 2, 1, 3]
+    assert data.targets == [1, 2, 4, 3, 5]
     assert data.values == [
         Decimal("500"),
         Decimal("120"),
@@ -119,13 +183,24 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         Decimal("45.5"),
         Decimal("45.5"),
     ]
+    assert data.x == [0.0, 0.25, 0.55, 0.55, 1.0, 1.0]
+    assert data.y == [0.5, 0.5, 0.0, 1.0, 0.0, 1.0]
 
 
 def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
     data = build_sankey_data(
         [
-            SankeyRow("Market", "Food", "Groceries", Decimal("-45.5")),
-            SankeyRow("Cafe", "Food", "Restaurants", Decimal("0")),
+            SankeyRow(
+                "Market",
+                "food-group",
+                "Food",
+                "groceries",
+                "Groceries",
+                Decimal("-45.5"),
+            ),
+            SankeyRow(
+                "Cafe", "food-group", "Food", "restaurants", "Restaurants", Decimal("0")
+            ),
         ]
     )
 
@@ -135,10 +210,28 @@ def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
 def test_build_sankey_data_groups_links_over_whole_range():
     data = build_sankey_data(
         [
-            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-500")),
-            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-300")),
-            SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
-            SankeyRow("Landlord", "Bills", "Rent", Decimal("80")),
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-300"),
+            ),
+            SankeyRow(
+                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")
+            ),
+            SankeyRow(
+                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("80")
+            ),
         ]
     )
 
@@ -146,6 +239,57 @@ def test_build_sankey_data_groups_links_over_whole_range():
     assert data.sources == [0, 1, 2]
     assert data.targets == [1, 2, 3]
     assert data.values == [Decimal("800"), Decimal("200"), Decimal("200")]
+
+
+def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
+    data = build_sankey_data(
+        [
+            SankeyRow("Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("10")),
+            SankeyRow("Market", "food-group", "Food", "a-groceries", "Groceries", Decimal("20")),
+            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("30")),
+            SankeyRow("Broker", "annual-group", "Annual Memberships", "amazon", "Amazon", Decimal("40")),
+        ]
+    )
+
+    assert data.labels == [
+        "Ready to Assign",
+        "Annual Memberships",
+        "Food",
+        "Health",
+        "Amazon",
+        "Groceries",
+        "Snacks",
+        "Gym",
+    ]
+    assert data.x == [0.25, 0.55, 0.55, 0.55, 1.0, 1.0, 1.0, 1.0]
+
+
+def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "State",
+                "taxes-group",
+                "Taxes",
+                "taxes-category",
+                "Taxes",
+                Decimal("120"),
+            ),
+        ]
+    )
+
+    assert data.labels == ["Employer", "Ready to Assign", "Taxes", "Taxes"]
+    assert data.sources == [0, 1, 2]
+    assert data.targets == [1, 2, 3]
+    assert data.values == [Decimal("500"), Decimal("120"), Decimal("120")]
 
 
 @pytest.mark.asyncio

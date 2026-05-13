@@ -1,5 +1,7 @@
 SELECT
-    category_group_name
+    category_group_id
+    , category_group_name
+    , category_id
     , category_name
     , COALESCE(payee_name, '') AS payee_name
     , SUM(amount) AS amount
@@ -14,10 +16,14 @@ WHERE
     )
 GROUP BY
     COALESCE(payee_name, '')
+    , category_group_id
     , category_group_name
+    , category_id
     , category_name
 ORDER BY
-    category_group_name
+    category_group_id
+    , category_group_name
+    , category_id
     , category_name
     , COALESCE(payee_name, '')
 ;

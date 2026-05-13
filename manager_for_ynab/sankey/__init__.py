@@ -26,7 +26,9 @@ _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text(
 @dataclass(frozen=True)
 class SankeyRow:
     payee_name: str
+    category_group_id: str
     category_group_name: str
+    category_id: str
     category_name: str
     amount: Decimal
 
@@ -37,6 +39,14 @@ class SankeyData:
     sources: list[int]
     targets: list[int]
     values: list[Decimal]
+    x: list[float]
+    y: list[float]
+
+
+@dataclass(frozen=True)
+class SankeyNode:
+    key: str
+    label: str
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -157,7 +167,9 @@ async def fetch_sankey_rows(
     return [
         SankeyRow(
             payee_name=row["payee_name"] or "Income",
+            category_group_id=row["category_group_id"],
             category_group_name=row["category_group_name"],
+            category_id=row["category_id"],
             category_name=row["category_name"],
             amount=Decimal(row["amount"]) / Decimal("-1000"),
         )
@@ -167,45 +179,90 @@ async def fetch_sankey_rows(
 
 def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     labels: list[str] = []
-    indexes: dict[str, int] = {}
-    links: defaultdict[tuple[str, str], Decimal] = defaultdict(Decimal)
+    indexes: dict[SankeyNode, int] = {}
+    x: list[float] = []
+    y: list[float] = []
+    links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
+    income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
+    spending: defaultdict[
+        tuple[SankeyNode, SankeyNode], Decimal
+    ] = defaultdict(Decimal)
+    categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
-    def index(label: str) -> int:
-        if label not in indexes:
-            indexes[label] = len(labels)
-            labels.append(label)
-        return indexes[label]
+    def index(node: SankeyNode, *, node_x: float, node_y: float) -> int:
+        if node not in indexes:
+            indexes[node] = len(labels)
+            labels.append(node.label)
+            x.append(node_x)
+            y.append(node_y)
+        return indexes[node]
 
-    def link(source: str, target: str, value: Decimal) -> None:
-        links[(source, target)] += value
+    ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
 
     for row in rows:
         if row.category_name == _READY_TO_ASSIGN and row.amount < 0:
-            link(row.payee_name or "Income", "Ready to Assign", -row.amount)
+            income[
+                SankeyNode(f"income:{row.payee_name or 'Income'}", row.payee_name or "Income")
+            ] += -row.amount
             continue
 
         if row.amount <= 0:
             continue
 
-        link("Ready to Assign", row.category_group_name, row.amount)
-        link(row.category_group_name, row.category_name, row.amount)
+        category_group = SankeyNode(
+            f"category_group:{row.category_group_id}", row.category_group_name
+        )
+        category = SankeyNode(f"category:{row.category_id}", row.category_name)
+        spending[(category_group, category)] += row.amount
+        categories_by_group[category_group].add(category)
+
+    income_nodes = sorted(income, key=lambda node: node.label.casefold())
+    group_nodes = sorted(categories_by_group, key=lambda node: node.label.casefold())
+    category_nodes = [
+        category
+        for group in group_nodes
+        for category in sorted(categories_by_group[group], key=lambda node: node.label.casefold())
+    ]
+
+    for i, node in enumerate(income_nodes):
+        index(node, node_x=0.0, node_y=_node_y(i, len(income_nodes)))
+    index(ready_to_assign, node_x=0.25, node_y=0.5)
+    for i, node in enumerate(group_nodes):
+        index(node, node_x=0.55, node_y=_node_y(i, len(group_nodes)))
+    for i, node in enumerate(category_nodes):
+        index(node, node_x=1.0, node_y=_node_y(i, len(category_nodes)))
+
+    for node in income_nodes:
+        links[(node, ready_to_assign)] += income[node]
+    for group in group_nodes:
+        total = sum(spending[(group, category)] for category in categories_by_group[group])
+        links[(ready_to_assign, group)] += total
+        for category in sorted(categories_by_group[group], key=lambda node: node.label.casefold()):
+            links[(group, category)] += spending[(group, category)]
 
     sources: list[int] = []
     targets: list[int] = []
     values: list[Decimal] = []
     for (source, target), value in links.items():
-        sources.append(index(source))
-        targets.append(index(target))
+        sources.append(indexes[source])
+        targets.append(indexes[target])
         values.append(value)
 
-    return SankeyData(labels=labels, sources=sources, targets=targets, values=values)
+    return SankeyData(labels=labels, sources=sources, targets=targets, values=values, x=x, y=y)
+
+
+def _node_y(index: int, count: int) -> float:
+    if count <= 1:
+        return 0.5
+    return index / (count - 1)
 
 
 def build_figure(data: SankeyData, *, start: date, end: date) -> go.Figure:
     return go.Figure(
         data=[
             go.Sankey(
-                node={"label": data.labels},
+                valueformat="$,.2f",
+                node={"label": data.labels, "x": data.x, "y": data.y},
                 link={
                     "source": data.sources,
                     "target": data.targets,
@@ -221,6 +278,7 @@ def build_figure(data: SankeyData, *, start: date, end: date) -> go.Figure:
 
 __all__ = [
     SankeyData.__name__,
+    SankeyNode.__name__,
     SankeyRow.__name__,
     build_figure.__name__,
     build_sankey_data.__name__,
