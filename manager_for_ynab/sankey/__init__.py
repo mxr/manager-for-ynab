@@ -327,6 +327,7 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         label_opts=options.LabelOpts(formatter=utils.JsCode(_LABEL_FORMATTER)),
         tooltip_opts=options.TooltipOpts(formatter=utils.JsCode(_TOOLTIP_FORMATTER)),
         layout_iterations=0,
+        node_gap=10,
     )
     chart.set_global_opts(
         title_opts=options.TitleOpts(
