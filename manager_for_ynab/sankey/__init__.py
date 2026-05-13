@@ -184,25 +184,23 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     y: list[float] = []
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
-    spending: defaultdict[
-        tuple[SankeyNode, SankeyNode], Decimal
-    ] = defaultdict(Decimal)
+    spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
-    def index(node: SankeyNode, *, node_x: float, node_y: float) -> int:
-        if node not in indexes:
-            indexes[node] = len(labels)
-            labels.append(node.label)
-            x.append(node_x)
-            y.append(node_y)
-        return indexes[node]
+    def add_node(node: SankeyNode, *, node_x: float, node_y: float) -> None:
+        indexes[node] = len(labels)
+        labels.append(node.label)
+        x.append(node_x)
+        y.append(node_y)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
 
     for row in rows:
         if row.category_name == _READY_TO_ASSIGN and row.amount < 0:
             income[
-                SankeyNode(f"income:{row.payee_name or 'Income'}", row.payee_name or "Income")
+                SankeyNode(
+                    f"income:{row.payee_name or 'Income'}", row.payee_name or "Income"
+                )
             ] += -row.amount
             continue
 
@@ -221,23 +219,29 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     category_nodes = [
         category
         for group in group_nodes
-        for category in sorted(categories_by_group[group], key=lambda node: node.label.casefold())
+        for category in sorted(
+            categories_by_group[group], key=lambda node: node.label.casefold()
+        )
     ]
 
     for i, node in enumerate(income_nodes):
-        index(node, node_x=0.0, node_y=_node_y(i, len(income_nodes)))
-    index(ready_to_assign, node_x=0.25, node_y=0.5)
+        add_node(node, node_x=0.0, node_y=_node_y(i, len(income_nodes)))
+    add_node(ready_to_assign, node_x=0.25, node_y=0.5)
     for i, node in enumerate(group_nodes):
-        index(node, node_x=0.55, node_y=_node_y(i, len(group_nodes)))
+        add_node(node, node_x=0.55, node_y=_node_y(i, len(group_nodes)))
     for i, node in enumerate(category_nodes):
-        index(node, node_x=1.0, node_y=_node_y(i, len(category_nodes)))
+        add_node(node, node_x=1.0, node_y=_node_y(i, len(category_nodes)))
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
     for group in group_nodes:
-        total = sum(spending[(group, category)] for category in categories_by_group[group])
+        total = sum(
+            spending[(group, category)] for category in categories_by_group[group]
+        )
         links[(ready_to_assign, group)] += total
-        for category in sorted(categories_by_group[group], key=lambda node: node.label.casefold()):
+        for category in sorted(
+            categories_by_group[group], key=lambda node: node.label.casefold()
+        ):
             links[(group, category)] += spending[(group, category)]
 
     sources: list[int] = []
@@ -248,7 +252,9 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         targets.append(indexes[target])
         values.append(value)
 
-    return SankeyData(labels=labels, sources=sources, targets=targets, values=values, x=x, y=y)
+    return SankeyData(
+        labels=labels, sources=sources, targets=targets, values=values, x=x, y=y
+    )
 
 
 def _node_y(index: int, count: int) -> float:

@@ -244,10 +244,26 @@ def test_build_sankey_data_groups_links_over_whole_range():
 def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
     data = build_sankey_data(
         [
-            SankeyRow("Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("10")),
-            SankeyRow("Market", "food-group", "Food", "a-groceries", "Groceries", Decimal("20")),
+            SankeyRow(
+                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("10")
+            ),
+            SankeyRow(
+                "Market",
+                "food-group",
+                "Food",
+                "a-groceries",
+                "Groceries",
+                Decimal("20"),
+            ),
             SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("30")),
-            SankeyRow("Broker", "annual-group", "Annual Memberships", "amazon", "Amazon", Decimal("40")),
+            SankeyRow(
+                "Broker",
+                "annual-group",
+                "Annual Memberships",
+                "amazon",
+                "Amazon",
+                Decimal("40"),
+            ),
         ]
     )
 
