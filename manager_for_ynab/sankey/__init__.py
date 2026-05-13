@@ -303,38 +303,42 @@ def build_sankey_data(
 
 
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
-    chart = charts.Sankey(
-        init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
-    )
-    chart.add(
-        "",
-        nodes=[
-            {"name": key, "label": label}
-            for key, label in zip(data.keys, data.labels, strict=True)
-        ],
-        links=[
-            {
-                "source": data.keys[source],
-                "target": data.keys[target],
-                "source_label": data.labels[source],
-                "target_label": data.labels[target],
-                "value": float(value),
-            }
-            for source, target, value in zip(
-                data.sources, data.targets, data.values, strict=True
-            )
-        ],
-        label_opts=options.LabelOpts(formatter=utils.JsCode(_LABEL_FORMATTER)),
-        tooltip_opts=options.TooltipOpts(formatter=utils.JsCode(_TOOLTIP_FORMATTER)),
-        layout_iterations=0,
-        node_gap=10,
-    )
-    chart.set_global_opts(
-        title_opts=options.TitleOpts(
-            title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}"
+    return (
+        charts.Sankey(
+            init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
         )
+        .add(
+            "",
+            nodes=[
+                {"name": key, "label": label}
+                for key, label in zip(data.keys, data.labels, strict=True)
+            ],
+            links=[
+                {
+                    "source": data.keys[source],
+                    "target": data.keys[target],
+                    "source_label": data.labels[source],
+                    "target_label": data.labels[target],
+                    "value": float(value),
+                }
+                for source, target, value in zip(
+                    data.sources, data.targets, data.values, strict=True
+                )
+            ],
+            label_opts=options.LabelOpts(formatter=utils.JsCode(_LABEL_FORMATTER)),
+            tooltip_opts=options.TooltipOpts(
+                formatter=utils.JsCode(_TOOLTIP_FORMATTER)
+            ),
+            layout_iterations=0,
+            node_gap=10,
+        )
+        .set_global_opts(
+            title_opts=options.TitleOpts(
+                title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}"
+            )
+        )
+        .render_embed()
     )
-    return chart.render_embed()
 
 
 __all__ = [
