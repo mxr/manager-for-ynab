@@ -25,11 +25,12 @@ _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _MIN_FIGURE_HEIGHT = 1000
+_MIN_LINK_VALUE_RATIO = 0.02
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
     if (params.dataType === 'edge') {
-        return params.data.source_label + ' -> ' + params.data.target_label + ': ' + Number(params.data.value).toLocaleString(undefined, {style: 'currency', currency: 'USD'});
+        return params.data.source_label + ' -> ' + params.data.target_label + ': ' + Number(params.data.amount).toLocaleString(undefined, {style: 'currency', currency: 'USD'});
     }
     return params.data.label;
 }
@@ -303,6 +304,7 @@ def build_sankey_data(
 
 
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
+    min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
     return (
         charts.Sankey(
             init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
@@ -319,7 +321,8 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
                     "target": data.keys[target],
                     "source_label": data.labels[source],
                     "target_label": data.labels[target],
-                    "value": float(value),
+                    "amount": float(value),
+                    "value": max(float(value), min_link_value),
                 }
                 for source, target, value in zip(
                     data.sources, data.targets, data.values, strict=True

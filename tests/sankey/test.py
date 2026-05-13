@@ -303,10 +303,38 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "target_label" in html
     assert "params.data.source_label" in html
     assert "params.data.target_label" in html
-    assert "params.data.value" in html
+    assert "params.data.amount" in html
     assert "currency: 'USD'" in html
     assert "height:1000px" in html
     assert "layoutIterations" in html
+
+
+def test_build_echarts_html_floors_rendered_link_value_to_five_percent_of_max_without_changing_tooltip_amount():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-100"),
+            ),
+            SankeyRow(
+                "State",
+                "taxes-group",
+                "Taxes",
+                "taxes-category",
+                "Taxes",
+                Decimal("0.5"),
+            ),
+        ]
+    )
+
+    html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
+
+    assert '"amount": 0.5' in html
+    assert '"value": 5.0' in html
 
 
 @pytest.mark.asyncio
