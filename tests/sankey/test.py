@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.sankey import build_figure
 from manager_for_ynab.sankey import build_sankey_data
 from manager_for_ynab.sankey import fetch_sankey_rows
 from manager_for_ynab.sankey import run
@@ -184,7 +185,9 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         Decimal("45.5"),
     ]
     assert data.x == [0.0, 0.25, 0.55, 0.55, 1.0, 1.0]
-    assert data.y == [0.5, 0.5, 0.0, 1.0, 0.0, 1.0]
+    assert data.y == pytest.approx(
+        [0.02, 0.5, 0.02, 0.7160725075528701, 0.02, 0.7160725075528701]
+    )
 
 
 def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
@@ -278,6 +281,7 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
         "Gym",
     ]
     assert data.x == [0.25, 0.55, 0.55, 0.55, 1.0, 1.0, 1.0, 1.0]
+    assert data.y == pytest.approx([0.5, 0.02, 0.404, 0.692, 0.02, 0.404, 0.596, 0.692])
 
 
 def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
@@ -306,6 +310,23 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
     assert data.sources == [0, 1, 2]
     assert data.targets == [1, 2, 3]
     assert data.values == [Decimal("500"), Decimal("120"), Decimal("120")]
+
+
+def test_build_figure_uses_fixed_node_positions():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Market", "food-group", "Food", "groceries", "Groceries", Decimal("20")
+            ),
+        ]
+    )
+
+    fig = build_figure(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
+
+    sankey = fig.data[0]
+    assert sankey.arrangement == "fixed"
+    assert tuple(sankey.node.x) == tuple(data.x)
+    assert tuple(sankey.node.y) == tuple(data.y)
 
 
 @pytest.mark.asyncio

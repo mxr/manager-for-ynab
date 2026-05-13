@@ -223,22 +223,35 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
             categories_by_group[group], key=lambda node: node.label.casefold()
         )
     ]
+    group_totals = {
+        group: sum(
+            (spending[(group, category)] for category in categories_by_group[group]),
+            Decimal(0),
+        )
+        for group in group_nodes
+    }
+    category_totals = {
+        category: spending[(group, category)]
+        for group in group_nodes
+        for category in categories_by_group[group]
+    }
+    income_y = _weighted_y_positions(income_nodes, income)
+    group_y, category_y = _grouped_y_positions(
+        group_nodes, categories_by_group, group_totals, category_totals
+    )
 
-    for i, node in enumerate(income_nodes):
-        add_node(node, node_x=0.0, node_y=_node_y(i, len(income_nodes)))
+    for node in income_nodes:
+        add_node(node, node_x=0.0, node_y=income_y[node])
     add_node(ready_to_assign, node_x=0.25, node_y=0.5)
-    for i, node in enumerate(group_nodes):
-        add_node(node, node_x=0.55, node_y=_node_y(i, len(group_nodes)))
-    for i, node in enumerate(category_nodes):
-        add_node(node, node_x=1.0, node_y=_node_y(i, len(category_nodes)))
+    for node in group_nodes:
+        add_node(node, node_x=0.55, node_y=group_y[node])
+    for node in category_nodes:
+        add_node(node, node_x=1.0, node_y=category_y[node])
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
     for group in group_nodes:
-        total = sum(
-            spending[(group, category)] for category in categories_by_group[group]
-        )
-        links[(ready_to_assign, group)] += total
+        links[(ready_to_assign, group)] += group_totals[group]
         for category in sorted(
             categories_by_group[group], key=lambda node: node.label.casefold()
         ):
@@ -257,16 +270,60 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     )
 
 
-def _node_y(index: int, count: int) -> float:
-    if count <= 1:
-        return 0.5
-    return index / (count - 1)
+def _weighted_y_positions(
+    nodes: Sequence[SankeyNode], weights: defaultdict[SankeyNode, Decimal]
+) -> dict[SankeyNode, float]:
+    total = sum(weights[node] for node in nodes)
+    if total == 0:
+        return dict.fromkeys(nodes, 0.5)
+
+    y: dict[SankeyNode, float] = {}
+    running = Decimal(0)
+    for node in nodes:
+        y[node] = _scale_y(running / total)
+        running += weights[node]
+    return y
+
+
+def _grouped_y_positions(
+    group_nodes: Sequence[SankeyNode],
+    categories_by_group: defaultdict[SankeyNode, set[SankeyNode]],
+    group_totals: dict[SankeyNode, Decimal],
+    category_totals: dict[SankeyNode, Decimal],
+) -> tuple[dict[SankeyNode, float], dict[SankeyNode, float]]:
+    total = sum(group_totals[group] for group in group_nodes)
+    if total == 0:
+        return {}, {}
+
+    group_y: dict[SankeyNode, float] = {}
+    category_y: dict[SankeyNode, float] = {}
+    group_running = Decimal(0)
+    for group in group_nodes:
+        group_total = group_totals[group]
+        group_start = group_running / total
+        group_y[group] = _scale_y(group_start)
+
+        category_running = Decimal(0)
+        for category in sorted(
+            categories_by_group[group], key=lambda node: node.label.casefold()
+        ):
+            category_y[category] = _scale_y(group_start + (category_running / total))
+            category_running += category_totals[category]
+
+        group_running += group_total
+
+    return group_y, category_y
+
+
+def _scale_y(value: Decimal) -> float:
+    return float(Decimal("0.02") + (value * Decimal("0.96")))
 
 
 def build_figure(data: SankeyData, *, start: date, end: date) -> go.Figure:
     return go.Figure(
         data=[
             go.Sankey(
+                arrangement="fixed",
                 valueformat="$,.2f",
                 node={"label": data.labels, "x": data.x, "y": data.y},
                 link={
