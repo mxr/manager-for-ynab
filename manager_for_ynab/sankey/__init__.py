@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -24,6 +25,7 @@ _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text(
 
 @dataclass(frozen=True)
 class SankeyRow:
+    payee_name: str
     category_group_name: str
     category_name: str
     amount: Decimal
@@ -154,6 +156,7 @@ async def fetch_sankey_rows(
 
     return [
         SankeyRow(
+            payee_name=row["payee_name"] or "Income",
             category_group_name=row["category_group_name"],
             category_name=row["category_name"],
             amount=Decimal(row["amount"]) / Decimal("-1000"),
@@ -165,9 +168,7 @@ async def fetch_sankey_rows(
 def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     labels: list[str] = []
     indexes: dict[str, int] = {}
-    sources: list[int] = []
-    targets: list[int] = []
-    values: list[Decimal] = []
+    links: defaultdict[tuple[str, str], Decimal] = defaultdict(Decimal)
 
     def index(label: str) -> int:
         if label not in indexes:
@@ -176,27 +177,26 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         return indexes[label]
 
     def link(source: str, target: str, value: Decimal) -> None:
-        if value == 0:
-            return
+        links[(source, target)] += value
+
+    for row in rows:
+        if row.category_name == _READY_TO_ASSIGN and row.amount < 0:
+            link(row.payee_name or "Income", "Ready to Assign", -row.amount)
+            continue
+
+        if row.amount <= 0:
+            continue
+
+        link("Ready to Assign", row.category_group_name, row.amount)
+        link(row.category_group_name, row.category_name, row.amount)
+
+    sources: list[int] = []
+    targets: list[int] = []
+    values: list[Decimal] = []
+    for (source, target), value in links.items():
         sources.append(index(source))
         targets.append(index(target))
         values.append(value)
-
-    income = sum(
-        (
-            -row.amount
-            for row in rows
-            if row.category_name == _READY_TO_ASSIGN and row.amount < 0
-        ),
-        Decimal(0),
-    )
-    link("Income", "Ready to Assign", income)
-
-    for row in rows:
-        if row.category_name == _READY_TO_ASSIGN or row.amount <= 0:
-            continue
-        link("Ready to Assign", row.category_group_name, row.amount)
-        link(row.category_group_name, row.category_name, row.amount)
 
     return SankeyData(labels=labels, sources=sources, targets=targets, values=values)
 

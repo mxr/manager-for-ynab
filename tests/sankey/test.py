@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import aiosqlite
@@ -15,10 +15,13 @@ from manager_for_ynab.sankey import run
 from manager_for_ynab.sankey import sankey
 from manager_for_ynab.sankey import SankeyRow
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 @pytest.fixture
-def db(tmpdir) -> Path:
-    path = Path(tmpdir) / "db.sqlite"
+def db(tmp_path: Path) -> Path:
+    path = tmp_path / "db.sqlite"
     with sqlite3.connect(path) as con:
         con.execute(
             """
@@ -38,7 +41,7 @@ def db(tmpdir) -> Path:
             """,
             (
                 (
-                    "Inflow",
+                    "Internal Master Category",
                     "Inflow: Ready to Assign",
                     500000,
                     "reconciled",
@@ -79,23 +82,28 @@ async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
         )
 
     assert rows == [
-        SankeyRow("Bills", "Rent", Decimal("120")),
-        SankeyRow("Food", "Groceries", Decimal("45.5")),
-        SankeyRow("Inflow", "Inflow: Ready to Assign", Decimal("-500")),
+        SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
+        SankeyRow("Market", "Food", "Groceries", Decimal("45.5")),
+        SankeyRow(
+            "Employer",
+            "Internal Master Category",
+            "Inflow: Ready to Assign",
+            Decimal("-500"),
+        ),
     ]
 
 
 def test_build_sankey_data_links_income_to_groups_to_categories():
     data = build_sankey_data(
         [
-            SankeyRow("Inflow", "Inflow: Ready to Assign", Decimal("-500")),
-            SankeyRow("Bills", "Rent", Decimal("120")),
-            SankeyRow("Food", "Groceries", Decimal("45.5")),
+            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-500")),
+            SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
+            SankeyRow("Market", "Food", "Groceries", Decimal("45.5")),
         ]
     )
 
     assert data.labels == [
-        "Income",
+        "Employer",
         "Ready to Assign",
         "Bills",
         "Rent",
@@ -116,12 +124,28 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
 def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
     data = build_sankey_data(
         [
-            SankeyRow("Food", "Groceries", Decimal("-45.5")),
-            SankeyRow("Food", "Restaurants", Decimal("0")),
+            SankeyRow("Market", "Food", "Groceries", Decimal("-45.5")),
+            SankeyRow("Cafe", "Food", "Restaurants", Decimal("0")),
         ]
     )
 
     assert data == build_sankey_data(())
+
+
+def test_build_sankey_data_groups_links_over_whole_range():
+    data = build_sankey_data(
+        [
+            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-500")),
+            SankeyRow("Employer", "Inflow", "Inflow: Ready to Assign", Decimal("-300")),
+            SankeyRow("Landlord", "Bills", "Rent", Decimal("120")),
+            SankeyRow("Landlord", "Bills", "Rent", Decimal("80")),
+        ]
+    )
+
+    assert data.labels == ["Employer", "Ready to Assign", "Bills", "Rent"]
+    assert data.sources == [0, 1, 2]
+    assert data.targets == [1, 2, 3]
+    assert data.values == [Decimal("800"), Decimal("200"), Decimal("200")]
 
 
 @pytest.mark.asyncio
