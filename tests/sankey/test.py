@@ -303,6 +303,9 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "target_label" in html
     assert "params.data.source_label" in html
     assert "params.data.target_label" in html
+    assert "params.data.value" in html
+    assert "currency: 'USD'" in html
+    assert "height:1000px" in html
     assert "layoutIterations" in html
 
 

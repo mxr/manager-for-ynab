@@ -24,11 +24,16 @@ if TYPE_CHECKING:
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
-_MIN_FIGURE_HEIGHT = 700
-_CATEGORY_ROW_HEIGHT = 36
-_FIGURE_VERTICAL_MARGIN = 220
+_MIN_FIGURE_HEIGHT = 1000
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
-_TOOLTIP_FORMATTER = "function(params) { if (params.dataType === 'edge') { return params.data.source_label + ' -> ' + params.data.target_label; } return params.data.label; }"
+_TOOLTIP_FORMATTER = """
+function(params) {
+    if (params.dataType === 'edge') {
+        return params.data.source_label + ' -> ' + params.data.target_label + ': ' + Number(params.data.value).toLocaleString(undefined, {style: 'currency', currency: 'USD'});
+    }
+    return params.data.label;
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -299,7 +304,7 @@ def build_sankey_data(
 
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
     chart = charts.Sankey(
-        init_opts=options.InitOpts(width="100%", height=f"{_figure_height(data)}px")
+        init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
     )
     chart.add(
         "",
@@ -329,13 +334,6 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         )
     )
     return chart.render_embed()
-
-
-def _figure_height(data: SankeyData) -> int:
-    return max(
-        _MIN_FIGURE_HEIGHT,
-        _FIGURE_VERTICAL_MARGIN + (data.category_count * _CATEGORY_ROW_HEIGHT),
-    )
 
 
 __all__ = [
