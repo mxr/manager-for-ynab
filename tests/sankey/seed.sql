@@ -1,0 +1,84 @@
+CREATE TABLE flat_transactions (
+    category_group_id TEXT
+    , category_group_name TEXT
+    , category_id TEXT
+    , category_name TEXT
+    , amount INT
+    , cleared TEXT
+    , "date" TEXT
+    , payee_name TEXT
+)
+;
+
+INSERT INTO flat_transactions VALUES
+(
+    'internal-group'
+    , 'Internal Master Category'
+    , 'ready-to-assign'
+    , 'Inflow: Ready to Assign'
+    , 500000
+    , 'reconciled'
+    , '2026-04-01'
+    , 'Employer'
+)
+, (
+    'bills-group'
+    , 'Bills'
+    , 'rent'
+    , 'Rent'
+    , -120000
+    , 'reconciled'
+    , '2026-04-02'
+    , 'Landlord'
+)
+, (
+    'food-group'
+    , 'Food'
+    , 'groceries'
+    , 'Groceries'
+    , -45500
+    , 'Reconciled'
+    , '2026-04-03'
+    , 'Market'
+)
+, (
+    'food-group'
+    , 'Food'
+    , 'restaurants'
+    , 'Restaurants'
+    , -20000
+    , 'cleared'
+    , '2026-04-03'
+    , 'Cafe'
+)
+, (
+    'internal-group'
+    , 'Internal Master Category'
+    , 'hidden'
+    , 'Hidden'
+    , -10000
+    , 'reconciled'
+    , '2026-04-03'
+    , 'Hidden'
+)
+, (
+    'bills-group'
+    , 'Bills'
+    , 'rent'
+    , 'Rent'
+    , -10000
+    , 'reconciled'
+    , '2026-05-01'
+    , 'Landlord'
+)
+, (
+    'inflow-group'
+    , 'Inflow'
+    , 'ready-to-assign'
+    , 'Inflow: Ready to Assign'
+    , 100000
+    , 'reconciled'
+    , '2026-04-04'
+    , 'Starting Balance'
+)
+;

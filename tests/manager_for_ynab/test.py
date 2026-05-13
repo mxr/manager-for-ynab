@@ -33,6 +33,7 @@ def test_main_without_args_prints_help(capsys):
     assert "auto-approve" in out
     assert "reconciler" in out
     assert "pending-income" in out
+    assert "sankey" in out
     assert "zero-out" in out
 
 
@@ -95,6 +96,19 @@ def test_main_zero_out_help(capsys):
     assert "--for-real" in out
 
 
+def test_main_sankey_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("sankey", "--help"))
+
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab sankey" in out
+    assert "--start" in out
+    assert "--end" in out
+    assert "--out" in out
+    assert "--sort-by" in out
+
+
 def test_build_parser_registers_expected_subcommands():
     parser = build_parser()
     actions = [action for action in parser._actions if action.dest == "command"]
@@ -105,6 +119,7 @@ def test_build_parser_registers_expected_subcommands():
         "add-transaction",
         "pending-income",
         "reconciler",
+        "sankey",
         "zero-out",
     }
 

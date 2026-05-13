@@ -8,6 +8,7 @@ from manager_for_ynab.add_transaction import run as run_add_transaction
 from manager_for_ynab.auto_approve import run as run_auto_approve
 from manager_for_ynab.pending_income import run as run_pending_income
 from manager_for_ynab.reconciler import run as run_reconciler
+from manager_for_ynab.sankey import run as run_sankey
 from manager_for_ynab.zero_out import run as run_zero_out
 
 if TYPE_CHECKING:
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 _RECONCILER_HELP = "Find and automatically reconciles unreconciled transactions."
 _AUTO_APPROVE_HELP = "Approve matched transactions automatically."
 _ADD_TRANSACTION_HELP = "Create a transaction and optionally fund a category."
+_SANKEY_HELP = "Draw a Sankey diagram for reconciled spending."
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_transaction_parser.set_defaults(func=run_add_transaction)
 
+    sankey_parser = subparsers.add_parser(
+        "sankey",
+        help=_SANKEY_HELP,
+        description=_SANKEY_HELP,
+    )
+    sankey_parser.set_defaults(func=run_sankey)
+
     zero_out_parser = subparsers.add_parser(
         "zero-out",
         help="Set a category's budgeted amount to zero across a month range.",
@@ -78,6 +87,8 @@ async def async_main(argv: Sequence[str] = ()) -> int:
             return await run_auto_approve(argv[1:])
         case "add-transaction":
             return await run_add_transaction(argv[1:])
+        case "sankey":
+            return await run_sankey(argv[1:])
         case "zero-out":
             return await run_zero_out(argv[1:])
 
