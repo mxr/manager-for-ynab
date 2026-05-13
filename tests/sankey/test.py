@@ -4,13 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import aiosqlite
-import plotly.graph_objects as go
 import pytest
 import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.sankey import build_echarts_html
-from manager_for_ynab.sankey import build_figure
 from manager_for_ynab.sankey import build_sankey_data
 from manager_for_ynab.sankey import fetch_sankey_rows
 from manager_for_ynab.sankey import run
@@ -97,8 +95,7 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         Decimal("45.5"),
         Decimal("45.5"),
     ]
-    assert data.x == [0.0, 0.25, 0.55, 0.55, 1.0, 1.0]
-    assert data.y == pytest.approx([0.5, 0.5, 0.02, 0.98, 0.02, 0.98])
+    assert data.category_count == 2
 
 
 def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
@@ -191,8 +188,7 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
         "Snacks",
         "Gym",
     ]
-    assert data.x == [0.25, 0.55, 0.55, 0.55, 1.0, 1.0, 1.0, 1.0]
-    assert data.y == pytest.approx([0.5, 0.02, 0.5, 0.98, 0.02, 0.34, 0.66, 0.98])
+    assert data.category_count == 4
 
 
 def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
@@ -223,23 +219,6 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
     assert data.values == [Decimal("500"), Decimal("120"), Decimal("120")]
 
 
-def test_build_figure_uses_fixed_node_positions():
-    data = build_sankey_data(
-        [
-            SankeyRow(
-                "Market", "food-group", "Food", "groceries", "Groceries", Decimal("20")
-            ),
-        ]
-    )
-
-    fig = build_figure(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
-
-    sankey = fig.data[0]
-    assert sankey.arrangement == "fixed"
-    assert tuple(sankey.node.x) == tuple(data.x)
-    assert tuple(sankey.node.y) == tuple(data.y)
-
-
 def test_build_echarts_html_uses_node_keys_and_labels():
     data = build_sankey_data(
         [
@@ -268,6 +247,7 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "category_group:taxes-group" in html
     assert "category:taxes-category" in html
     assert "function(params) { return params.data.label; }" in html
+    assert "layoutIterations" in html
 
 
 @pytest.mark.asyncio
@@ -287,77 +267,11 @@ async def test_run_rejects_end_before_start(db):
     assert excinfo.value.code == 2
 
 
-@pytest.mark.asyncio
-async def test_run_rejects_echarts_without_html(db):
-    with pytest.raises(SystemExit) as excinfo:
-        await run(
-            (
-                "--sqlite-export-for-ynab-db",
-                str(db),
-                "--start",
-                "2026-04-01",
-                "--end",
-                "2026-04-30",
-                "--renderer",
-                "echarts",
-            )
-        )
-
-    assert excinfo.value.code == 2
-
-
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "show", autospec=True)
-@pytest.mark.asyncio
-async def test_run_defaults_to_show(show, sync, db):
-    ret = await run(
-        (
-            "--sqlite-export-for-ynab-db",
-            str(db),
-            "--start",
-            "2026-04-01",
-            "--end",
-            "2026-04-30",
-        )
-    )
-
-    assert ret == 0
-    sync.assert_called_once_with("token", db, False, quiet=False)
-    show.assert_called_once()
-
-
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
-@patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "to_html", autospec=True, return_value="<html></html>")
-@pytest.mark.asyncio
-async def test_run_html_writes_stdout(to_html, sync, db, capsys):
-    ret = await run(
-        (
-            "--sqlite-export-for-ynab-db",
-            str(db),
-            "--start",
-            "2026-04-01",
-            "--end",
-            "2026-04-30",
-            "--html",
-        )
-    )
-
-    assert ret == 0
-    out, _ = capsys.readouterr()
-    sync.assert_called_once_with("token", db, False, quiet=False)
-    to_html.assert_called_once()
-    assert out.endswith("<html></html>")
-
-
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
-async def test_run_echarts_html_writes_stdout(
-    sync, build_echarts_html_mock, db, capsys
-):
+async def test_run_writes_html_to_stdout(sync, build_echarts_html_mock, db, capsys):
     ret = await run(
         (
             "--sqlite-export-for-ynab-db",
@@ -366,9 +280,6 @@ async def test_run_echarts_html_writes_stdout(
             "2026-04-01",
             "--end",
             "2026-04-30",
-            "--html",
-            "--renderer",
-            "echarts",
         )
     )
 
@@ -380,10 +291,10 @@ async def test_run_echarts_html_writes_stdout(
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "show", autospec=True)
 @pytest.mark.asyncio
-async def test_run_no_sync_uses_existing_db(show, sync, db):
+async def test_run_no_sync_uses_existing_db(sync, build_echarts_html_mock, db):
     ret = await run(
         (
             "--sqlite-export-for-ynab-db",
@@ -398,21 +309,19 @@ async def test_run_no_sync_uses_existing_db(show, sync, db):
 
     assert ret == 0
     sync.assert_not_called()
-    show.assert_called_once()
+    build_echarts_html_mock.assert_called_once()
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "show", autospec=True)
 @pytest.mark.asyncio
-async def test_sankey_skips_empty_data(show, sync, db, capsys):
+async def test_sankey_skips_empty_data(sync, db, capsys):
     ret = await sankey(
         db=db,
         full_refresh=False,
         should_sync=False,
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
-        html=False,
         quiet=False,
         token_override=None,
     )
@@ -420,22 +329,19 @@ async def test_sankey_skips_empty_data(show, sync, db, capsys):
     out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_not_called()
-    show.assert_not_called()
     assert out == "No Sankey data found.\n"
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "show", autospec=True)
 @pytest.mark.asyncio
-async def test_sankey_quiet_suppresses_empty_output(show, sync, db, capsys):
+async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
     ret = await sankey(
         db=db,
         full_refresh=False,
         should_sync=False,
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
-        html=False,
         quiet=True,
         token_override=None,
     )
@@ -443,5 +349,4 @@ async def test_sankey_quiet_suppresses_empty_output(show, sync, db, capsys):
     out, _ = capsys.readouterr()
     assert ret == 0
     sync.assert_not_called()
-    show.assert_not_called()
     assert out == ""

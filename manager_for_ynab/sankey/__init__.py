@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
-import plotly.graph_objects as go
 from pyecharts import charts
 from pyecharts import options
 from pyecharts.commons import utils
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
-_RENDERERS = ("plotly", "echarts")
 _MIN_FIGURE_HEIGHT = 700
 _CATEGORY_ROW_HEIGHT = 36
 _FIGURE_VERTICAL_MARGIN = 220
@@ -48,8 +46,7 @@ class SankeyData:
     sources: list[int]
     targets: list[int]
     values: list[Decimal]
-    x: list[float]
-    y: list[float]
+    category_count: int
 
 
 @dataclass(frozen=True)
@@ -74,18 +71,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=date.fromisoformat,
         required=True,
         help="End date inclusive, in YYYY-MM-DD format.",
-    )
-    parser.add_argument(
-        "--html",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Write HTML to stdout instead of opening the figure with Plotly.",
-    )
-    parser.add_argument(
-        "--renderer",
-        choices=_RENDERERS,
-        default="plotly",
-        help="Sankey renderer to use. `echarts` is only supported with --html.",
     )
     parser.add_argument(
         "--sqlite-export-for-ynab-db",
@@ -118,8 +103,6 @@ async def run(
     args = build_parser().parse_args(argv)
     if args.start > args.end:
         build_parser().error("--start must be before or equal to --end")
-    if args.renderer == "echarts" and not args.html:
-        build_parser().error("--renderer echarts requires --html")
 
     return await sankey(
         db=args.sqlite_export_for_ynab_db,
@@ -127,8 +110,6 @@ async def run(
         should_sync=args.sync,
         start=args.start,
         end=args.end,
-        html=args.html,
-        renderer=args.renderer,
         quiet=args.quiet,
         token_override=token_override,
     )
@@ -141,8 +122,6 @@ async def sankey(
     should_sync: bool = True,
     start: date,
     end: date,
-    html: bool,
-    renderer: str = "plotly",
     quiet: bool,
     token_override: str | None,
 ) -> int:
@@ -162,14 +141,7 @@ async def sankey(
         _print("No Sankey data found.", quiet=quiet)
         return 0
 
-    if renderer == "echarts":
-        sys.stdout.write(build_echarts_html(data, start=start, end=end))
-    elif html:
-        fig = build_figure(data, start=start, end=end)
-        sys.stdout.write(fig.to_html())
-    else:
-        fig = build_figure(data, start=start, end=end)
-        fig.show()
+    sys.stdout.write(build_echarts_html(data, start=start, end=end))
 
     return 0
 
@@ -201,18 +173,14 @@ async def fetch_sankey_rows(
 def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
     labels: list[str] = []
     indexes: dict[SankeyNode, int] = {}
-    x: list[float] = []
-    y: list[float] = []
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
     spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
-    def add_node(node: SankeyNode, *, node_x: float, node_y: float) -> None:
+    def add_node(node: SankeyNode) -> None:
         indexes[node] = len(labels)
         labels.append(node.label)
-        x.append(node_x)
-        y.append(node_y)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
 
@@ -251,16 +219,13 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         )
         for group in group_nodes
     }
-    income_y = _stacked_y_positions(income_nodes)
-    group_y, category_y = _grouped_y_positions(group_nodes, categories_by_group)
-
     for node in income_nodes:
-        add_node(node, node_x=0.0, node_y=income_y[node])
-    add_node(ready_to_assign, node_x=0.25, node_y=0.5)
+        add_node(node)
+    add_node(ready_to_assign)
     for node in group_nodes:
-        add_node(node, node_x=0.55, node_y=group_y[node])
+        add_node(node)
     for node in category_nodes:
-        add_node(node, node_x=1.0, node_y=category_y[node])
+        add_node(node)
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
@@ -285,61 +250,7 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         sources=sources,
         targets=targets,
         values=values,
-        x=x,
-        y=y,
-    )
-
-
-def _stacked_y_positions(nodes: Sequence[SankeyNode]) -> dict[SankeyNode, float]:
-    return {node: _scale_y(i, len(nodes)) for i, node in enumerate(nodes)}
-
-
-def _grouped_y_positions(
-    group_nodes: Sequence[SankeyNode],
-    categories_by_group: defaultdict[SankeyNode, set[SankeyNode]],
-) -> tuple[dict[SankeyNode, float], dict[SankeyNode, float]]:
-    group_y: dict[SankeyNode, float] = {}
-    category_y: dict[SankeyNode, float] = {}
-    category_index = 0
-    category_count = sum(len(categories_by_group[group]) for group in group_nodes)
-    for group in group_nodes:
-        group_start = category_index
-        sorted_categories = sorted(
-            categories_by_group[group], key=lambda node: node.label.casefold()
-        )
-        for category in sorted_categories:
-            category_y[category] = _scale_y(category_index, category_count)
-            category_index += 1
-
-        group_midpoint = group_start + ((len(sorted_categories) - 1) / 2)
-        group_y[group] = _scale_y(group_midpoint, category_count)
-
-    return group_y, category_y
-
-
-def _scale_y(index: float, count: int) -> float:
-    if count <= 1:
-        return 0.5
-    return 0.02 + ((index / (count - 1)) * 0.96)
-
-
-def build_figure(data: SankeyData, *, start: date, end: date) -> go.Figure:
-    return go.Figure(
-        data=[
-            go.Sankey(
-                arrangement="fixed",
-                valueformat="$,.2f",
-                node={"label": data.labels, "x": data.x, "y": data.y},
-                link={
-                    "source": data.sources,
-                    "target": data.targets,
-                    "value": [float(value) for value in data.values],
-                },
-            )
-        ],
-        layout={
-            "title_text": f"Spending Sankey: {start.isoformat()} to {end.isoformat()}"
-        },
+        category_count=len(category_nodes),
     )
 
 
@@ -377,10 +288,9 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
 
 
 def _figure_height(data: SankeyData) -> int:
-    category_count = sum(node_x == 1.0 for node_x in data.x)
     return max(
         _MIN_FIGURE_HEIGHT,
-        _FIGURE_VERTICAL_MARGIN + (category_count * _CATEGORY_ROW_HEIGHT),
+        _FIGURE_VERTICAL_MARGIN + (data.category_count * _CATEGORY_ROW_HEIGHT),
     )
 
 
@@ -389,7 +299,6 @@ __all__ = [
     SankeyNode.__name__,
     SankeyRow.__name__,
     build_echarts_html.__name__,
-    build_figure.__name__,
     build_sankey_data.__name__,
     fetch_sankey_rows.__name__,
     run.__name__,
