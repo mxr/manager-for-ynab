@@ -12,6 +12,7 @@ This repo is a single CLI for YNAB-focused tools.
 - `auto-approve`: approve matched transactions automatically
 - `add-transaction`: create a transaction and optionally fund a category
 - `pending-income`: move pending income transactions to today
+- `sankey`: draw a Sankey diagram for reconciled spending
 - `zero-out`: set a category's planned amount to zero across a month range
 
 Tool-specific docs:
@@ -20,6 +21,7 @@ Tool-specific docs:
 - [Auto Approve](manager_for_ynab/auto_approve/README.md)
 - [Add Transaction](manager_for_ynab/add_transaction/README.md)
 - [Pending Income](manager_for_ynab/pending_income/README.md)
+- [Sankey](manager_for_ynab/sankey/README.md)
 - [Zero Out](manager_for_ynab/zero_out/README.md)
 
 ## Installation
@@ -36,5 +38,6 @@ $ manager-for-ynab reconciler --help
 $ manager-for-ynab auto-approve --help
 $ manager-for-ynab add-transaction --help
 $ manager-for-ynab pending-income --help
+$ manager-for-ynab sankey --help
 $ manager-for-ynab zero-out --help
 ```
