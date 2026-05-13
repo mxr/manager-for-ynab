@@ -1,4 +1,5 @@
 import argparse
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -70,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--html",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Write sankey.html instead of opening the figure with Plotly.",
+        help="Write HTML to stdout instead of opening the figure with Plotly.",
     )
     parser.add_argument(
         "--sqlite-export-for-ynab-db",
@@ -145,8 +146,7 @@ async def sankey(
 
     fig = build_figure(data, start=start, end=end)
     if html:
-        fig.write_html("sankey.html")
-        _print("Wrote sankey.html.", quiet=quiet)
+        sys.stdout.write(fig.to_html())
     else:
         fig.show()
 

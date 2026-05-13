@@ -1,12 +1,12 @@
-import sqlite3
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 
 import aiosqlite
 import plotly.graph_objects as go
 import pytest
+import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.sankey import build_figure
@@ -16,105 +16,17 @@ from manager_for_ynab.sankey import run
 from manager_for_ynab.sankey import sankey
 from manager_for_ynab.sankey import SankeyRow
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+_SEED_SQL = Path(__file__).with_name("seed.sql")
 
 
-@pytest.fixture
-def db(tmp_path: Path) -> Path:
+@pytest_asyncio.fixture
+async def db(tmp_path: Path) -> Path:
     path = tmp_path / "db.sqlite"
-    with sqlite3.connect(path) as con:
-        con.execute(
-            """
-            CREATE TABLE flat_transactions (
-                category_group_id TEXT
-                , category_group_name TEXT
-                , category_id TEXT
-                , category_name TEXT
-                , amount INT
-                , cleared TEXT
-                , "date" TEXT
-                , payee_name TEXT
-            )
-            """
-        )
-        con.executemany(
-            """
-            INSERT INTO flat_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                (
-                    "internal-group",
-                    "Internal Master Category",
-                    "ready-to-assign",
-                    "Inflow: Ready to Assign",
-                    500000,
-                    "reconciled",
-                    "2026-04-01",
-                    "Employer",
-                ),
-                (
-                    "bills-group",
-                    "Bills",
-                    "rent",
-                    "Rent",
-                    -120000,
-                    "reconciled",
-                    "2026-04-02",
-                    "Landlord",
-                ),
-                (
-                    "food-group",
-                    "Food",
-                    "groceries",
-                    "Groceries",
-                    -45500,
-                    "Reconciled",
-                    "2026-04-03",
-                    "Market",
-                ),
-                (
-                    "food-group",
-                    "Food",
-                    "restaurants",
-                    "Restaurants",
-                    -20000,
-                    "cleared",
-                    "2026-04-03",
-                    "Cafe",
-                ),
-                (
-                    "internal-group",
-                    "Internal Master Category",
-                    "hidden",
-                    "Hidden",
-                    -10000,
-                    "reconciled",
-                    "2026-04-03",
-                    "Hidden",
-                ),
-                (
-                    "bills-group",
-                    "Bills",
-                    "rent",
-                    "Rent",
-                    -10000,
-                    "reconciled",
-                    "2026-05-01",
-                    "Landlord",
-                ),
-                (
-                    "inflow-group",
-                    "Inflow",
-                    "ready-to-assign",
-                    "Inflow: Ready to Assign",
-                    100000,
-                    "reconciled",
-                    "2026-04-04",
-                    "Starting Balance",
-                ),
-            ),
-        )
+
+    async with aiosqlite.connect(path) as con:
+        await con.executescript(_SEED_SQL.read_text())
+        await con.commit()
     return path
 
 
@@ -367,9 +279,9 @@ async def test_run_defaults_to_show(show, sync, db):
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
-@patch.object(go.Figure, "write_html", autospec=True)
+@patch.object(go.Figure, "to_html", autospec=True, return_value="<html></html>")
 @pytest.mark.asyncio
-async def test_run_html_writes_file(write_html, sync, db):
+async def test_run_html_writes_stdout(to_html, sync, db, capsys):
     ret = await run(
         (
             "--sqlite-export-for-ynab-db",
@@ -383,9 +295,10 @@ async def test_run_html_writes_file(write_html, sync, db):
     )
 
     assert ret == 0
+    out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db, False, quiet=False)
-    write_html.assert_called_once()
-    assert write_html.call_args.args[1] == "sankey.html"
+    to_html.assert_called_once()
+    assert out.endswith("<html></html>")
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
