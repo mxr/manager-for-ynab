@@ -27,6 +27,8 @@ _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text(
 _MIN_FIGURE_HEIGHT = 700
 _CATEGORY_ROW_HEIGHT = 36
 _FIGURE_VERTICAL_MARGIN = 220
+_LABEL_FORMATTER = "function(params) { return params.data.label; }"
+_TOOLTIP_FORMATTER = "function(params) { if (params.dataType === 'edge') { return params.data.source_label + ' -> ' + params.data.target_label; } return params.data.label; }"
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="End date inclusive, in YYYY-MM-DD format.",
     )
     parser.add_argument(
+        "--out",
+        type=Path,
+        help="Path to write the ECharts HTML file. Defaults to stdout.",
+    )
+    parser.add_argument(
+        "--sort-by",
+        choices=("alphabetical", "amount"),
+        default="alphabetical",
+        help="How to sort Sankey nodes within each stage.",
+    )
+    parser.add_argument(
         "--sqlite-export-for-ynab-db",
         type=Path,
         default=default_db_path(),
@@ -110,6 +123,8 @@ async def run(
         should_sync=args.sync,
         start=args.start,
         end=args.end,
+        out=args.out,
+        sort_by=args.sort_by,
         quiet=args.quiet,
         token_override=token_override,
     )
@@ -122,6 +137,8 @@ async def sankey(
     should_sync: bool = True,
     start: date,
     end: date,
+    out: Path | None,
+    sort_by: str,
     quiet: bool,
     token_override: str | None,
 ) -> int:
@@ -136,12 +153,16 @@ async def sankey(
         con.row_factory = aiosqlite.Row
         rows = await fetch_sankey_rows(con, start=start, end=end)
 
-    data = build_sankey_data(rows)
+    data = build_sankey_data(rows, sort_by=sort_by)
     if not data.values:
         _print("No Sankey data found.", quiet=quiet)
         return 0
 
-    sys.stdout.write(build_echarts_html(data, start=start, end=end))
+    html = build_echarts_html(data, start=start, end=end)
+    if out is None:
+        sys.stdout.write(html)
+    else:
+        out.write_text(html)
 
     return 0
 
@@ -170,7 +191,9 @@ async def fetch_sankey_rows(
     ]
 
 
-def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
+def build_sankey_data(
+    rows: Sequence[SankeyRow], *, sort_by: str = "alphabetical"
+) -> SankeyData:
     labels: list[str] = []
     indexes: dict[SankeyNode, int] = {}
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
@@ -203,22 +226,44 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         spending[(category_group, category)] += row.amount
         categories_by_group[category_group].add(category)
 
-    income_nodes = sorted(income, key=lambda node: node.label.casefold())
-    group_nodes = sorted(categories_by_group, key=lambda node: node.label.casefold())
-    category_nodes = [
-        category
-        for group in group_nodes
-        for category in sorted(
-            categories_by_group[group], key=lambda node: node.label.casefold()
-        )
-    ]
+    if sort_by not in {"alphabetical", "amount"}:
+        msg = "sort_by must be 'alphabetical' or 'amount'"
+        raise ValueError(msg)
+
     group_totals = {
         group: sum(
             (spending[(group, category)] for category in categories_by_group[group]),
             Decimal(0),
         )
-        for group in group_nodes
+        for group in categories_by_group
     }
+    if sort_by == "amount":
+        income_nodes = sorted(
+            income, key=lambda node: (-income[node], node.label.casefold())
+        )
+        group_nodes = sorted(
+            categories_by_group,
+            key=lambda node: (-group_totals[node], node.label.casefold()),
+        )
+    else:
+        income_nodes = sorted(income, key=lambda node: node.label.casefold())
+        group_nodes = sorted(
+            categories_by_group, key=lambda node: node.label.casefold()
+        )
+
+    def sorted_categories(group: SankeyNode) -> list[SankeyNode]:
+        if sort_by == "amount":
+            return sorted(
+                categories_by_group[group],
+                key=lambda node: (-spending[(group, node)], node.label.casefold()),
+            )
+        return sorted(
+            categories_by_group[group], key=lambda node: node.label.casefold()
+        )
+
+    category_nodes = [
+        category for group in group_nodes for category in sorted_categories(group)
+    ]
     for node in income_nodes:
         add_node(node)
     add_node(ready_to_assign)
@@ -231,9 +276,7 @@ def build_sankey_data(rows: Sequence[SankeyRow]) -> SankeyData:
         links[(node, ready_to_assign)] += income[node]
     for group in group_nodes:
         links[(ready_to_assign, group)] += group_totals[group]
-        for category in sorted(
-            categories_by_group[group], key=lambda node: node.label.casefold()
-        ):
+        for category in sorted_categories(group):
             links[(group, category)] += spending[(group, category)]
 
     sources: list[int] = []
@@ -268,15 +311,16 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
             {
                 "source": data.keys[source],
                 "target": data.keys[target],
+                "source_label": data.labels[source],
+                "target_label": data.labels[target],
                 "value": float(value),
             }
             for source, target, value in zip(
                 data.sources, data.targets, data.values, strict=True
             )
         ],
-        label_opts=options.LabelOpts(
-            formatter=utils.JsCode("function(params) { return params.data.label; }")
-        ),
+        label_opts=options.LabelOpts(formatter=utils.JsCode(_LABEL_FORMATTER)),
+        tooltip_opts=options.TooltipOpts(formatter=utils.JsCode(_TOOLTIP_FORMATTER)),
         layout_iterations=0,
     )
     chart.set_global_opts(

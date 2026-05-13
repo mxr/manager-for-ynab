@@ -156,7 +156,7 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
     data = build_sankey_data(
         [
             SankeyRow(
-                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("10")
+                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("25")
             ),
             SankeyRow(
                 "Market",
@@ -189,6 +189,58 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
         "Gym",
     ]
     assert data.category_count == 4
+
+
+def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer B",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-300"),
+            ),
+            SankeyRow(
+                "Employer A",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("25")
+            ),
+            SankeyRow(
+                "Market",
+                "food-group",
+                "Food",
+                "a-groceries",
+                "Groceries",
+                Decimal("20"),
+            ),
+            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("70")),
+        ],
+        sort_by="amount",
+    )
+
+    assert data.labels == [
+        "Employer A",
+        "Employer B",
+        "Ready to Assign",
+        "Health",
+        "Food",
+        "Gym",
+        "Snacks",
+        "Groceries",
+    ]
+
+
+def test_build_sankey_data_rejects_unknown_sort_by():
+    with pytest.raises(ValueError, match="sort_by must be 'alphabetical' or 'amount'"):
+        build_sankey_data((), sort_by="unknown")
 
 
 def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
@@ -247,6 +299,10 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "category_group:taxes-group" in html
     assert "category:taxes-category" in html
     assert "function(params) { return params.data.label; }" in html
+    assert "source_label" in html
+    assert "target_label" in html
+    assert "params.data.source_label" in html
+    assert "params.data.target_label" in html
     assert "layoutIterations" in html
 
 
@@ -313,6 +369,36 @@ async def test_run_no_sync_uses_existing_db(sync, build_echarts_html_mock, db):
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
+@patch("manager_for_ynab.sankey.sync")
+@pytest.mark.asyncio
+async def test_run_writes_html_to_out(
+    sync, build_echarts_html_mock, db, tmp_path, capsys
+):
+    out_path = tmp_path / "sankey.html"
+
+    ret = await run(
+        (
+            "--sqlite-export-for-ynab-db",
+            str(db),
+            "--start",
+            "2026-04-01",
+            "--end",
+            "2026-04-30",
+            "--out",
+            str(out_path),
+        )
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_called_once_with("token", db, False, quiet=False)
+    build_echarts_html_mock.assert_called_once()
+    assert out == "** Refreshing SQLite DB **\n** Done **\n"
+    assert out_path.read_text() == "<echarts></echarts>"
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
 async def test_sankey_skips_empty_data(sync, db, capsys):
@@ -322,6 +408,8 @@ async def test_sankey_skips_empty_data(sync, db, capsys):
         should_sync=False,
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
+        out=None,
+        sort_by="alphabetical",
         quiet=False,
         token_override=None,
     )
@@ -342,6 +430,8 @@ async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
         should_sync=False,
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
+        out=None,
+        sort_by="alphabetical",
         quiet=True,
         token_override=None,
     )
