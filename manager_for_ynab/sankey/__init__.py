@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
+_EPOCH_DATE = date(1970, 1, 1)
 _MIN_FIGURE_HEIGHT = 1000
 _MIN_LINK_VALUE_RATIO = 0.02
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
@@ -70,15 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--start",
-        type=date.fromisoformat,
-        required=True,
-        help="Start date inclusive, in YYYY-MM-DD format.",
+        type=_parse_date,
+        default=_EPOCH_DATE,
+        help="Start date inclusive, in YYYY-MM-DD format or 'today'. Defaults to 1970-01-01.",
     )
     parser.add_argument(
         "--end",
-        type=date.fromisoformat,
-        required=True,
-        help="End date inclusive, in YYYY-MM-DD format.",
+        type=_parse_date,
+        help="End date inclusive, in YYYY-MM-DD format or 'today'. Defaults to today.",
     )
     parser.add_argument(
         "--out",
@@ -120,15 +120,17 @@ async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    if args.start > args.end:
+    start = args.start
+    end = args.end or _today()
+    if start > end:
         build_parser().error("--start must be before or equal to --end")
 
     return await sankey(
         db=args.sqlite_export_for_ynab_db,
         full_refresh=args.sqlite_export_for_ynab_full_refresh,
         should_sync=args.sync,
-        start=args.start,
-        end=args.end,
+        start=start,
+        end=end,
         out=args.out,
         sort_by=args.sort_by,
         quiet=args.quiet,
@@ -176,6 +178,16 @@ async def sankey(
 def _print(message: str, *, quiet: bool) -> None:
     if not quiet:
         print(message)
+
+
+def _parse_date(value: str) -> date:
+    if value == "today":
+        return _today()
+    return date.fromisoformat(value)
+
+
+def _today() -> date:
+    return date.today()
 
 
 async def fetch_sankey_rows(

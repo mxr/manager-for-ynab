@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.sankey import _today
 from manager_for_ynab.sankey import build_echarts_html
 from manager_for_ynab.sankey import build_sankey_data
 from manager_for_ynab.sankey import fetch_sankey_rows
@@ -17,6 +18,10 @@ from manager_for_ynab.sankey import SankeyRow
 
 
 _SEED_SQL = Path(__file__).with_name("seed.sql")
+
+
+def test_today_returns_current_date():
+    assert _today() == date.today()
 
 
 @pytest_asyncio.fixture
@@ -309,7 +314,7 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "layoutIterations" in html
 
 
-def test_build_echarts_html_floors_rendered_link_value_to_five_percent_of_max_without_changing_tooltip_amount():
+def test_build_echarts_html_floors_rendered_link_value_without_changing_tooltip_amount():
     data = build_sankey_data(
         [
             SankeyRow(
@@ -334,7 +339,7 @@ def test_build_echarts_html_floors_rendered_link_value_to_five_percent_of_max_wi
     html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
 
     assert '"amount": 0.5' in html
-    assert '"value": 5.0' in html
+    assert '"value": 2.0' in html
 
 
 @pytest.mark.asyncio
@@ -375,6 +380,54 @@ async def test_run_writes_html_to_stdout(sync, build_echarts_html_mock, db, caps
     sync.assert_called_once_with("token", db, False, quiet=False)
     build_echarts_html_mock.assert_called_once()
     assert out.endswith("<echarts></echarts>")
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.sankey._today", return_value=date(2026, 4, 30))
+@patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
+@patch("manager_for_ynab.sankey.sync")
+@pytest.mark.asyncio
+async def test_run_defaults_start_to_epoch_and_end_to_today(
+    sync, build_echarts_html_mock, today, db
+):
+    ret = await run(
+        (
+            "--sqlite-export-for-ynab-db",
+            str(db),
+            "--no-sync",
+        )
+    )
+
+    assert ret == 0
+    sync.assert_not_called()
+    today.assert_called_once_with()
+    assert build_echarts_html_mock.call_args.kwargs["start"] == date(1970, 1, 1)
+    assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
+
+
+@patch.dict("os.environ", {_ENV_TOKEN: "token"})
+@patch("manager_for_ynab.sankey._today", return_value=date(2026, 4, 30))
+@patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
+@patch("manager_for_ynab.sankey.sync")
+@pytest.mark.asyncio
+async def test_run_accepts_today_for_end(sync, build_echarts_html_mock, today, db):
+    ret = await run(
+        (
+            "--sqlite-export-for-ynab-db",
+            str(db),
+            "--start",
+            "2026-04-01",
+            "--end",
+            "today",
+            "--no-sync",
+        )
+    )
+
+    assert ret == 0
+    sync.assert_not_called()
+    today.assert_called_once_with()
+    assert build_echarts_html_mock.call_args.kwargs["start"] == date(2026, 4, 1)
+    assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
