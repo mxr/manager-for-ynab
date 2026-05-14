@@ -231,9 +231,7 @@ def build_sankey_data(
     for row in rows:
         if row.amount < 0:
             if row.category_name == _READY_TO_ASSIGN:
-                node = SankeyNode(
-                    f"income:{row.payee_name or 'Income'}", row.payee_name or "Income"
-                )
+                node = SankeyNode(f"income:{row.payee_name}", row.payee_name)
                 income[node] += -row.amount
             else:
                 node = SankeyNode(
