@@ -216,6 +216,7 @@ def build_sankey_data(
     indexes: dict[SankeyNode, int] = {}
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
+    category_income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
     spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
@@ -224,17 +225,22 @@ def build_sankey_data(
         labels.append(node.label)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
+    net_category_income = SankeyNode("net_category_income", "Net Category Income")
+    income_node = SankeyNode("income", "Income")
 
     for row in rows:
-        if row.category_name == _READY_TO_ASSIGN and row.amount < 0:
-            income[
-                SankeyNode(
-                    f"income:{row.payee_name or 'Income'}", row.payee_name or "Income"
+        if row.amount < 0:
+            if row.category_name == _READY_TO_ASSIGN:
+                node = SankeyNode(f"income:{row.payee_name}", row.payee_name)
+                income[node] += -row.amount
+            else:
+                node = SankeyNode(
+                    f"income_category:{row.category_id}", row.category_name
                 )
-            ] += -row.amount
+                category_income[node] += -row.amount
             continue
 
-        if row.amount <= 0:
+        if row.amount == 0:
             continue
 
         category_group = SankeyNode(
@@ -259,12 +265,19 @@ def build_sankey_data(
         income_nodes = sorted(
             income, key=lambda node: (-income[node], node.label.casefold())
         )
+        category_income_nodes = sorted(
+            category_income,
+            key=lambda node: (-category_income[node], node.label.casefold()),
+        )
         group_nodes = sorted(
             categories_by_group,
             key=lambda node: (-group_totals[node], node.label.casefold()),
         )
     else:
         income_nodes = sorted(income, key=lambda node: node.label.casefold())
+        category_income_nodes = sorted(
+            category_income, key=lambda node: node.label.casefold()
+        )
         group_nodes = sorted(
             categories_by_group, key=lambda node: node.label.casefold()
         )
@@ -284,7 +297,13 @@ def build_sankey_data(
     ]
     for node in income_nodes:
         add_node(node)
-    add_node(ready_to_assign)
+    if income_nodes:
+        add_node(ready_to_assign)
+    for node in category_income_nodes:
+        add_node(node)
+    if category_income_nodes:
+        add_node(net_category_income)
+    add_node(income_node)
     for node in group_nodes:
         add_node(node)
     for node in category_nodes:
@@ -292,8 +311,18 @@ def build_sankey_data(
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
+    if income_nodes:
+        links[(ready_to_assign, income_node)] += sum(
+            (income[node] for node in income_nodes), Decimal(0)
+        )
+    for node in category_income_nodes:
+        links[(node, net_category_income)] += category_income[node]
+    if category_income_nodes:
+        links[(net_category_income, income_node)] += sum(
+            (category_income[node] for node in category_income_nodes), Decimal(0)
+        )
     for group in group_nodes:
-        links[(ready_to_assign, group)] += group_totals[group]
+        links[(income_node, group)] += group_totals[group]
         for category in sorted_categories(group):
             links[(group, category)] += spending[(group, category)]
 
