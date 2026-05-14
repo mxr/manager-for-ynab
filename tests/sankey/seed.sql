@@ -52,6 +52,26 @@ INSERT INTO flat_transactions VALUES
     , 'Cafe'
 )
 , (
+    'gifts-group'
+    , 'Gifts'
+    , 'gifts'
+    , 'Gifts'
+    , 100000
+    , 'reconciled'
+    , '2026-04-03'
+    , 'Maria Oculam'
+)
+, (
+    'gifts-group'
+    , 'Gifts'
+    , 'gifts'
+    , 'Gifts'
+    , -40000
+    , 'reconciled'
+    , '2026-04-04'
+    , 'Gift Shop'
+)
+, (
     'internal-group'
     , 'Internal Master Category'
     , 'hidden'

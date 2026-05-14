@@ -43,10 +43,16 @@ async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
         )
 
     assert rows == [
-        SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")),
+        SankeyRow("Rent", "bills-group", "Bills", "rent", "Rent", Decimal("120")),
         SankeyRow(
-            "Market", "food-group", "Food", "groceries", "Groceries", Decimal("45.5")
+            "Groceries",
+            "food-group",
+            "Food",
+            "groceries",
+            "Groceries",
+            Decimal("45.5"),
         ),
+        SankeyRow("Gifts", "gifts-group", "Gifts", "gifts", "Gifts", Decimal("-60")),
         SankeyRow(
             "Employer",
             "internal-group",
@@ -103,17 +109,9 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
     assert data.category_count == 2
 
 
-def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
+def test_build_sankey_data_skips_zero_rows():
     data = build_sankey_data(
         [
-            SankeyRow(
-                "Market",
-                "food-group",
-                "Food",
-                "groceries",
-                "Groceries",
-                Decimal("-45.5"),
-            ),
             SankeyRow(
                 "Cafe", "food-group", "Food", "restaurants", "Restaurants", Decimal("0")
             ),
@@ -121,6 +119,79 @@ def test_build_sankey_data_skips_empty_income_and_non_spending_rows():
     )
 
     assert data == build_sankey_data(())
+
+
+def test_build_sankey_data_uses_sql_netted_category_outflows():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Gifts",
+                "gifts-group",
+                "Gifts",
+                "gifts-category",
+                "Gifts",
+                Decimal("50"),
+            ),
+        ]
+    )
+
+    assert data.labels == ["Ready to Assign", "Gifts", "Gifts"]
+    assert data.sources == [0, 1]
+    assert data.targets == [1, 2]
+    assert data.values == [Decimal("50"), Decimal("50")]
+
+
+def test_build_sankey_data_treats_sql_netted_category_income_by_category():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Gifts",
+                "gifts-group",
+                "Gifts",
+                "gifts-category",
+                "Gifts",
+                Decimal("-60"),
+            ),
+        ]
+    )
+
+    assert data.labels == ["Gifts", "Ready to Assign", "Net Category Income"]
+    assert data.sources == [0, 2]
+    assert data.targets == [2, 1]
+    assert data.values == [Decimal("60"), Decimal("60")]
+
+
+def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal("-500"),
+            ),
+            SankeyRow(
+                "Gifts",
+                "gifts-group",
+                "Gifts",
+                "gifts-category",
+                "Gifts",
+                Decimal("-60"),
+            ),
+        ]
+    )
+
+    assert data.labels == [
+        "Employer",
+        "Gifts",
+        "Ready to Assign",
+        "Net Category Income",
+    ]
+    assert data.sources == [0, 1, 3]
+    assert data.targets == [2, 3, 2]
+    assert data.values == [Decimal("500"), Decimal("60"), Decimal("60")]
 
 
 def test_build_sankey_data_groups_links_over_whole_range():

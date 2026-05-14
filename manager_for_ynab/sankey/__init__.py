@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
+_NET_CATEGORY_INCOME = "Net Category Income"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _EPOCH_DATE = date(1970, 1, 1)
 _MIN_FIGURE_HEIGHT = 1000
@@ -216,6 +217,7 @@ def build_sankey_data(
     indexes: dict[SankeyNode, int] = {}
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
+    category_income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
     spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
@@ -224,17 +226,23 @@ def build_sankey_data(
         labels.append(node.label)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
+    net_category_income = SankeyNode("net_category_income", _NET_CATEGORY_INCOME)
 
     for row in rows:
-        if row.category_name == _READY_TO_ASSIGN and row.amount < 0:
-            income[
-                SankeyNode(
+        if row.amount < 0:
+            if row.category_name == _READY_TO_ASSIGN:
+                node = SankeyNode(
                     f"income:{row.payee_name or 'Income'}", row.payee_name or "Income"
                 )
-            ] += -row.amount
+                income[node] += -row.amount
+            else:
+                node = SankeyNode(
+                    f"income_category:{row.category_id}", row.category_name
+                )
+                category_income[node] += -row.amount
             continue
 
-        if row.amount <= 0:
+        if row.amount == 0:
             continue
 
         category_group = SankeyNode(
@@ -259,12 +267,19 @@ def build_sankey_data(
         income_nodes = sorted(
             income, key=lambda node: (-income[node], node.label.casefold())
         )
+        category_income_nodes = sorted(
+            category_income,
+            key=lambda node: (-category_income[node], node.label.casefold()),
+        )
         group_nodes = sorted(
             categories_by_group,
             key=lambda node: (-group_totals[node], node.label.casefold()),
         )
     else:
         income_nodes = sorted(income, key=lambda node: node.label.casefold())
+        category_income_nodes = sorted(
+            category_income, key=lambda node: node.label.casefold()
+        )
         group_nodes = sorted(
             categories_by_group, key=lambda node: node.label.casefold()
         )
@@ -284,7 +299,11 @@ def build_sankey_data(
     ]
     for node in income_nodes:
         add_node(node)
+    for node in category_income_nodes:
+        add_node(node)
     add_node(ready_to_assign)
+    if category_income_nodes:
+        add_node(net_category_income)
     for node in group_nodes:
         add_node(node)
     for node in category_nodes:
@@ -292,6 +311,12 @@ def build_sankey_data(
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
+    for node in category_income_nodes:
+        links[(node, net_category_income)] += category_income[node]
+    if category_income_nodes:
+        links[(net_category_income, ready_to_assign)] += sum(
+            (category_income[node] for node in category_income_nodes), Decimal(0)
+        )
     for group in group_nodes:
         links[(ready_to_assign, group)] += group_totals[group]
         for category in sorted_categories(group):
