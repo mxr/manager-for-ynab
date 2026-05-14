@@ -67,7 +67,7 @@ INSERT INTO transactions (
     , '-$4.50'
     , 'Coffee'
     , NULL
-    , 'uncleared'
+    , 'cleared'
     , 0
     , 'pair-a-2'
     , 0
@@ -82,7 +82,7 @@ INSERT INTO transactions (
     , '-$4.50'
     , 'Coffee'
     , '{"payee_name": "Coffee"}'
-    , 'uncleared'
+    , 'cleared'
     , 0
     , 'pair-a-1'
     , 0
@@ -157,7 +157,7 @@ INSERT INTO transactions (
     , '-$7.00'
     , 'Solo'
     , NULL
-    , 'uncleared'
+    , 'cleared'
     , 0
     , NULL
     , 0

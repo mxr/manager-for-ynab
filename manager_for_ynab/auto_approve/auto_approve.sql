@@ -5,6 +5,7 @@ SELECT
     , transactions.payee_name
     , transactions.amount_formatted
     , transactions."date"
+    , transactions.cleared
     , transactions.import_payee_name
 FROM transactions
 LEFT JOIN transactions AS matched_transactions
