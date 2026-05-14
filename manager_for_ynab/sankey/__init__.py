@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
-_NET_CATEGORY_INCOME = "Net Category Income"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _EPOCH_DATE = date(1970, 1, 1)
 _MIN_FIGURE_HEIGHT = 1000
@@ -226,7 +225,8 @@ def build_sankey_data(
         labels.append(node.label)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
-    net_category_income = SankeyNode("net_category_income", _NET_CATEGORY_INCOME)
+    net_category_income = SankeyNode("net_category_income", "Net Category Income")
+    income_node = SankeyNode("income", "Income")
 
     for row in rows:
         if row.amount < 0:
@@ -299,11 +299,13 @@ def build_sankey_data(
     ]
     for node in income_nodes:
         add_node(node)
+    if income_nodes:
+        add_node(ready_to_assign)
     for node in category_income_nodes:
         add_node(node)
-    add_node(ready_to_assign)
     if category_income_nodes:
         add_node(net_category_income)
+    add_node(income_node)
     for node in group_nodes:
         add_node(node)
     for node in category_nodes:
@@ -311,14 +313,18 @@ def build_sankey_data(
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
+    if income_nodes:
+        links[(ready_to_assign, income_node)] += sum(
+            (income[node] for node in income_nodes), Decimal(0)
+        )
     for node in category_income_nodes:
         links[(node, net_category_income)] += category_income[node]
     if category_income_nodes:
-        links[(net_category_income, ready_to_assign)] += sum(
+        links[(net_category_income, income_node)] += sum(
             (category_income[node] for node in category_income_nodes), Decimal(0)
         )
     for group in group_nodes:
-        links[(ready_to_assign, group)] += group_totals[group]
+        links[(income_node, group)] += group_totals[group]
         for category in sorted_categories(group):
             links[(group, category)] += spending[(group, category)]
 
