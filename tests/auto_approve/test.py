@@ -34,6 +34,7 @@ def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
                 , 'Coffee' AS payee_name
                 , '-$4.50' AS amount_formatted
                 , '2026-04-20' AS date
+                , 'cleared' AS cleared
                 , 'not-json' AS import_payee_name
             """
         ).fetchone()
@@ -47,6 +48,7 @@ def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
         payee_name="Coffee",
         amount_formatted="-$4.50",
         date="2026-04-20",
+        cleared="cleared",
     )
 
 
@@ -69,6 +71,13 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         True,
         False,
         False,
+    ]
+    assert [txn.cleared for txn in found] == [
+        "cleared",
+        "cleared",
+        "uncleared",
+        "uncleared",
+        "cleared",
     ]
 
 
@@ -96,7 +105,9 @@ async def test_auto_approve_requires_token(db):
     assert "Must set YNAB access token" in str(excinfo.value)
 
 
-def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
+def _expected_auto_approve_result(
+    updated_count: int, cleared: int
+) -> AutoApproveResult:
     return AutoApproveResult(
         transactions=[
             Transaction(
@@ -106,6 +117,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Coffee",
                 amount_formatted="-$4.50",
                 date="2026-04-20",
+                cleared="cleared",
             ),
             Transaction(
                 id="pair-a-2",
@@ -114,6 +126,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Coffee",
                 amount_formatted="-$4.50",
                 date="2026-04-20",
+                cleared="cleared",
                 should_delete=True,
             ),
             Transaction(
@@ -123,6 +136,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Lunch",
                 amount_formatted="-$12.00",
                 date="2026-04-21",
+                cleared="uncleared",
                 should_delete=True,
             ),
             Transaction(
@@ -132,6 +146,7 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Lunch",
                 amount_formatted="-$12.00",
                 date="2026-04-21",
+                cleared="uncleared",
             ),
             Transaction(
                 id="unmatched",
@@ -140,9 +155,11 @@ def _expected_auto_approve_result(updated_count: int) -> AutoApproveResult:
                 payee_name="Solo",
                 amount_formatted="-$7.00",
                 date="2026-04-21",
+                cleared="cleared",
             ),
         ],
         updated_count=updated_count,
+        cleared=cleared,
     )
 
 
@@ -159,7 +176,7 @@ async def test_auto_approve_uses_token_override(sync, db):
     )
 
     sync.assert_called_once_with("override-token", db, False, quiet=True)
-    assert result == _expected_auto_approve_result(0)
+    assert result == _expected_auto_approve_result(updated_count=0, cleared=0)
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -178,7 +195,7 @@ async def test_auto_approve_quiet_suppresses_refresh_logs(sync, db, capsys):
     out, _ = capsys.readouterr()
     sync.assert_called_once_with("token", db, False, quiet=True)
     assert out == ""
-    assert result == _expected_auto_approve_result(0)
+    assert result == _expected_auto_approve_result(updated_count=0, cleared=0)
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -213,7 +230,7 @@ async def test_auto_approve_for_real_returns_updated_count(
         call("plan-1", "pair-a-2"),
         call("plan-2", "pair-b-1"),
     ]
-    assert result == _expected_auto_approve_result(5)
+    assert result == _expected_auto_approve_result(updated_count=5, cleared=2)
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})
@@ -248,6 +265,7 @@ async def test_auto_approve_for_real_skips_update_when_plan_only_deletes(
         call("plan-2", "pair-b-2"),
     ]
     assert result.updated_count == 5
+    assert result.cleared == 2
 
 
 @patch.dict("os.environ", {_ENV_TOKEN: "token"})

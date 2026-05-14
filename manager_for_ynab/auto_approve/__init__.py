@@ -42,7 +42,7 @@ class Transaction:
     payee_name: str
     amount_formatted: str
     date: str
-    cleared:str
+    cleared: str
     should_delete: bool = False
 
 
@@ -175,7 +175,11 @@ async def auto_approve(
     return AutoApproveResult(
         transactions=transactions,
         updated_count=total if for_real else 0,
-        cleared = sum(txn.cleared == 'cleared' and not txn.should_delete for txn in transactions ) if for_real else 0,
+        cleared=sum(
+            txn.cleared == "cleared" and not txn.should_delete for txn in transactions
+        )
+        if for_real
+        else 0,
     )
 
 
@@ -201,7 +205,7 @@ def _transaction_from_row(txn: aiosqlite.Row) -> Transaction:
         payee_name=txn["payee_name"],
         amount_formatted=txn["amount_formatted"],
         date=txn["date"],
-        cleared=txn['cleared']
+        cleared=txn["cleared"],
         should_delete=_is_json_dict(txn["import_payee_name"]),
     )
 
