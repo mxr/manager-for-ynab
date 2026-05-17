@@ -40,13 +40,13 @@ repos:
   - id: mypy
     language_version: python3.14
     additional_dependencies:
-    - aiosqlite
-    - aiohttp
     - Babel
+    - aiohttp
+    - aiosqlite
+    - asyncio-for-ynab~=1.83.0
     - pyecharts
     - rich>=10
-    - sqlite-export-for-ynab>=2.7.1
-    - asyncio-for-ynab>=1.83.0
+    - sqlite-export-for-ynab~=2.7.1
 - repo: https://github.com/zizmorcore/zizmor-pre-commit
   rev: a4727cbbcd26d7098e96b9cb738169b59711ae51  # frozen: v1.24.1
   hooks:
