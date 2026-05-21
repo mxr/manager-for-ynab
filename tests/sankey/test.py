@@ -15,6 +15,7 @@ from manager_for_ynab.sankey import fetch_sankey_rows
 from manager_for_ynab.sankey import run
 from manager_for_ynab.sankey import sankey
 from manager_for_ynab.sankey import SankeyRow
+from manager_for_ynab.sankey import SortBy
 
 
 _SEED_SQL = Path(__file__).with_name("seed.sql")
@@ -86,7 +87,8 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
                 "Groceries",
                 Decimal("45.5"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == [
@@ -117,10 +119,11 @@ def test_build_sankey_data_skips_zero_rows():
             SankeyRow(
                 "Cafe", "food-group", "Food", "restaurants", "Restaurants", Decimal("0")
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
-    assert data == build_sankey_data(())
+    assert data == build_sankey_data((), sort_by=SortBy.ALPHABETICAL)
 
 
 def test_build_sankey_data_uses_sql_netted_category_outflows():
@@ -134,7 +137,8 @@ def test_build_sankey_data_uses_sql_netted_category_outflows():
                 "Gifts",
                 Decimal("50"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == ["Income", "Gifts", "Gifts"]
@@ -154,7 +158,8 @@ def test_build_sankey_data_treats_sql_netted_category_income_by_category():
                 "Gifts",
                 Decimal("-60"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == ["Gifts", "Net Category Income", "Income"]
@@ -182,7 +187,8 @@ def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income(
                 "Gifts",
                 Decimal("-60"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == [
@@ -222,7 +228,8 @@ def test_build_sankey_data_groups_links_over_whole_range():
             SankeyRow(
                 "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("80")
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == ["Employer", "Ready to Assign", "Income", "Bills", "Rent"]
@@ -259,7 +266,8 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
                 "Amazon",
                 Decimal("40"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == [
@@ -307,7 +315,7 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
             ),
             SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("70")),
         ],
-        sort_by="amount",
+        sort_by=SortBy.AMOUNT,
     )
 
     assert data.labels == [
@@ -321,11 +329,6 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
         "Snacks",
         "Groceries",
     ]
-
-
-def test_build_sankey_data_rejects_unknown_sort_by():
-    with pytest.raises(ValueError, match="sort_by must be 'alphabetical' or 'amount'"):
-        build_sankey_data((), sort_by="unknown")
 
 
 def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
@@ -347,7 +350,8 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
                 "Taxes",
                 Decimal("120"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     assert data.labels == ["Employer", "Ready to Assign", "Income", "Taxes", "Taxes"]
@@ -380,7 +384,8 @@ def test_build_echarts_html_uses_node_keys_and_labels():
                 "Taxes",
                 Decimal("120"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
@@ -418,7 +423,8 @@ def test_build_echarts_html_floors_rendered_link_value_without_changing_tooltip_
                 "Taxes",
                 Decimal("0.5"),
             ),
-        ]
+        ],
+        sort_by=SortBy.ALPHABETICAL,
     )
 
     html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
@@ -578,7 +584,7 @@ async def test_sankey_skips_empty_data(sync, db, capsys):
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
         out=None,
-        sort_by="alphabetical",
+        sort_by=SortBy.ALPHABETICAL,
         quiet=False,
         token_override=None,
     )
@@ -600,7 +606,7 @@ async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
         start=date(2026, 6, 1),
         end=date(2026, 6, 30),
         out=None,
-        sort_by="alphabetical",
+        sort_by=SortBy.ALPHABETICAL,
         quiet=True,
         token_override=None,
     )

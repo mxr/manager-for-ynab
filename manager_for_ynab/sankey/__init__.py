@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from enum import Enum
 from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -64,6 +65,11 @@ class SankeyNode:
     label: str
 
 
+class SortBy(Enum):
+    ALPHABETICAL = "alphabetical"
+    AMOUNT = "amount"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PACKAGE,
@@ -87,8 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sort-by",
-        choices=("alphabetical", "amount"),
-        default="alphabetical",
+        type=SortBy,
+        choices=list(SortBy),
+        default=SortBy.ALPHABETICAL,
         help="How to sort Sankey nodes within each stage.",
     )
     parser.add_argument(
@@ -146,7 +153,7 @@ async def sankey(
     start: date,
     end: date,
     out: Path | None,
-    sort_by: str,
+    sort_by: SortBy,
     quiet: bool,
     token_override: str | None,
 ) -> int:
@@ -209,9 +216,7 @@ async def fetch_sankey_rows(
     ]
 
 
-def build_sankey_data(
-    rows: Sequence[SankeyRow], *, sort_by: str = "alphabetical"
-) -> SankeyData:
+def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyData:
     labels: list[str] = []
     indexes: dict[SankeyNode, int] = {}
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
@@ -250,10 +255,6 @@ def build_sankey_data(
         spending[(category_group, category)] += row.amount
         categories_by_group[category_group].add(category)
 
-    if sort_by not in {"alphabetical", "amount"}:
-        msg = "sort_by must be 'alphabetical' or 'amount'"
-        raise ValueError(msg)
-
     group_totals = {
         group: sum(
             (spending[(group, category)] for category in categories_by_group[group]),
@@ -261,7 +262,7 @@ def build_sankey_data(
         )
         for group in categories_by_group
     }
-    if sort_by == "amount":
+    if sort_by == SortBy.AMOUNT:
         income_nodes = sorted(
             income, key=lambda node: (-income[node], node.label.casefold())
         )
@@ -283,7 +284,7 @@ def build_sankey_data(
         )
 
     def sorted_categories(group: SankeyNode) -> list[SankeyNode]:
-        if sort_by == "amount":
+        if sort_by == SortBy.AMOUNT:
             return sorted(
                 categories_by_group[group],
                 key=lambda node: (-spending[(group, node)], node.label.casefold()),
