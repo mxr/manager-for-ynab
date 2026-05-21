@@ -31,7 +31,11 @@ _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
     if (params.dataType === 'edge') {
-        return params.data.source_label + ' -> ' + params.data.target_label + ': ' + Number(params.data.amount).toLocaleString(undefined, {style: 'currency', currency: 'USD'});
+        const source = params.data.source_label;
+        const target = params.data.target_label;
+        const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+
+        return `${source} → ${target}: ${amount}`;
     }
     return params.data.label;
 }
