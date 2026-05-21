@@ -380,10 +380,12 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
             ),
             layout_iterations=0,
             node_gap=10,
+            pos_top="80px",
         )
         .set_global_opts(
             title_opts=options.TitleOpts(
-                title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}"
+                title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}",
+                subtitle=f"Generated on {date.today().isoformat()}",
             )
         )
         .render_embed()
