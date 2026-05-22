@@ -5,6 +5,7 @@ WITH filtered_transactions AS (
         , category_id
         , category_name
         , amount
+        , internal
         , COALESCE(payee_name, '') AS payee_name
     FROM flat_transactions
     WHERE
@@ -41,9 +42,7 @@ WITH filtered_transactions AS (
         , category_name AS payee_name
         , SUM(amount) AS amount
     FROM filtered_transactions
-    WHERE
-        category_group_name != 'Internal Master Category'
-        AND category_name != 'Inflow: Ready to Assign'
+    WHERE NOT internal
     GROUP BY
         category_group_id
         , category_group_name

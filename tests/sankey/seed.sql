@@ -7,6 +7,7 @@ CREATE TABLE flat_transactions (
     , cleared TEXT
     , "date" TEXT
     , payee_name TEXT
+    , internal BOOLEAN
 )
 ;
 
@@ -20,6 +21,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-01'
     , 'Employer'
+    , TRUE
 )
 , (
     'bills-group'
@@ -30,6 +32,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-02'
     , 'Landlord'
+    , FALSE
 )
 , (
     'food-group'
@@ -40,6 +43,7 @@ INSERT INTO flat_transactions VALUES
     , 'Reconciled'
     , '2026-04-03'
     , 'Market'
+    , FALSE
 )
 , (
     'food-group'
@@ -50,6 +54,7 @@ INSERT INTO flat_transactions VALUES
     , 'cleared'
     , '2026-04-03'
     , 'Cafe'
+    , FALSE
 )
 , (
     'gifts-group'
@@ -60,6 +65,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-03'
     , 'Maria Oculam'
+    , FALSE
 )
 , (
     'gifts-group'
@@ -70,6 +76,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-04'
     , 'Gift Shop'
+    , FALSE
 )
 , (
     'internal-group'
@@ -80,6 +87,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-03'
     , 'Hidden'
+    , TRUE
 )
 , (
     'bills-group'
@@ -90,6 +98,7 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-05-01'
     , 'Landlord'
+    , FALSE
 )
 , (
     'inflow-group'
@@ -100,5 +109,6 @@ INSERT INTO flat_transactions VALUES
     , 'reconciled'
     , '2026-04-04'
     , 'Starting Balance'
+    , TRUE
 )
 ;
