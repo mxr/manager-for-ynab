@@ -358,13 +358,13 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
     min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
 
-    node_amounts: dict[int, Decimal] = defaultdict(Decimal)
+    amounts: dict[int, Decimal] = defaultdict(Decimal)
     for source, target, value in zip(
         data.sources, data.targets, data.values, strict=True
     ):
-        node_amounts[target] += value
-        if node_amounts[source] == 0:
-            node_amounts[source] = value
+        amounts[target] += value
+        if amounts[source] == 0:
+            amounts[source] = value
 
     return (
         charts.Sankey(
@@ -373,8 +373,8 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         .add(
             "",
             nodes=[
-                {"name": key, "label": label, "amount": float(node_amounts[index])}
-                for index, (key, label) in enumerate(
+                {"name": key, "label": label, "amount": float(amounts[i])}
+                for i, (key, label) in enumerate(
                     zip(data.keys, data.labels, strict=True)
                 )
             ],
