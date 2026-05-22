@@ -126,4 +126,6 @@ INSERT INTO transactions (
 )
 ;
 
-INSERT INTO subtransactions VALUES ('transfer', 0);
+INSERT INTO subtransactions (id, transfer_transaction_id, deleted)
+VALUES ('subtxn-transfer', 'transfer', 0)
+;

@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,7 @@ from manager_for_ynab.sankey import run
 from manager_for_ynab.sankey import sankey
 from manager_for_ynab.sankey import SankeyRow
 from manager_for_ynab.sankey import SortBy
+from testing.fixtures import apply_ddl
 
 
 _SEED_SQL = Path(__file__).with_name("seed.sql")
@@ -29,9 +31,9 @@ def test_today_returns_current_date():
 async def db(tmp_path: Path) -> Path:
     path = tmp_path / "db.sqlite"
 
-    async with aiosqlite.connect(path) as con:
-        await con.executescript(_SEED_SQL.read_text())
-        await con.commit()
+    with sqlite3.connect(path) as con:
+        apply_ddl(con)
+        con.executescript(_SEED_SQL.read_text())
     return path
 
 

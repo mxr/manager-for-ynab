@@ -1,17 +1,19 @@
 WITH filtered_transactions AS (
     SELECT
-        category_group_id
-        , category_group_name
-        , category_id
-        , category_name
-        , amount
-        , internal
-        , COALESCE(payee_name, '') AS payee_name
-    FROM flat_transactions
+        ft.category_group_id
+        , ft.category_group_name
+        , ft.category_id
+        , ft.category_name
+        , ft.amount
+        , cg.internal AS category_group_internal
+        , COALESCE(ft.payee_name, '') AS payee_name
+    FROM flat_transactions AS ft
+    LEFT JOIN category_groups AS cg
+        ON ft.category_group_id = cg.id
     WHERE
-        "date" BETWEEN ? AND ?
-        AND LOWER(cleared) = 'reconciled'
-        AND COALESCE(payee_name, '') != 'Starting Balance'
+        ft."date" BETWEEN ? AND ?
+        AND LOWER(ft.cleared) = 'reconciled'
+        AND COALESCE(ft.payee_name, '') != 'Starting Balance'
 )
 
 , ready_to_assign_income AS (
@@ -42,7 +44,7 @@ WITH filtered_transactions AS (
         , category_name AS payee_name
         , SUM(amount) AS amount
     FROM filtered_transactions
-    WHERE NOT internal
+    WHERE NOT category_group_internal
     GROUP BY
         category_group_id
         , category_group_name

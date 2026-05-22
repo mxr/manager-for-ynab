@@ -1,9 +1,19 @@
 import sqlite3
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
+
+
+_DDL_SQL = (
+    files("sqlite_export_for_ynab.ddl").joinpath("create-relations.sql").read_text()
+)
+
+
+def apply_ddl(con: sqlite3.Connection) -> None:
+    con.executescript(_DDL_SQL)
 
 
 PLAN_ID_1 = str(uuid4())
@@ -40,6 +50,7 @@ def seed_sql(*extra_paths: Path) -> str:
 
 
 def execute_seed(con: sqlite3.Connection, *extra_paths: Path) -> None:
+    apply_ddl(con)
     for statement in seed_sql(*extra_paths).split(";"):
         statement = statement.strip()
         if statement:

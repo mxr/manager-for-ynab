@@ -1,12 +1,9 @@
-CREATE TABLE plans (
-    id TEXT PRIMARY KEY
-    , name TEXT
-    , currency_format_currency_symbol TEXT
-    , currency_format_iso_code TEXT
-)
-;
-
-INSERT INTO plans VALUES (
+INSERT INTO plans (
+    id
+    , name
+    , currency_format_currency_symbol
+    , currency_format_iso_code
+) VALUES (
     :plan_id
     , 'My Plan'
     , '$'
@@ -14,18 +11,15 @@ INSERT INTO plans VALUES (
 )
 ;
 
-CREATE TABLE accounts (
-    id TEXT PRIMARY KEY
-    , plan_id TEXT
-    , cleared_balance INT
-    , closed BOOLEAN
-    , deleted BOOLEAN
-    , name TEXT
-    , type TEXT
-)
-;
-
-INSERT INTO accounts VALUES (
+INSERT INTO accounts (
+    id
+    , plan_id
+    , cleared_balance
+    , closed
+    , deleted
+    , name
+    , type
+) VALUES (
     :checking_account_id
     , :plan_id
     , 430000
@@ -36,7 +30,15 @@ INSERT INTO accounts VALUES (
 )
 ;
 
-INSERT INTO accounts VALUES (
+INSERT INTO accounts (
+    id
+    , plan_id
+    , cleared_balance
+    , closed
+    , deleted
+    , name
+    , type
+) VALUES (
     :credit_card_account_id
     , :plan_id
     , -200000
@@ -47,16 +49,13 @@ INSERT INTO accounts VALUES (
 )
 ;
 
-CREATE TABLE categories (
-    id TEXT PRIMARY KEY
-    , plan_id TEXT
-    , deleted BOOLEAN
-    , category_group_name TEXT
-    , name TEXT
-)
-;
-
-INSERT INTO categories VALUES (
+INSERT INTO categories (
+    id
+    , plan_id
+    , deleted
+    , category_group_name
+    , name
+) VALUES (
     :ready_to_assign_category_id
     , :plan_id
     , 0
@@ -65,7 +64,13 @@ INSERT INTO categories VALUES (
 )
 ;
 
-INSERT INTO categories VALUES (
+INSERT INTO categories (
+    id
+    , plan_id
+    , deleted
+    , category_group_name
+    , name
+) VALUES (
     :credit_card_category_id
     , :plan_id
     , 0
@@ -74,7 +79,13 @@ INSERT INTO categories VALUES (
 )
 ;
 
-INSERT INTO categories VALUES (
+INSERT INTO categories (
+    id
+    , plan_id
+    , deleted
+    , category_group_name
+    , name
+) VALUES (
     :dining_out_category_id
     , :plan_id
     , 0
@@ -83,7 +94,13 @@ INSERT INTO categories VALUES (
 )
 ;
 
-INSERT INTO categories VALUES (
+INSERT INTO categories (
+    id
+    , plan_id
+    , deleted
+    , category_group_name
+    , name
+) VALUES (
     :duplicate_credit_card_category_id
     , :plan_id
     , 1
@@ -92,16 +109,13 @@ INSERT INTO categories VALUES (
 )
 ;
 
-CREATE TABLE payees (
-    id TEXT PRIMARY KEY
-    , plan_id TEXT
-    , deleted BOOLEAN
-    , name TEXT
-    , transfer_account_id TEXT
-)
-;
-
-INSERT INTO payees VALUES (
+INSERT INTO payees (
+    id
+    , plan_id
+    , deleted
+    , name
+    , transfer_account_id
+) VALUES (
     :employer_payee_id
     , :plan_id
     , 0
@@ -110,57 +124,17 @@ INSERT INTO payees VALUES (
 )
 ;
 
-INSERT INTO payees VALUES (
+INSERT INTO payees (
+    id
+    , plan_id
+    , deleted
+    , name
+    , transfer_account_id
+) VALUES (
     :transfer_payee_id
     , :plan_id
     , 0
     , 'Transfer'
     , :checking_account_id
-)
-;
-
-CREATE TABLE transactions (
-    id TEXT PRIMARY KEY
-    , plan_id TEXT
-    , account_id TEXT
-    , account_name TEXT
-    , "date" TEXT
-    , amount INT
-    , amount_formatted TEXT
-    , payee_name TEXT
-    , import_payee_name TEXT
-    , cleared TEXT
-    , approved BOOLEAN
-    , matched_transaction_id TEXT
-    , deleted BOOLEAN
-)
-;
-
-CREATE TABLE subtransactions (
-    transfer_transaction_id TEXT
-    , deleted BOOLEAN
-)
-;
-
-CREATE TABLE scheduled_transactions (
-    id TEXT PRIMARY KEY
-    , plan_id TEXT
-    , account_id TEXT
-    , account_name TEXT
-    , amount INT
-    , amount_formatted TEXT
-    , amount_currency REAL
-    , category_id TEXT
-    , category_name TEXT
-    , date_first TEXT
-    , date_next TEXT
-    , deleted BOOLEAN
-    , flag_color TEXT
-    , flag_name TEXT
-    , frequency TEXT
-    , memo TEXT
-    , payee_id TEXT
-    , payee_name TEXT
-    , transfer_account_id TEXT
 )
 ;
