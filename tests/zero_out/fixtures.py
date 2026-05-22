@@ -51,6 +51,7 @@ def category_group():
             id=group_id,
             name=name,
             hidden=False,
+            internal=False,
             deleted=False,
             categories=[
                 Category(
@@ -59,6 +60,7 @@ def category_group():
                     category_group_name=name,
                     name=category_name,
                     hidden=False,
+                    internal=False,
                     budgeted=0,
                     activity=0,
                     balance=0,
