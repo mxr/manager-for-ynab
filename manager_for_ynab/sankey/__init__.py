@@ -31,13 +31,19 @@ _MIN_LINK_VALUE_RATIO = 0.02
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
+    const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+
     if (params.dataType === 'edge') {
         const source = params.data.source_label;
         const target = params.data.target_label;
-        const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 
         return `${source} → ${target}: ${amount}`;
     }
+
+    if (params.data.amount != null) {
+        return `${params.data.label}: ${amount}`;
+    }
+
     return params.data.label;
 }
 """
@@ -351,6 +357,15 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
 
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
     min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
+
+    amounts: dict[int, Decimal] = defaultdict(Decimal)
+    for source, target, value in zip(
+        data.sources, data.targets, data.values, strict=True
+    ):
+        amounts[target] += value
+        if amounts[source] == 0:
+            amounts[source] = value
+
     return (
         charts.Sankey(
             init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
@@ -358,8 +373,10 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         .add(
             "",
             nodes=[
-                {"name": key, "label": label}
-                for key, label in zip(data.keys, data.labels, strict=True)
+                {"name": key, "label": label, "amount": float(amounts[i])}
+                for i, (key, label) in enumerate(
+                    zip(data.keys, data.labels, strict=True)
+                )
             ],
             links=[
                 {
