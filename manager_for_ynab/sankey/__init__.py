@@ -31,13 +31,19 @@ _MIN_LINK_VALUE_RATIO = 0.02
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
+    const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+
     if (params.dataType === 'edge') {
         const source = params.data.source_label;
         const target = params.data.target_label;
-        const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 
         return `${source} → ${target}: ${amount}`;
     }
+
+    if (params.data.amount != null) {
+        return `${params.data.label}: ${amount}`;
+    }
+
     return params.data.label;
 }
 """
@@ -351,6 +357,18 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
 
 def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
     min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
+
+    node_amounts = [Decimal(0) for _ in data.keys]
+    for source, target, value in zip(
+        data.sources, data.targets, data.values, strict=True
+    ):
+        node_amounts[target] += value
+        if node_amounts[source] == 0:
+            node_amounts[source] = value
+
+    def build_node(index: int, key: str, label: str) -> dict[str, float | str]:
+        return {"name": key, "label": label, "amount": float(node_amounts[index])}
+
     return (
         charts.Sankey(
             init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
@@ -358,8 +376,10 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         .add(
             "",
             nodes=[
-                {"name": key, "label": label}
-                for key, label in zip(data.keys, data.labels, strict=True)
+                build_node(index, key, label)
+                for index, (key, label) in enumerate(
+                    zip(data.keys, data.labels, strict=True)
+                )
             ],
             links=[
                 {

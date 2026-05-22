@@ -400,6 +400,26 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "params.data.target_label" in html
     assert "params.data.amount" in html
     assert "currency: 'USD'" in html
+    assert (
+        '"name": "income:Employer",\n                    "label": "Employer",\n                    "amount": 500.0'
+        in html
+    )
+    assert (
+        '"name": "ready_to_assign",\n                    "label": "Ready to Assign",\n                    "amount": 500.0'
+        in html
+    )
+    assert (
+        '"name": "income",\n                    "label": "Income",\n                    "amount": 500.0'
+        in html
+    )
+    assert (
+        '"name": "category_group:taxes-group",\n                    "label": "Taxes",\n                    "amount": 120.0'
+        in html
+    )
+    assert (
+        '"name": "category:taxes-category",\n                    "label": "Taxes",\n                    "amount": 120.0'
+        in html
+    )
     assert "height:1000px" in html
     assert "layoutIterations" in html
 
