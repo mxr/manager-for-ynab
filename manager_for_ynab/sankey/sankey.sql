@@ -5,11 +5,11 @@ WITH filtered_transactions AS (
         , ft.category_id
         , ft.category_name
         , ft.amount
-        , cg.internal AS category_group_internal
+        , c.internal AS category_internal
         , COALESCE(ft.payee_name, '') AS payee_name
     FROM flat_transactions AS ft
-    LEFT JOIN category_groups AS cg
-        ON ft.category_group_id = cg.id
+    LEFT JOIN categories AS c
+        ON ft.category_id = c.id
     WHERE
         ft."date" BETWEEN ? AND ?
         AND LOWER(ft.cleared) = 'reconciled'
@@ -44,7 +44,7 @@ WITH filtered_transactions AS (
         , category_name AS payee_name
         , SUM(amount) AS amount
     FROM filtered_transactions
-    WHERE NOT category_group_internal
+    WHERE NOT category_internal
     GROUP BY
         category_group_id
         , category_group_name
