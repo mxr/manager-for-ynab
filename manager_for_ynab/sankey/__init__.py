@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
-_EPOCH_DATE = date(1970, 1, 1)
 _MIN_FIGURE_HEIGHT = 1000
 _MIN_LINK_VALUE_RATIO = 0.02
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
@@ -88,8 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--start",
         type=_parse_date,
-        default=_EPOCH_DATE,
-        help="Start date inclusive, in YYYY-MM-DD format or 'today'. Defaults to 1970-01-01.",
+        help="Start date inclusive, in YYYY-MM-DD format or 'today'. Defaults to date of first transaction in budget.",
     )
     parser.add_argument(
         "--end",
@@ -137,16 +135,16 @@ async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    start = args.start
-    end = args.end or _today()
-    if start > end:
+    raw_start: date | None = args.start
+    end: date = args.end or _today()
+    if raw_start and raw_start > end:
         build_parser().error("--start must be before or equal to --end")
 
     return await sankey(
         db=args.sqlite_export_for_ynab_db,
         full_refresh=args.sqlite_export_for_ynab_full_refresh,
         should_sync=args.sync,
-        start=start,
+        raw_start=raw_start,
         end=end,
         out=args.out,
         sort_by=args.sort_by,
@@ -160,7 +158,7 @@ async def sankey(
     db: Path,
     full_refresh: bool,
     should_sync: bool = True,
-    start: date,
+    raw_start: date | None,
     end: date,
     out: Path | None,
     sort_by: SortBy,
@@ -176,7 +174,7 @@ async def sankey(
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        rows = await fetch_sankey_rows(con, start=start, end=end)
+        rows, start = await fetch_sankey(con, start=raw_start, end=end)
 
     data = build_sankey_data(rows, sort_by=sort_by)
     if not data.values:
@@ -207,10 +205,12 @@ def _today() -> date:
     return date.today()
 
 
-async def fetch_sankey_rows(
-    con: aiosqlite.Connection, *, start: date, end: date
-) -> list[SankeyRow]:
-    async with con.execute(_SANKEY_SQL, (start.isoformat(), end.isoformat())) as cur:
+async def fetch_sankey(
+    con: aiosqlite.Connection, *, start: date | None, end: date
+) -> tuple[list[SankeyRow], date]:
+    async with con.execute(
+        _SANKEY_SQL, ((start or date(1900, 1, 1)).isoformat(), end.isoformat())
+    ) as cur:
         rows = await cur.fetchall()
 
     return [
@@ -223,7 +223,7 @@ async def fetch_sankey_rows(
             amount=Decimal(row["amount"]) / Decimal("-1000"),
         )
         for row in rows
-    ]
+    ], min(date.fromisoformat(row["date"]) for row in rows) if rows else date.today()
 
 
 def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyData:
@@ -415,7 +415,7 @@ __all__ = [
     SankeyRow.__name__,
     build_echarts_html.__name__,
     build_sankey_data.__name__,
-    fetch_sankey_rows.__name__,
+    fetch_sankey.__name__,
     run.__name__,
     sankey.__name__,
 ]

@@ -7,6 +7,7 @@ WITH filtered_transactions AS (
         , ft.amount
         , c.internal AS category_internal
         , COALESCE(ft.payee_name, '') AS payee_name
+        , DATE(ft."date") AS "date"
     FROM flat_transactions AS ft
     LEFT JOIN categories AS c
         ON ft.category_id = c.id
@@ -24,6 +25,7 @@ WITH filtered_transactions AS (
         , category_name
         , payee_name
         , SUM(amount) AS amount
+        , MIN("date") AS "date"
     FROM filtered_transactions
     WHERE category_name = 'Inflow: Ready to Assign'
     GROUP BY
@@ -43,6 +45,7 @@ WITH filtered_transactions AS (
         , category_name
         , category_name AS payee_name
         , SUM(amount) AS amount
+        , MIN("date") AS "date"
     FROM filtered_transactions
     WHERE NOT category_internal
     GROUP BY
@@ -60,6 +63,7 @@ SELECT
     , category_name
     , payee_name
     , amount
+    , "date"
 FROM ready_to_assign_income
 
 UNION ALL
@@ -71,6 +75,7 @@ SELECT
     , category_name
     , payee_name
     , amount
+    , "date"
 FROM category_totals
 
 ORDER BY

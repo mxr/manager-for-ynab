@@ -12,7 +12,7 @@ from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.sankey import _today
 from manager_for_ynab.sankey import build_echarts_html
 from manager_for_ynab.sankey import build_sankey_data
-from manager_for_ynab.sankey import fetch_sankey_rows
+from manager_for_ynab.sankey import fetch_sankey
 from manager_for_ynab.sankey import run
 from manager_for_ynab.sankey import sankey
 from manager_for_ynab.sankey import SankeyRow
@@ -38,10 +38,10 @@ async def db(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
+async def test_fetch_sankey_filters_and_converts_amounts(db):
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        rows = await fetch_sankey_rows(
+        rows, start = await fetch_sankey(
             con, start=date(2026, 4, 1), end=date(2026, 4, 30)
         )
 
@@ -65,6 +65,7 @@ async def test_fetch_sankey_rows_filters_and_converts_amounts(db):
             Decimal("-500"),
         ),
     ]
+    assert start == date(2026, 4, 1)
 
 
 def test_build_sankey_data_links_income_to_groups_to_categories():
@@ -500,7 +501,7 @@ async def test_run_writes_html_to_stdout(sync, build_echarts_html_mock, db, caps
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
-async def test_run_defaults_start_to_epoch_and_end_to_today(
+async def test_run_defaults_start_to_first_txn_and_end_to_today(
     sync, build_echarts_html_mock, today, db
 ):
     ret = await run(
@@ -514,7 +515,7 @@ async def test_run_defaults_start_to_epoch_and_end_to_today(
     assert ret == 0
     sync.assert_not_called()
     today.assert_called_once_with()
-    assert build_echarts_html_mock.call_args.kwargs["start"] == date(1970, 1, 1)
+    assert build_echarts_html_mock.call_args.kwargs["start"] == date(2026, 4, 1)
     assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
 
 
@@ -603,7 +604,7 @@ async def test_sankey_skips_empty_data(sync, db, capsys):
         db=db,
         full_refresh=False,
         should_sync=False,
-        start=date(2026, 6, 1),
+        raw_start=date(2026, 6, 1),
         end=date(2026, 6, 30),
         out=None,
         sort_by=SortBy.ALPHABETICAL,
@@ -625,7 +626,7 @@ async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
         db=db,
         full_refresh=False,
         should_sync=False,
-        start=date(2026, 6, 1),
+        raw_start=date(2026, 6, 1),
         end=date(2026, 6, 30),
         out=None,
         sort_by=SortBy.ALPHABETICAL,
