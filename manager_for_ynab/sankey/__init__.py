@@ -224,7 +224,7 @@ async def fetch_sankey(
             amount=Decimal(row["amount"]) / Decimal("-1000"),
         )
         for row in rows
-    ], min(date.fromisoformat(row["date"]) for row in rows) if rows else date.today()
+    ], min((date.fromisoformat(row["date"]) for row in rows), default=date.today())
 
 
 def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyData:
