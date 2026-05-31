@@ -212,9 +212,9 @@ async def fetch_sankey(
         _SANKEY_SQL,
         ((raw_start or date(1900, 1, 1)).isoformat(), end.isoformat()),
     ) as cur:
-        rows = await cur.fetchall()
+        raw_rows = await cur.fetchall()
 
-    return [
+    rows = [
         SankeyRow(
             payee_name=row["payee_name"] or "Income",
             category_group_id=row["category_group_id"],
@@ -223,8 +223,14 @@ async def fetch_sankey(
             category_name=row["category_name"],
             amount=Decimal(row["amount"]) / Decimal("-1000"),
         )
-        for row in rows
-    ], min((date.fromisoformat(row["date"]) for row in rows), default=date.today())
+        for row in raw_rows
+    ]
+
+    start = min(
+        (date.fromisoformat(row["date"]) for row in raw_rows), default=date.today()
+    )
+
+    return rows, start
 
 
 def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyData:
