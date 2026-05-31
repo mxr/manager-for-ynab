@@ -42,7 +42,7 @@ async def test_fetch_sankey_filters_and_converts_amounts(db):
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         rows, start = await fetch_sankey(
-            con, start=date(2026, 4, 1), end=date(2026, 4, 30)
+            con, raw_start=date(2026, 4, 1), end=date(2026, 4, 30)
         )
 
     assert rows == [
