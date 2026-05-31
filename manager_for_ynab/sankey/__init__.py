@@ -174,7 +174,7 @@ async def sankey(
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        rows, start = await fetch_sankey(con, start=raw_start, end=end)
+        rows, start = await fetch_sankey(con, raw_start=raw_start, end=end)
 
     data = build_sankey_data(rows, sort_by=sort_by)
     if not data.values:
@@ -206,10 +206,11 @@ def _today() -> date:
 
 
 async def fetch_sankey(
-    con: aiosqlite.Connection, *, start: date | None, end: date
+    con: aiosqlite.Connection, *, raw_start: date | None, end: date
 ) -> tuple[list[SankeyRow], date]:
     async with con.execute(
-        _SANKEY_SQL, ((start or date(1900, 1, 1)).isoformat(), end.isoformat())
+        _SANKEY_SQL,
+        ((raw_start or date(1900, 1, 1)).isoformat(), end.isoformat()),
     ) as cur:
         rows = await cur.fetchall()
 
