@@ -81,7 +81,10 @@ extend-select = [
 ]
 
 [tool.setuptools.package-data]
-manager_for_ynab = ["py.typed", "*.sql"]
+manager_for_ynab = ["py.typed"]
+"manager_for_ynab.auto_approve" = ["*.sql"]
+"manager_for_ynab.pending_income" = ["*.sql"]
+"manager_for_ynab.sankey" = ["*.sql"]
 
 [tool.setuptools.packages]
 find = {}
