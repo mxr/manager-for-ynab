@@ -1,5 +1,5 @@
 import sys
-from configparser import ConfigParser
+import tomllib
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from unittest.mock import patch
@@ -130,8 +130,8 @@ def test_get_version_from_installed_metadata():
 
 
 @patch.object(_version, "version", raising_version)
-def test_get_version_falls_back_to_setup_cfg():
-    config = ConfigParser()
-    config.read(Path(__file__).parents[2] / "setup.cfg")
+def test_get_version_falls_back_to_pyproject_toml():
+    with open(Path(__file__).parents[2] / "pyproject.toml", "rb") as f:
+        expected = tomllib.load(f)["project"]["version"]
 
-    assert _version.get_version() == config["metadata"]["version"]
+    assert _version.get_version() == expected
