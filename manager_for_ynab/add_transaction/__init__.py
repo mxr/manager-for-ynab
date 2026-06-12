@@ -7,6 +7,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -733,9 +734,9 @@ async def confirm(message: str) -> bool:
 
 
 async def _prompt(
-    message: str, validator_callable: Callable[[str], bool], **kwargs: object
+    message: str, validator_callable: Callable[[str], bool], **kwargs: Any
 ) -> str:
-    session = PromptSession()
+    session: PromptSession[str] = PromptSession()
     return await session.prompt_async(
         message,
         validator=Validator.from_callable(validator_callable),

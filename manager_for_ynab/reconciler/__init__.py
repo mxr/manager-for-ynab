@@ -328,7 +328,7 @@ async def _resolve_target_set(request: ReconcileCliRequest) -> ReconcileTargetSe
 
 
 async def _prompt_targets(target_count: int) -> list[str]:
-    session = PromptSession()
+    session: PromptSession[str] = PromptSession()
     with patch_stdout():
         raw_targets = shlex.split(
             await session.prompt_async(
