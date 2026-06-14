@@ -136,3 +136,6 @@ commands = [
   ["coverage", "report"],
 ]
 dependency_groups = ["dev"]
+
+[tool.ty.rules]
+all = "error"
