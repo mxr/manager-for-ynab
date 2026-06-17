@@ -557,6 +557,13 @@ async def test_move_funds_reports_returned_budget_delta(
     assert "Returned 12.34 USD from 'Credit Card' to Ready to Assign." in out
 
 
+@pytest.mark.parametrize(
+    ("fund", "expect_funded"),
+    [
+        pytest.param(True, True, id="fund"),
+        pytest.param(False, False, id="no-fund"),
+    ],
+)
 @patch("manager_for_ynab.add_transaction._fund_category", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction.TransactionsApi")
 @patch("manager_for_ynab.add_transaction.ApiClient")
@@ -567,6 +574,8 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     api_client_cls,
     transactions_api_cls,
     fund_category_mock,
+    fund,
+    expect_funded,
     resolved_dining_transaction,
     tmp_path,
     capsys,
@@ -583,6 +592,7 @@ async def test_move_funds_funds_category_from_ready_to_assign(
         resolved=resolved_dining_transaction,
         token="token",
         db=db_path,
+        fund=fund,
         for_real=True,
         quiet=False,
     )
@@ -591,9 +601,13 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     assert ret == 0
     assert err == ""
     transactions_api_cls.return_value.create_transaction.assert_called_once()
-    fund_category_mock.assert_awaited_once()
     assert "Created transaction:" in out
-    assert "Funded 'Dining Out' from 'Ready to Assign' by 5.00 USD" in out
+    if expect_funded:
+        fund_category_mock.assert_awaited_once()
+        assert "Funded 'Dining Out' from 'Ready to Assign' by 5.00 USD" in out
+    else:
+        fund_category_mock.assert_not_awaited()
+        assert "Funded" not in out
 
 
 @pytest.mark.asyncio

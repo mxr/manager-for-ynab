@@ -106,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Amount in USD. Positive values are expenses.",
     )
     parser.add_argument(
+        "--fund",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fund the category from Ready to Assign after creating the transaction.",
+    )
+    parser.add_argument(
         "--for-real",
         action="store_true",
         help="Create the transaction instead of only previewing it.",
@@ -157,6 +163,7 @@ async def run(
         date=args.date,
         cleared=args.cleared,
         amount=args.amount,
+        fund=args.fund,
         for_real=args.for_real,
         quiet=args.quiet,
         db=args.sqlite_export_for_ynab_db,
@@ -175,6 +182,7 @@ async def add_transaction(
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
     amount: Decimal | None,
+    fund: bool = True,
     for_real: bool,
     quiet: bool,
     db: Path,
@@ -202,6 +210,7 @@ async def add_transaction(
             resolved=resolved,
             token=token,
             db=db,
+            fund=fund,
             for_real=for_real,
             quiet=quiet,
         )
@@ -247,6 +256,7 @@ async def add_transaction_and_move_funds(
     resolved: ResolvedTransaction,
     token: str,
     db: Path,
+    fund: bool = True,
     for_real: bool,
     quiet: bool,
 ) -> int:
@@ -309,7 +319,8 @@ async def add_transaction_and_move_funds(
                 return 0
 
             if (
-                resolved.category is not None
+                fund
+                and resolved.category is not None
                 and resolved.category.name != "Inflow: Ready to Assign"
             ):
                 assert txn.amount is not None
