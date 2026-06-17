@@ -171,6 +171,7 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     transactions_api.create_transaction.return_value = None
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved_ready_to_assign_checking_transaction,
         token="token",
         db=tmp_path / "add-transaction.sqlite",
@@ -231,6 +232,7 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     )
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved,
         token="token",
         db=db_path,
@@ -324,6 +326,7 @@ async def test_move_funds_dry_run(
     capsys,
 ):
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved_ready_to_assign_checking_transaction,
         token="token",
         db=tmp_path / "add-transaction.sqlite",
@@ -357,6 +360,7 @@ async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, cap
         date=date(2026, 4, 26),
         cleared=None,
         amount=Decimal("12.34"),
+        fund=True,
         for_real=False,
         quiet=False,
         db=db_path,
@@ -391,6 +395,7 @@ async def test_add_transaction_returns_one_when_resolution_fails(
         date=date(2026, 4, 26),
         cleared=None,
         amount=Decimal("12.34"),
+        fund=True,
         for_real=False,
         quiet=True,
         db=tmp_path / "add-transaction.sqlite",
@@ -433,6 +438,7 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     apply_category_budget_delta_mock.return_value = 12340
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved,
         token="token",
         db=db_path,
@@ -495,6 +501,7 @@ async def test_move_funds_reports_returned_credit_card_payment(
     )
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved,
         token="token",
         db=db_path,
@@ -542,6 +549,7 @@ async def test_move_funds_reports_returned_budget_delta(
     apply_category_budget_delta_mock.return_value = -12340
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved,
         token="token",
         db=db_path,
@@ -703,6 +711,7 @@ async def test_move_funds_returns_one_when_api_raises(
     )
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved_ready_to_assign_checking_transaction,
         token="token",
         db=tmp_path / "add-transaction.sqlite",
@@ -746,6 +755,7 @@ async def test_move_funds_returns_one_when_funding_fails(
     fund_category_mock.side_effect = err
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
+        fund=True,
         resolved=resolved_dining_transaction,
         token="token",
         db=tmp_path / "add-transaction.sqlite",

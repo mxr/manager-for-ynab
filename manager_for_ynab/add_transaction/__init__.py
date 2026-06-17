@@ -108,7 +108,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fund",
         action=argparse.BooleanOptionalAction,
-        default=True,
         help="Fund the category from Ready to Assign after creating the transaction.",
     )
     parser.add_argument(
@@ -182,7 +181,7 @@ async def add_transaction(
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
     amount: Decimal | None,
-    fund: bool = True,
+    fund: bool,
     for_real: bool,
     quiet: bool,
     db: Path,
@@ -256,7 +255,7 @@ async def add_transaction_and_move_funds(
     resolved: ResolvedTransaction,
     token: str,
     db: Path,
-    fund: bool = True,
+    fund: bool,
     for_real: bool,
     quiet: bool,
 ) -> int:
