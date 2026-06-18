@@ -108,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fund",
         action=argparse.BooleanOptionalAction,
+        default=True,
         help="Fund the category from Ready to Assign after creating the transaction.",
     )
     parser.add_argument(
