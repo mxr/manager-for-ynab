@@ -35,7 +35,7 @@ license-files = ["LICENSE"]
 name = "manager_for_ynab"
 readme = "README.md"
 requires-python = ">=3.14"
-version = "1.9.0"
+version = "1.9.1"
 
 [project.scripts]
 manager-for-ynab = "manager_for_ynab._main:main"
