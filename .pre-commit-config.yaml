@@ -40,7 +40,7 @@ repos:
     - Babel
     - aiohttp
     - aiosqlite
-    - asyncio-for-ynab~=1.85.0
+    - asyncio-for-ynab~=1.86.0
     - coverage
     - prompt-toolkit
     - pyecharts
@@ -48,7 +48,7 @@ repos:
     - pytest-asyncio
     - rich>=10
     - setuptools
-    - sqlite-export-for-ynab~=2.9.4
+    - sqlite-export-for-ynab~=2.9.5
 - repo: https://github.com/mxr/mirrors-ty
   rev: febed8a7b2665e80a9d3855c59ac716a6284d628  # frozen: v0.0.61
   hooks:
@@ -57,7 +57,7 @@ repos:
     - Babel
     - aiohttp
     - aiosqlite
-    - asyncio-for-ynab~=1.85.0
+    - asyncio-for-ynab~=1.86.0
     - coverage
     - prompt-toolkit
     - pyecharts
@@ -65,7 +65,7 @@ repos:
     - pytest-asyncio
     - rich>=10
     - setuptools
-    - sqlite-export-for-ynab~=2.9.4
+    - sqlite-export-for-ynab~=2.9.5
     language_version: python3.14
 - repo: https://github.com/mxr/sync-typing-deps
   rev: c2ec0c01a31703615c17e3fe11d1fe28c003f1d8  # frozen: v0.5.3
