@@ -1,24 +1,25 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import datetime
 import re
 from typing import TYPE_CHECKING
 
-from asyncio_for_ynab import (
-    ApiClient,
-    ApiException,
-    CategoriesApi,
-    Configuration,
-    PatchMonthCategoryWrapper,
-    PlansApi,
-    PlanSummaryResponse,
-    SaveMonthCategory,
-)
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import ApiException
+from asyncio_for_ynab import CategoriesApi
+from asyncio_for_ynab import Configuration
+from asyncio_for_ynab import PatchMonthCategoryWrapper
+from asyncio_for_ynab import PlansApi
+from asyncio_for_ynab import PlanSummaryResponse
+from asyncio_for_ynab import SaveMonthCategory
 
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Sequence
+    from collections.abc import Generator
+    from collections.abc import Sequence
 
 
 _PACKAGE = "manager-for-ynab zero-out"

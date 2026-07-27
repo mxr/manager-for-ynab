@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import sys
 from collections import defaultdict
@@ -10,9 +12,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pyecharts import charts, options
+from pyecharts import charts
+from pyecharts import options
 from pyecharts.commons import utils
-from sqlite_export_for_ynab import default_db_path, sync
+from sqlite_export_for_ynab import default_db_path
+from sqlite_export_for_ynab import sync
 
 from manager_for_ynab._auth import resolve_token
 

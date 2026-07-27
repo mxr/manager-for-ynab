@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import pytest
 

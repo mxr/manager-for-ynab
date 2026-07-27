@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 from datetime import date
 from decimal import Decimal
@@ -9,16 +11,14 @@ import pytest
 import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.sankey import (
-    SankeyRow,
-    SortBy,
-    _today,
-    build_echarts_html,
-    build_sankey_data,
-    fetch_sankey,
-    run,
-    sankey,
-)
+from manager_for_ynab.sankey import SankeyRow
+from manager_for_ynab.sankey import SortBy
+from manager_for_ynab.sankey import _today
+from manager_for_ynab.sankey import build_echarts_html
+from manager_for_ynab.sankey import build_sankey_data
+from manager_for_ynab.sankey import fetch_sankey
+from manager_for_ynab.sankey import run
+from manager_for_ynab.sankey import sankey
 from testing.fixtures import apply_ddl
 
 _SEED_SQL = Path(__file__).with_name("seed.sql")

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 from datetime import date
 from typing import Any
@@ -7,14 +9,12 @@ import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.pending_income import (
-    PendingIncomeResult,
-    Transaction,
-    build_updates,
-    fetch_pending_income,
-    pending_income,
-    run,
-)
+from manager_for_ynab.pending_income import PendingIncomeResult
+from manager_for_ynab.pending_income import Transaction
+from manager_for_ynab.pending_income import build_updates
+from manager_for_ynab.pending_income import fetch_pending_income
+from manager_for_ynab.pending_income import pending_income
+from manager_for_ynab.pending_income import run
 
 pytest_plugins = ("tests.pending_income.fixtures",)
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 import uuid
 from dataclasses import replace
@@ -5,50 +7,45 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
-from asyncio_for_ynab import (
-    ApiClient,
-    ApiException,
-    Category,
-    CategoryResponse,
-    CategoryResponseData,
-    TransactionClearedStatus,
-)
+from asyncio_for_ynab import ApiClient
+from asyncio_for_ynab import ApiException
+from asyncio_for_ynab import Category
+from asyncio_for_ynab import CategoryResponse
+from asyncio_for_ynab import CategoryResponseData
+from asyncio_for_ynab import TransactionClearedStatus
 
 import manager_for_ynab.add_transaction as add_transaction_module
-from manager_for_ynab.add_transaction import (
-    _apply_category_budget_delta,
-    _choice_prompt,
-    _fund_category,
-    _load_account_by_id,
-    _prompt,
-    _resolve_account_id,
-    _resolve_category,
-    _resolve_credit_card_payment_category,
-    _resolve_payee,
-    _resolve_transaction,
-    add_transaction,
-    amount_prompt,
-    build_parser,
-    confirm,
-    date_prompt,
-    decimal,
-    edit_distance,
-    parse_date,
-    run,
-    sync_and_resolve_transaction,
-)
-from testing.fixtures import (
-    CHECKING_ACCOUNT_ID,
-    DUPLICATE_CREDIT_CARD_CATEGORY_ID,
-    EMPLOYER_PAYEE_ID,
-    PLAN_ID,
-    READY_TO_ASSIGN_CATEGORY_ID,
-    execute_seed,
-)
+from manager_for_ynab.add_transaction import _apply_category_budget_delta
+from manager_for_ynab.add_transaction import _choice_prompt
+from manager_for_ynab.add_transaction import _fund_category
+from manager_for_ynab.add_transaction import _load_account_by_id
+from manager_for_ynab.add_transaction import _prompt
+from manager_for_ynab.add_transaction import _resolve_account_id
+from manager_for_ynab.add_transaction import _resolve_category
+from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
+from manager_for_ynab.add_transaction import _resolve_payee
+from manager_for_ynab.add_transaction import _resolve_transaction
+from manager_for_ynab.add_transaction import add_transaction
+from manager_for_ynab.add_transaction import amount_prompt
+from manager_for_ynab.add_transaction import build_parser
+from manager_for_ynab.add_transaction import confirm
+from manager_for_ynab.add_transaction import date_prompt
+from manager_for_ynab.add_transaction import decimal
+from manager_for_ynab.add_transaction import edit_distance
+from manager_for_ynab.add_transaction import parse_date
+from manager_for_ynab.add_transaction import run
+from manager_for_ynab.add_transaction import sync_and_resolve_transaction
+from testing.fixtures import CHECKING_ACCOUNT_ID
+from testing.fixtures import DUPLICATE_CREDIT_CARD_CATEGORY_ID
+from testing.fixtures import EMPLOYER_PAYEE_ID
+from testing.fixtures import PLAN_ID
+from testing.fixtures import READY_TO_ASSIGN_CATEGORY_ID
+from testing.fixtures import execute_seed
 
 
 def _create_add_transaction_db(path: Path) -> None:

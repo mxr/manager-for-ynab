@@ -1,19 +1,20 @@
+from __future__ import annotations
+
 import uuid
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import pytest
-from asyncio_for_ynab import (
-    CategoriesApi,
-    CategoriesResponse,
-    CategoriesResponseData,
-    Category,
-    CategoryGroupWithCategories,
-    PlansApi,
-    PlanSummary,
-    PlanSummaryResponse,
-    PlanSummaryResponseData,
-)
+from asyncio_for_ynab import CategoriesApi
+from asyncio_for_ynab import CategoriesResponse
+from asyncio_for_ynab import CategoriesResponseData
+from asyncio_for_ynab import Category
+from asyncio_for_ynab import CategoryGroupWithCategories
+from asyncio_for_ynab import PlansApi
+from asyncio_for_ynab import PlanSummary
+from asyncio_for_ynab import PlanSummaryResponse
+from asyncio_for_ynab import PlanSummaryResponseData
 
 if TYPE_CHECKING:
     import datetime

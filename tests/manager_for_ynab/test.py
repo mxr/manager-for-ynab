@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 import tomllib
 from importlib.metadata import PackageNotFoundError
@@ -7,7 +9,8 @@ from unittest.mock import patch
 import pytest
 
 from manager_for_ynab import _version
-from manager_for_ynab._main import build_parser, main
+from manager_for_ynab._main import build_parser
+from manager_for_ynab._main import main
 
 
 def raising_version(distribution: str) -> str:

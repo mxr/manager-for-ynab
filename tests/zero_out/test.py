@@ -1,22 +1,23 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import pytest
 from asyncio_for_ynab import ApiException
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.zero_out import (
-    _get_category_id,
-    _get_plan,
-    _regex_search,
-    _run_updates,
-    _update_month_category,
-    month_range,
-    parse_year_month,
-    run,
-)
+from manager_for_ynab.zero_out import _get_category_id
+from manager_for_ynab.zero_out import _get_plan
+from manager_for_ynab.zero_out import _regex_search
+from manager_for_ynab.zero_out import _run_updates
+from manager_for_ynab.zero_out import _update_month_category
+from manager_for_ynab.zero_out import month_range
+from manager_for_ynab.zero_out import parse_year_month
+from manager_for_ynab.zero_out import run
 
 REAL_DATE = datetime.date
 pytest_plugins = ("tests.zero_out.fixtures",)
