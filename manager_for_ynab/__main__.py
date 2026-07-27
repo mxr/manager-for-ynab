@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from manager_for_ynab._main import main
 
 if __name__ == "__main__":
