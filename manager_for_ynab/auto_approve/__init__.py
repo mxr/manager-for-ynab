@@ -245,4 +245,4 @@ def print_transactions(transactions: list[Transaction], *, quiet: bool) -> None:
     rich.print(table)
 
 
-__all__ = [AutoApproveResult.__name__, auto_approve.__name__, run.__name__]
+__all__ = ["AutoApproveResult", "auto_approve", "run"]

@@ -4,6 +4,7 @@ import sqlite3
 import uuid
 from dataclasses import replace
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
@@ -303,7 +304,7 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
 
 
 def test_parse_date_accepts_today():
-    assert parse_date("today") == date.today()
+    assert parse_date("today") == datetime.now().astimezone().date()
 
 
 @pytest.mark.parametrize(
@@ -976,7 +977,7 @@ async def test_shared_prompt_helpers_use_prompt_value(prompt_mock):
     prompt_mock.side_effect = ["Checking", "today", "12.34", "yes"]
 
     assert await _choice_prompt("Account: ", {"Checking": "account-id"}) == "Checking"
-    assert await date_prompt() == date.today()
+    assert await date_prompt() == datetime.now().astimezone().date()
     assert await amount_prompt() == Decimal("12.34")
     assert await confirm("Proceed?") is True
 

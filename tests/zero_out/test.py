@@ -56,8 +56,14 @@ async def test_get_plan_uses_latest_plan(
 ):
     response = plan_summary_response(
         [
-            plan_summary("Old", last_modified_on=datetime.datetime(2025, 1, 1)),
-            plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1)),
+            plan_summary(
+                "Old",
+                last_modified_on=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+            ),
+            plan_summary(
+                "New",
+                last_modified_on=datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC),
+            ),
         ]
     )
 
@@ -70,7 +76,9 @@ async def test_get_plan_uses_latest_plan(
 async def test_get_plan_uses_explicit_plan_id(
     plans_api, plan_summary, plan_summary_response
 ):
-    plan = plan_summary("Chosen", last_modified_on=datetime.datetime(2025, 2, 1))
+    plan = plan_summary(
+        "Chosen", last_modified_on=datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC)
+    )
 
     plans_api.get_plans.return_value = plan_summary_response([plan])
 
@@ -82,7 +90,12 @@ async def test_get_plan_errors_when_explicit_plan_id_is_missing(
     plans_api, plan_summary, plan_summary_response
 ):
     response = plan_summary_response(
-        [plan_summary("Other", last_modified_on=datetime.datetime(2025, 2, 1))]
+        [
+            plan_summary(
+                "Other",
+                last_modified_on=datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC),
+            )
+        ]
     )
 
     plans_api.get_plans.return_value = response
@@ -345,7 +358,11 @@ async def test_run_uses_token_override(
     category_group,
     categories_response,
 ):
-    plans = [plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1))]
+    plans = [
+        plan_summary(
+            "New", last_modified_on=datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC)
+        )
+    ]
     category_groups = [category_group("Fixed", ["Rent"])]
     ynab_plans_api.get_plans.return_value = plan_summary_response(plans)
     ynab_categories_api.get_categories.return_value = categories_response(
@@ -382,7 +399,11 @@ async def test_run_dry_run_prints_preview(
     category_group,
     categories_response,
 ):
-    plans = [plan_summary("New", last_modified_on=datetime.datetime(2025, 2, 1))]
+    plans = [
+        plan_summary(
+            "New", last_modified_on=datetime.datetime(2025, 2, 1, tzinfo=datetime.UTC)
+        )
+    ]
     category_groups = [category_group("Fixed", ["Rent"])]
     ynab_plans_api.get_plans.return_value = plan_summary_response(plans)
     ynab_categories_api.get_categories.return_value = categories_response(

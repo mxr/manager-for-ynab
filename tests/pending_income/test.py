@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
+from datetime import datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -102,7 +103,7 @@ def _expected_pending_income_result(
     *,
     include_matched: bool = True,
 ) -> PendingIncomeResult:
-    seed_date = date.today().replace(day=1).isoformat()
+    seed_date = datetime.now().astimezone().date().replace(day=1).isoformat()
     transactions = [
         Transaction(
             id="keep-1",

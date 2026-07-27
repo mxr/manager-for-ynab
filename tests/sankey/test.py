@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +26,7 @@ _SEED_SQL = Path(__file__).with_name("seed.sql")
 
 
 def test_today_returns_current_date():
-    assert _today() == date.today()
+    assert _today() == datetime.now().astimezone().date()
 
 
 @pytest_asyncio.fixture

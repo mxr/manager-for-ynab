@@ -565,4 +565,4 @@ def partition[T](
     return parts[True], parts[False]
 
 
-__all__ = [reconciler.__name__, run.__name__, sync.__name__]
+__all__ = ["reconciler", "run", "sync"]

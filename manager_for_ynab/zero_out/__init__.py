@@ -125,7 +125,12 @@ async def _get_plan(plans_api: PlansApi, plan_id: str | None) -> tuple[str, str]
                 return plan_id, plan.name
         raise RuntimeError(f"No plan found with id '{plan_id}'.")
 
-    plan = max(plans, key=lambda b: b.last_modified_on or datetime.datetime.min)
+    plan = max(
+        plans,
+        key=lambda b: (
+            b.last_modified_on or datetime.datetime.min.replace(tzinfo=datetime.UTC)
+        ),
+    )
     return str(plan.id), plan.name
 
 
@@ -233,7 +238,7 @@ async def zero_out(
         if end:
             end_year, end_month = end
         else:
-            today = datetime.date.today()
+            today = datetime.datetime.now().astimezone().date()
             end_year, end_month = today.year, today.month
 
         months = tuple(month_range(start_year, start_month, end_year, end_month))
@@ -271,4 +276,4 @@ async def run(
     )
 
 
-__all__ = [run.__name__, zero_out.__name__]
+__all__ = ["run", "zero_out"]

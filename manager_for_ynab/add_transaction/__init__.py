@@ -149,7 +149,7 @@ def decimal(raw_decimal: str) -> Decimal:
 
 def parse_date(raw_date: str) -> datetime.date:
     if raw_date == "today":
-        return datetime.date.today()
+        return datetime.datetime.now().astimezone().date()
     return datetime.date.fromisoformat(raw_date)
 
 
@@ -216,7 +216,7 @@ async def add_transaction(
             for_real=for_real,
             quiet=quiet,
         )
-    except Exception as err:
+    except (ApiException, RuntimeError, ValueError, OSError, TimeoutError) as err:
         print(err)
         return 1
 
@@ -723,7 +723,7 @@ async def date_prompt() -> datetime.date:
         await _prompt(
             "Date: ",
             lambda text: text == "today" or _DATE_RE.match(text) is not None,
-            default=datetime.date.today().isoformat(),
+            default=datetime.datetime.now().astimezone().date().isoformat(),
         )
     )
 
@@ -789,14 +789,14 @@ def edit_distance(left: str, right: str) -> int:
 
 
 __all__ = [
-    add_transaction.__name__,
-    build_parser.__name__,
-    add_transaction_and_move_funds.__name__,
-    ResolvedAccount.__name__,
-    ResolvedCategory.__name__,
-    ResolvedPayee.__name__,
-    ResolvedPlan.__name__,
-    ResolvedTransaction.__name__,
-    run.__name__,
-    sync_and_resolve_transaction.__name__,
+    "ResolvedAccount",
+    "ResolvedCategory",
+    "ResolvedPayee",
+    "ResolvedPlan",
+    "ResolvedTransaction",
+    "add_transaction",
+    "add_transaction_and_move_funds",
+    "build_parser",
+    "run",
+    "sync_and_resolve_transaction",
 ]

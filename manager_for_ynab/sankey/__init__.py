@@ -5,6 +5,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from importlib.resources import files
@@ -204,7 +205,7 @@ def _parse_date(value: str) -> date:
 
 
 def _today() -> date:
-    return date.today()
+    return datetime.now().astimezone().date()
 
 
 async def fetch_sankey(
@@ -229,7 +230,8 @@ async def fetch_sankey(
     ]
 
     start = min(
-        (date.fromisoformat(row["date"]) for row in raw_rows), default=date.today()
+        (date.fromisoformat(row["date"]) for row in raw_rows),
+        default=datetime.now().astimezone().date(),
     )
 
     return rows, start
@@ -411,7 +413,7 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
         .set_global_opts(
             title_opts=options.TitleOpts(
                 title=f"Spending Sankey: {start.isoformat()} to {end.isoformat()}",
-                subtitle=f"Generated on {date.today().isoformat()}",
+                subtitle=f"Generated on {datetime.now().astimezone().date().isoformat()}",
             )
         )
         .render_embed()
@@ -419,12 +421,12 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
 
 
 __all__ = [
-    SankeyData.__name__,
-    SankeyNode.__name__,
-    SankeyRow.__name__,
-    build_echarts_html.__name__,
-    build_sankey_data.__name__,
-    fetch_sankey.__name__,
-    run.__name__,
-    sankey.__name__,
+    "SankeyData",
+    "SankeyNode",
+    "SankeyRow",
+    "build_echarts_html",
+    "build_sankey_data",
+    "fetch_sankey",
+    "run",
+    "sankey",
 ]

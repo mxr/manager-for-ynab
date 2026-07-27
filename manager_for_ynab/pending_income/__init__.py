@@ -6,6 +6,7 @@ from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import date
+from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -117,7 +118,7 @@ async def pending_income(
         print_found_txns(found_txns, quiet=quiet)
 
         if for_real:
-            grouped = build_updates(txns_by_plan, date.today())
+            grouped = build_updates(txns_by_plan, datetime.now().astimezone().date())
             async with AsyncExitStack() as stack:
                 api_client = await stack.enter_async_context(
                     ApiClient(Configuration(access_token=token))
@@ -202,4 +203,4 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     rich.print(table)
 
 
-__all__ = [PendingIncomeResult.__name__, pending_income.__name__, run.__name__]
+__all__ = ["PendingIncomeResult", "pending_income", "run"]
