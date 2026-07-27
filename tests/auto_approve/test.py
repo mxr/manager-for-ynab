@@ -1,19 +1,19 @@
 import sqlite3
 from typing import Any
-from unittest.mock import call
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.auto_approve import _transaction_from_row
-from manager_for_ynab.auto_approve import auto_approve
-from manager_for_ynab.auto_approve import AutoApproveResult
-from manager_for_ynab.auto_approve import fetch_auto_approve_transactions
-from manager_for_ynab.auto_approve import run
-from manager_for_ynab.auto_approve import Transaction
-
+from manager_for_ynab.auto_approve import (
+    AutoApproveResult,
+    Transaction,
+    _transaction_from_row,
+    auto_approve,
+    fetch_auto_approve_transactions,
+    run,
+)
 
 pytest_plugins = ("tests.auto_approve.fixtures",)
 

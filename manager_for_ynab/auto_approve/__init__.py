@@ -11,15 +11,16 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 import rich
-from asyncio_for_ynab import ApiClient
-from asyncio_for_ynab import Configuration
-from asyncio_for_ynab import PatchTransactionsWrapper
-from asyncio_for_ynab import SaveTransactionWithIdOrImportId
-from asyncio_for_ynab import TransactionsApi
+from asyncio_for_ynab import (
+    ApiClient,
+    Configuration,
+    PatchTransactionsWrapper,
+    SaveTransactionWithIdOrImportId,
+    TransactionsApi,
+)
 from rich.progress import Progress
 from rich.table import Table
-from sqlite_export_for_ynab import default_db_path
-from sqlite_export_for_ynab import sync
+from sqlite_export_for_ynab import default_db_path, sync
 
 from manager_for_ynab._auth import resolve_token
 

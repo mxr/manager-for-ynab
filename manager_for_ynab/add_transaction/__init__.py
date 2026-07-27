@@ -7,33 +7,31 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 import rich
-from asyncio_for_ynab import ApiClient
-from asyncio_for_ynab import ApiException
-from asyncio_for_ynab import CategoriesApi
-from asyncio_for_ynab import Configuration
-from asyncio_for_ynab import NewTransaction
-from asyncio_for_ynab import PatchMonthCategoryWrapper
-from asyncio_for_ynab import PostTransactionsWrapper
-from asyncio_for_ynab import SaveMonthCategory
-from asyncio_for_ynab import TransactionClearedStatus
-from asyncio_for_ynab import TransactionsApi
+from asyncio_for_ynab import (
+    ApiClient,
+    ApiException,
+    CategoriesApi,
+    Configuration,
+    NewTransaction,
+    PatchMonthCategoryWrapper,
+    PostTransactionsWrapper,
+    SaveMonthCategory,
+    TransactionClearedStatus,
+    TransactionsApi,
+)
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import FuzzyWordCompleter
 from prompt_toolkit.validation import Validator
-from sqlite_export_for_ynab import default_db_path
-from sqlite_export_for_ynab import sync
+from sqlite_export_for_ynab import default_db_path, sync
 
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Mapping
-    from collections.abc import Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
 _PACKAGE = "manager-for-ynab add-transaction"

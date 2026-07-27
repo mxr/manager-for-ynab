@@ -1,12 +1,10 @@
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from testing.fixtures import execute_seed
-
 
 _SEED_TRANSACTIONS_SQL = Path(__file__).with_name("seed-transactions.sql")
 

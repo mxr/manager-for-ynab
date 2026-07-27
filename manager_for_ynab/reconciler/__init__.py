@@ -9,39 +9,33 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import override
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import aiosqlite
-from asyncio_for_ynab import ApiClient
-from asyncio_for_ynab import Configuration
-from asyncio_for_ynab import PatchTransactionsWrapper
-from asyncio_for_ynab import SaveTransactionWithIdOrImportId
-from asyncio_for_ynab import TransactionClearedStatus
-from asyncio_for_ynab import TransactionsApi
+from asyncio_for_ynab import (
+    ApiClient,
+    Configuration,
+    PatchTransactionsWrapper,
+    SaveTransactionWithIdOrImportId,
+    TransactionClearedStatus,
+    TransactionsApi,
+)
 from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
-from rich.progress import BarColumn
-from rich.progress import Progress
-from rich.progress import TextColumn
-from rich.progress import TimeElapsedColumn
-from sqlite_export_for_ynab import default_db_path
-from sqlite_export_for_ynab import sync
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
+from sqlite_export_for_ynab import default_db_path, sync
 
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Iterable
-    from collections.abc import Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
 try:
     from rich.progress import MofNCompleteColumn
 # https://github.com/benleb/surepy/issues/240
 except ImportError:  # pragma: no cover
-    from rich.progress import ProgressColumn
-    from rich.progress import Task
+    from rich.progress import ProgressColumn, Task
     from rich.text import Text
 
     if TYPE_CHECKING:

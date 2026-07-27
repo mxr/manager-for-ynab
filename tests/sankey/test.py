@@ -9,16 +9,17 @@ import pytest
 import pytest_asyncio
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.sankey import _today
-from manager_for_ynab.sankey import build_echarts_html
-from manager_for_ynab.sankey import build_sankey_data
-from manager_for_ynab.sankey import fetch_sankey
-from manager_for_ynab.sankey import run
-from manager_for_ynab.sankey import sankey
-from manager_for_ynab.sankey import SankeyRow
-from manager_for_ynab.sankey import SortBy
+from manager_for_ynab.sankey import (
+    SankeyRow,
+    SortBy,
+    _today,
+    build_echarts_html,
+    build_sankey_data,
+    fetch_sankey,
+    run,
+    sankey,
+)
 from testing.fixtures import apply_ddl
-
 
 _SEED_SQL = Path(__file__).with_name("seed.sql")
 
@@ -46,7 +47,7 @@ async def test_fetch_sankey_filters_and_converts_amounts(db):
         )
 
     assert rows == [
-        SankeyRow("Rent", "bills-group", "Bills", "rent", "Rent", Decimal("120")),
+        SankeyRow("Rent", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
         SankeyRow(
             "Groceries",
             "food-group",
@@ -55,14 +56,14 @@ async def test_fetch_sankey_filters_and_converts_amounts(db):
             "Groceries",
             Decimal("45.5"),
         ),
-        SankeyRow("Gifts", "gifts-group", "Gifts", "gifts", "Gifts", Decimal("-60")),
+        SankeyRow("Gifts", "gifts-group", "Gifts", "gifts", "Gifts", Decimal(-60)),
         SankeyRow(
             "Employer",
             "internal-group",
             "Internal Master Category",
             "ready-to-assign",
             "Inflow: Ready to Assign",
-            Decimal("-500"),
+            Decimal(-500),
         ),
     ]
     assert start == date(2026, 4, 1)
@@ -77,11 +78,9 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
-            SankeyRow(
-                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")
-            ),
+            SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
             SankeyRow(
                 "Market",
                 "food-group",
@@ -106,10 +105,10 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
     assert data.sources == [0, 1, 2, 3, 2, 4]
     assert data.targets == [1, 2, 3, 5, 4, 6]
     assert data.values == [
-        Decimal("500"),
-        Decimal("500"),
-        Decimal("120"),
-        Decimal("120"),
+        Decimal(500),
+        Decimal(500),
+        Decimal(120),
+        Decimal(120),
         Decimal("45.5"),
         Decimal("45.5"),
     ]
@@ -120,7 +119,7 @@ def test_build_sankey_data_skips_zero_rows():
     data = build_sankey_data(
         [
             SankeyRow(
-                "Cafe", "food-group", "Food", "restaurants", "Restaurants", Decimal("0")
+                "Cafe", "food-group", "Food", "restaurants", "Restaurants", Decimal(0)
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -138,7 +137,7 @@ def test_build_sankey_data_uses_sql_netted_category_outflows():
                 "Gifts",
                 "gifts-category",
                 "Gifts",
-                Decimal("50"),
+                Decimal(50),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -147,7 +146,7 @@ def test_build_sankey_data_uses_sql_netted_category_outflows():
     assert data.labels == ["Income", "Gifts", "Gifts"]
     assert data.sources == [0, 1]
     assert data.targets == [1, 2]
-    assert data.values == [Decimal("50"), Decimal("50")]
+    assert data.values == [Decimal(50), Decimal(50)]
 
 
 def test_build_sankey_data_treats_sql_netted_category_income_by_category():
@@ -159,7 +158,7 @@ def test_build_sankey_data_treats_sql_netted_category_income_by_category():
                 "Gifts",
                 "gifts-category",
                 "Gifts",
-                Decimal("-60"),
+                Decimal(-60),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -168,7 +167,7 @@ def test_build_sankey_data_treats_sql_netted_category_income_by_category():
     assert data.labels == ["Gifts", "Net Category Income", "Income"]
     assert data.sources == [0, 1]
     assert data.targets == [1, 2]
-    assert data.values == [Decimal("60"), Decimal("60")]
+    assert data.values == [Decimal(60), Decimal(60)]
 
 
 def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income():
@@ -180,7 +179,7 @@ def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income(
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
             SankeyRow(
                 "Gifts",
@@ -188,7 +187,7 @@ def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income(
                 "Gifts",
                 "gifts-category",
                 "Gifts",
-                Decimal("-60"),
+                Decimal(-60),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -203,7 +202,7 @@ def test_build_sankey_data_keeps_payee_income_separate_from_net_category_income(
     ]
     assert data.sources == [0, 1, 2, 3]
     assert data.targets == [1, 4, 3, 4]
-    assert data.values == [Decimal("500"), Decimal("500"), Decimal("60"), Decimal("60")]
+    assert data.values == [Decimal(500), Decimal(500), Decimal(60), Decimal(60)]
 
 
 def test_build_sankey_data_groups_links_over_whole_range():
@@ -215,7 +214,7 @@ def test_build_sankey_data_groups_links_over_whole_range():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
             SankeyRow(
                 "Employer",
@@ -223,14 +222,10 @@ def test_build_sankey_data_groups_links_over_whole_range():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-300"),
+                Decimal(-300),
             ),
-            SankeyRow(
-                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("120")
-            ),
-            SankeyRow(
-                "Landlord", "bills-group", "Bills", "rent", "Rent", Decimal("80")
-            ),
+            SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
+            SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal(80)),
         ],
         sort_by=SortBy.ALPHABETICAL,
     )
@@ -239,10 +234,10 @@ def test_build_sankey_data_groups_links_over_whole_range():
     assert data.sources == [0, 1, 2, 3]
     assert data.targets == [1, 2, 3, 4]
     assert data.values == [
-        Decimal("800"),
-        Decimal("800"),
-        Decimal("200"),
-        Decimal("200"),
+        Decimal(800),
+        Decimal(800),
+        Decimal(200),
+        Decimal(200),
     ]
 
 
@@ -250,7 +245,7 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
     data = build_sankey_data(
         [
             SankeyRow(
-                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("25")
+                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal(25)
             ),
             SankeyRow(
                 "Market",
@@ -258,16 +253,16 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
                 "Food",
                 "a-groceries",
                 "Groceries",
-                Decimal("20"),
+                Decimal(20),
             ),
-            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("30")),
+            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal(30)),
             SankeyRow(
                 "Broker",
                 "annual-group",
                 "Annual Memberships",
                 "amazon",
                 "Amazon",
-                Decimal("40"),
+                Decimal(40),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -295,7 +290,7 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-300"),
+                Decimal(-300),
             ),
             SankeyRow(
                 "Employer A",
@@ -303,10 +298,10 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
             SankeyRow(
-                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal("25")
+                "Market", "food-group", "Food", "z-snacks", "Snacks", Decimal(25)
             ),
             SankeyRow(
                 "Market",
@@ -314,9 +309,9 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
                 "Food",
                 "a-groceries",
                 "Groceries",
-                Decimal("20"),
+                Decimal(20),
             ),
-            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal("70")),
+            SankeyRow("Gym", "health-group", "Health", "gym", "Gym", Decimal(70)),
         ],
         sort_by=SortBy.AMOUNT,
     )
@@ -343,7 +338,7 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
             SankeyRow(
                 "State",
@@ -351,7 +346,7 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
                 "Taxes",
                 "taxes-category",
                 "Taxes",
-                Decimal("120"),
+                Decimal(120),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -361,10 +356,10 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
     assert data.sources == [0, 1, 2, 3]
     assert data.targets == [1, 2, 3, 4]
     assert data.values == [
-        Decimal("500"),
-        Decimal("500"),
-        Decimal("120"),
-        Decimal("120"),
+        Decimal(500),
+        Decimal(500),
+        Decimal(120),
+        Decimal(120),
     ]
 
 
@@ -377,7 +372,7 @@ def test_build_echarts_html_uses_node_keys_and_labels():
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-500"),
+                Decimal(-500),
             ),
             SankeyRow(
                 "State",
@@ -385,7 +380,7 @@ def test_build_echarts_html_uses_node_keys_and_labels():
                 "Taxes",
                 "taxes-category",
                 "Taxes",
-                Decimal("120"),
+                Decimal(120),
             ),
         ],
         sort_by=SortBy.ALPHABETICAL,
@@ -436,7 +431,7 @@ def test_build_echarts_html_floors_rendered_link_value_without_changing_tooltip_
                 "Inflow",
                 "ready-to-assign",
                 "Inflow: Ready to Assign",
-                Decimal("-100"),
+                Decimal(-100),
             ),
             SankeyRow(
                 "State",

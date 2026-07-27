@@ -2,25 +2,28 @@ import sqlite3
 from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import AsyncMock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import aiosqlite
 import pytest
 from asyncio_for_ynab import TransactionsApi
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab.reconciler import _parse_account_targets
-from manager_for_ynab.reconciler import do_reconcile
-from manager_for_ynab.reconciler import fetch_plan_accts
-from manager_for_ynab.reconciler import fetch_transactions
-from manager_for_ynab.reconciler import run
-from testing.fixtures import CHECKING_ACCOUNT_ID
-from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
-from testing.fixtures import db
-from testing.fixtures import PLAN_ID
-from testing.fixtures import TOKEN
-from testing.fixtures import TOKEN_OVERRIDE
+from manager_for_ynab.reconciler import (
+    _parse_account_targets,
+    do_reconcile,
+    fetch_plan_accts,
+    fetch_transactions,
+    run,
+)
+from testing.fixtures import (
+    CHECKING_ACCOUNT_ID,
+    CREDIT_CARD_ACCOUNT_ID,
+    PLAN_ID,
+    TOKEN,
+    TOKEN_OVERRIDE,
+    db,
+)
 
 
 class FakePromptSession:
@@ -369,7 +372,7 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     target_set = _parse_account_targets(["2045=410", "Credit%=290"])
 
     assert target_set.account_likes == ["%2045%", "Credit%"]
-    assert target_set.targets == [Decimal("410"), Decimal("290")]
+    assert target_set.targets == [Decimal(410), Decimal(290)]
 
 
 @pytest.mark.asyncio

@@ -47,8 +47,8 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - setuptools
     - sqlite-export-for-ynab~=2.9.5
+    - types-setuptools
 - repo: https://github.com/mxr/mirrors-ty
   rev: d7f08bf6b37691c482773f198ba01539eb331d6a  # frozen: v0.0.63
   hooks:
@@ -64,8 +64,8 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - setuptools
     - sqlite-export-for-ynab~=2.9.5
+    - types-setuptools
     language_version: python3.14
 - repo: https://github.com/mxr/sync-typing-deps
   rev: a8b960f5e2bb3627b5a1fc8171fe224cdd64ff0a  # frozen: v0.5.4

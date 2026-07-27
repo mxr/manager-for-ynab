@@ -7,8 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from manager_for_ynab import _version
-from manager_for_ynab._main import build_parser
-from manager_for_ynab._main import main
+from manager_for_ynab._main import build_parser, main
 
 
 def raising_version(distribution: str) -> str:

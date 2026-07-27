@@ -10,11 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pyecharts import charts
-from pyecharts import options
+from pyecharts import charts, options
 from pyecharts.commons import utils
-from sqlite_export_for_ynab import default_db_path
-from sqlite_export_for_ynab import sync
+from sqlite_export_for_ynab import default_db_path, sync
 
 from manager_for_ynab._auth import resolve_token
 
@@ -221,7 +219,7 @@ async def fetch_sankey(
             category_group_name=row["category_group_name"],
             category_id=row["category_id"],
             category_name=row["category_name"],
-            amount=Decimal(row["amount"]) / Decimal("-1000"),
+            amount=Decimal(row["amount"]) / Decimal(-1000),
         )
         for row in raw_rows
     ]

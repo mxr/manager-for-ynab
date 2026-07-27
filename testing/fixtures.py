@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import pytest
 
-
 _DDL_SQL = (
     files("sqlite_export_for_ynab.ddl").joinpath("create-relations.sql").read_text()
 )
