@@ -16,10 +16,10 @@ WHERE
     = SUBSTR(DATE('now', 'localtime'), 1, 7)
     AND (:skip_matched = 0 OR transactions.matched_transaction_id IS NULL)
     AND transactions.id NOT IN (
-        SELECT subtransactions.transfer_transaction_id
+        SELECT subtransactions.transaction_id
         FROM subtransactions
         WHERE
-            subtransactions.transfer_transaction_id IS NOT NULL
+            subtransactions.transaction_id IS NOT NULL
             AND NOT subtransactions.deleted
     )
 ORDER BY
