@@ -97,14 +97,14 @@ INSERT INTO transactions (
     , 0
 )
 , (
-    'transfer'
+    'split'
     , :test_plan_id_1
     , NULL
     , 'Checking'
     , DATE('now', 'localtime', 'start of month')
     , 40000
     , '$40.00'
-    , 'Transfer'
+    , 'Split'
     , 'uncleared'
     , 0
     , NULL
@@ -126,6 +126,6 @@ INSERT INTO transactions (
 )
 ;
 
-INSERT INTO subtransactions (id, transfer_transaction_id, deleted)
-VALUES ('subtxn-transfer', 'transfer', 0)
+INSERT INTO subtransactions (id, transaction_id, deleted)
+VALUES ('subtxn-split', 'split', 0)
 ;
