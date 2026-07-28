@@ -1,6 +1,5 @@
 import os
 
-
 _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 
 
@@ -14,4 +13,4 @@ def resolve_token(token_override: str | None = None) -> str:
     )
 
 
-__all__ = [resolve_token.__name__, _ENV_TOKEN]
+__all__ = ["_ENV_TOKEN", "resolve_token"]

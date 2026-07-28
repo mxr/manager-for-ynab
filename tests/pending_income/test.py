@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import date
+from datetime import datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -7,13 +8,12 @@ import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.pending_income import PendingIncomeResult
+from manager_for_ynab.pending_income import Transaction
 from manager_for_ynab.pending_income import build_updates
 from manager_for_ynab.pending_income import fetch_pending_income
 from manager_for_ynab.pending_income import pending_income
-from manager_for_ynab.pending_income import PendingIncomeResult
 from manager_for_ynab.pending_income import run
-from manager_for_ynab.pending_income import Transaction
-
 
 pytest_plugins = ("tests.pending_income.fixtures",)
 
@@ -101,7 +101,7 @@ def _expected_pending_income_result(
     *,
     include_matched: bool = True,
 ) -> PendingIncomeResult:
-    seed_date = date.today().replace(day=1).isoformat()
+    seed_date = datetime.now().astimezone().date().replace(day=1).isoformat()
     transactions = [
         Transaction(
             id="keep-1",

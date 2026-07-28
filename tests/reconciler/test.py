@@ -17,10 +17,10 @@ from manager_for_ynab.reconciler import fetch_transactions
 from manager_for_ynab.reconciler import run
 from testing.fixtures import CHECKING_ACCOUNT_ID
 from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
-from testing.fixtures import db
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN
 from testing.fixtures import TOKEN_OVERRIDE
+from testing.fixtures import db
 
 
 class FakePromptSession:
@@ -369,7 +369,7 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
     target_set = _parse_account_targets(["2045=410", "Credit%=290"])
 
     assert target_set.account_likes == ["%2045%", "Credit%"]
-    assert target_set.targets == [Decimal("410"), Decimal("290")]
+    assert target_set.targets == [Decimal(410), Decimal(290)]
 
 
 @pytest.mark.asyncio

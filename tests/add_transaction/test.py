@@ -2,6 +2,7 @@ import sqlite3
 import uuid
 from dataclasses import replace
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
@@ -41,9 +42,9 @@ from manager_for_ynab.add_transaction import sync_and_resolve_transaction
 from testing.fixtures import CHECKING_ACCOUNT_ID
 from testing.fixtures import DUPLICATE_CREDIT_CARD_CATEGORY_ID
 from testing.fixtures import EMPLOYER_PAYEE_ID
-from testing.fixtures import execute_seed
 from testing.fixtures import PLAN_ID
 from testing.fixtures import READY_TO_ASSIGN_CATEGORY_ID
+from testing.fixtures import execute_seed
 
 
 def _create_add_transaction_db(path: Path) -> None:
@@ -301,7 +302,7 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
 
 
 def test_parse_date_accepts_today():
-    assert parse_date("today") == date.today()
+    assert parse_date("today") == datetime.now().astimezone().date()
 
 
 @pytest.mark.parametrize(
@@ -974,7 +975,7 @@ async def test_shared_prompt_helpers_use_prompt_value(prompt_mock):
     prompt_mock.side_effect = ["Checking", "today", "12.34", "yes"]
 
     assert await _choice_prompt("Account: ", {"Checking": "account-id"}) == "Checking"
-    assert await date_prompt() == date.today()
+    assert await date_prompt() == datetime.now().astimezone().date()
     assert await amount_prompt() == Decimal("12.34")
     assert await confirm("Proceed?") is True
 
