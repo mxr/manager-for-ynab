@@ -27,7 +27,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.5
+    - sqlite-export-for-ynab~=2.9.6
     - types-setuptools
     language_version: python3.14
 - repo: https://github.com/mxr/sync-typing-deps
@@ -50,7 +50,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.5
+    - sqlite-export-for-ynab~=2.9.6
     - types-setuptools
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0

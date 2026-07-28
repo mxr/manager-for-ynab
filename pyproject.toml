@@ -26,7 +26,7 @@ dependencies = [
   "prompt-toolkit",
   "pyecharts",
   "rich>=10",
-  "sqlite-export-for-ynab~=2.9.5",
+  "sqlite-export-for-ynab~=2.9.6",
 ]
 description = "Manager for YNAB"
 keywords = ["ynab", "budget", "plan", "cli", "reconcile", "automation", "manager"]
