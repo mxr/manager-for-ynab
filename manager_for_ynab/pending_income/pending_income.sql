@@ -9,7 +9,7 @@ FROM transactions
 WHERE
     TRUE
     AND transactions.cleared = 'uncleared'
-    AND transactions."date" <= DATE('now', 'localtime')
+    AND transactions."date" < DATE('now', 'localtime')
     AND transactions.amount > 0
     AND NOT transactions.deleted
     AND SUBSTR(transactions."date", 1, 7)
