@@ -12,6 +12,7 @@ import pytest_asyncio
 from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.sankey import SankeyRow
 from manager_for_ynab.sankey import SortBy
+from manager_for_ynab.sankey import Theme
 from manager_for_ynab.sankey import _today
 from manager_for_ynab.sankey import build_echarts_html
 from manager_for_ynab.sankey import build_sankey_data
@@ -385,7 +386,9 @@ def test_build_echarts_html_uses_node_keys_and_labels():
         sort_by=SortBy.ALPHABETICAL,
     )
 
-    html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
+    html = build_echarts_html(
+        data, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=Theme.LIGHT
+    )
 
     assert "Spending Sankey: 2026-04-01 to 2026-04-30" in html
     assert "category_group:taxes-group" in html
@@ -421,6 +424,28 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "layoutIterations" in html
 
 
+def test_build_echarts_html_dark_theme_loads_theme_js():
+    data = build_sankey_data(
+        [
+            SankeyRow(
+                "Employer",
+                "inflow-group",
+                "Inflow",
+                "ready-to-assign",
+                "Inflow: Ready to Assign",
+                Decimal(-500),
+            ),
+        ],
+        sort_by=SortBy.ALPHABETICAL,
+    )
+
+    html = build_echarts_html(
+        data, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=Theme.DARK
+    )
+
+    assert "themes/dark.js" in html
+
+
 def test_build_echarts_html_floors_rendered_link_value_without_changing_tooltip_amount():
     data = build_sankey_data(
         [
@@ -444,7 +469,9 @@ def test_build_echarts_html_floors_rendered_link_value_without_changing_tooltip_
         sort_by=SortBy.ALPHABETICAL,
     )
 
-    html = build_echarts_html(data, start=date(2026, 4, 1), end=date(2026, 4, 30))
+    html = build_echarts_html(
+        data, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=Theme.LIGHT
+    )
 
     assert '"amount": 0.5' in html
     assert '"value": 2.0' in html
@@ -603,6 +630,7 @@ async def test_sankey_skips_empty_data(sync, db, capsys):
         out=None,
         sort_by=SortBy.ALPHABETICAL,
         quiet=False,
+        theme=Theme.LIGHT,
         token_override=None,
     )
 
@@ -625,6 +653,7 @@ async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
         out=None,
         sort_by=SortBy.ALPHABETICAL,
         quiet=True,
+        theme=Theme.LIGHT,
         token_override=None,
     )
 
