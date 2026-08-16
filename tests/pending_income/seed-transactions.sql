@@ -124,8 +124,35 @@ INSERT INTO transactions (
     , 'matched-peer'
     , 0
 )
+, (
+    'transfer-mirror-of-split'
+    , :test_plan_id_1
+    , NULL
+    , 'Checking'
+    , DATE('now', 'localtime', 'start of month')
+    , 116280
+    , '$116.28'
+    , 'Transfer : Savings'
+    , 'uncleared'
+    , 1
+    , NULL
+    , 0
+)
 ;
 
 INSERT INTO subtransactions (id, transaction_id, deleted)
 VALUES ('subtxn-split', 'split', 0)
+;
+
+INSERT INTO subtransactions (
+    id
+    , transaction_id
+    , transfer_transaction_id
+    , deleted
+) VALUES (
+    'subtxn-split-transfer'
+    , 'split-parent'
+    , 'transfer-mirror-of-split'
+    , 0
+)
 ;

@@ -35,6 +35,16 @@ async def test_fetch_pending_income_filters_expected_rows(db):
 
 
 @pytest.mark.asyncio
+async def test_fetch_pending_income_excludes_transfer_mirror_of_split(db):
+    async with aiosqlite.connect(db) as con:
+        con.row_factory = aiosqlite.Row
+        found = await fetch_pending_income(con)
+
+    ids = [txn.id for txns in found.values() for txn in txns]
+    assert "transfer-mirror-of-split" not in ids
+
+
+@pytest.mark.asyncio
 async def test_fetch_pending_income_skip_matched_filters_matched_rows(db):
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
