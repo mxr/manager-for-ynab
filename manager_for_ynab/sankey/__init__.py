@@ -14,6 +14,7 @@ import aiosqlite
 from pyecharts import charts
 from pyecharts import options
 from pyecharts.commons import utils
+from pyecharts.globals import ThemeType
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
@@ -28,6 +29,13 @@ _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _MIN_FIGURE_HEIGHT = 1000
 _MIN_LINK_VALUE_RATIO = 0.02
+# pyecharts treats ThemeType.DARK as a builtin and never emits a <script> tag for it,
+# so echarts.init() silently falls back to the default theme. Load it ourselves.
+# https://github.com/pyecharts/pyecharts/issues/2478
+_DARK_THEME_SCRIPT = (
+    '<script type="text/javascript" '
+    'src="https://assets.pyecharts.org/assets/v6/themes/dark.js"></script>'
+)
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
@@ -80,6 +88,11 @@ class SortBy(Enum):
     AMOUNT = "amount"
 
 
+class Theme(Enum):
+    LIGHT = "light"
+    DARK = "dark"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PACKAGE,
@@ -129,6 +142,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Suppress sync and status output.",
     )
+    parser.add_argument(
+        "--theme",
+        type=Theme,
+        choices=list(Theme),
+        default=Theme.LIGHT,
+        help="Color theme to render the Sankey diagram in.",
+    )
     return parser
 
 
@@ -150,6 +170,7 @@ async def run(
         out=args.out,
         sort_by=args.sort_by,
         quiet=args.quiet,
+        theme=args.theme,
         token_override=token_override,
     )
 
@@ -164,6 +185,7 @@ async def sankey(
     out: Path | None,
     sort_by: SortBy,
     quiet: bool,
+    theme: Theme,
     token_override: str | None,
 ) -> int:
     token = resolve_token(token_override)
@@ -182,7 +204,7 @@ async def sankey(
         _print("No Sankey data found.", quiet=quiet)
         return 0
 
-    html = build_echarts_html(data, start=start, end=end)
+    html = build_echarts_html(data, start=start, end=end, theme=theme)
     if out is None:
         sys.stdout.write(html)
     else:
@@ -364,7 +386,9 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     )
 
 
-def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
+def build_echarts_html(
+    data: SankeyData, *, start: date, end: date, theme: Theme
+) -> str:
     min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
 
     amounts: dict[int, Decimal] = defaultdict(Decimal)
@@ -377,7 +401,19 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
 
     return (
         charts.Sankey(
-            init_opts=options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
+            init_opts=options.InitOpts(
+                width="100%",
+                height=f"{_MIN_FIGURE_HEIGHT}px",
+                **(
+                    {
+                        "theme": ThemeType.DARK,
+                        "bg_color": "#100c2a",
+                        "is_fill_bg_color": True,
+                    }
+                    if theme == Theme.DARK
+                    else {}
+                ),
+            )
         )
         .add(
             "",
@@ -415,6 +451,10 @@ def build_echarts_html(data: SankeyData, *, start: date, end: date) -> str:
             )
         )
         .render_embed()
+        .replace(
+            "</head>",
+            f"{_DARK_THEME_SCRIPT}\n</head>" if theme == Theme.DARK else "</head>",
+        )
     )
 
 
