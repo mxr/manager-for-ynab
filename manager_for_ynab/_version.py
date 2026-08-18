@@ -2,6 +2,7 @@ import tomllib
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
 from pathlib import Path
+from typing import cast
 
 
 def get_version(distribution: str = "manager_for_ynab") -> str:
@@ -9,4 +10,4 @@ def get_version(distribution: str = "manager_for_ynab") -> str:
         return version(distribution)
     except PackageNotFoundError:
         with open(Path(__file__).resolve().parent.parent / "pyproject.toml", "rb") as f:
-            return tomllib.load(f)["project"]["version"]
+            return cast("str", tomllib.load(f)["project"]["version"])

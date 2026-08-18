@@ -557,7 +557,7 @@ async def do_reconcile(
 def partition[T](
     items: Iterable[T], func: Callable[[T], bool]
 ) -> tuple[list[T], list[T]]:
-    parts = defaultdict(list)
+    parts: defaultdict[bool, list[T]] = defaultdict(list)
     for i in items:
         parts[func(i)].append(i)
     return parts[True], parts[False]

@@ -566,7 +566,7 @@ async def _load_account_by_id(
         row = await cur.fetchone()
     if row is None:
         raise RuntimeError(f"No account found with id {account_id!r}.")
-    return row["name"], row["type"]
+    return str(row["name"]), str(row["type"])
 
 
 async def _resolve_credit_card_payment_category(
@@ -595,7 +595,7 @@ async def _resolve_credit_card_payment_category(
             f"{account_name!r}."
         )
     row = rows[0]
-    return row["id"], row["name"]
+    return str(row["id"]), str(row["name"])
 
 
 async def _load_name_to_id(
@@ -701,8 +701,8 @@ async def _closest_match(
     if row is None:
         return None
     return (
-        row[0],
-        row[1],
+        str(row[0]),
+        str(row[1]),
         bool(row[2]),
         int(row[3]),
     )
@@ -771,9 +771,9 @@ def edit_distance(left: str, right: str) -> int:
     if len(left) > len(right):
         left, right = right, left
 
-    previous = list(range(len(right) + 1))
+    previous: list[int] = list(range(len(right) + 1))
     for left_index, left_char in enumerate(left, start=1):
-        current = [left_index]
+        current: list[int] = [left_index]
         for right_index, right_char in enumerate(right, start=1):
             current.append(
                 min(
