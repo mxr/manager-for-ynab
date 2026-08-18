@@ -400,7 +400,8 @@ def build_echarts_html(
         if amounts[source] == 0:
             amounts[source] = value
 
-    html = (
+    return cast(
+        "str",
         charts.Sankey(
             init_opts=options.InitOpts(
                 width="100%",
@@ -455,9 +456,8 @@ def build_echarts_html(
         .replace(
             "</head>",
             f"{_DARK_THEME_SCRIPT}\n</head>" if theme == Theme.DARK else "</head>",
-        )
+        ),
     )
-    return cast("str", html)
 
 
 __all__ = [
