@@ -9,7 +9,6 @@ import aiosqlite
 import pytest
 from asyncio_for_ynab import TransactionsApi
 
-from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.reconciler import _parse_account_targets
 from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
@@ -18,7 +17,6 @@ from manager_for_ynab.reconciler import run
 from testing.fixtures import CHECKING_ACCOUNT_ID
 from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
 from testing.fixtures import PLAN_ID
-from testing.fixtures import TOKEN
 from testing.fixtures import TOKEN_OVERRIDE
 from testing.fixtures import db
 
@@ -36,7 +34,6 @@ def fake_prompt_session_430_290() -> FakePromptSession:
     return FakePromptSession("430 290")
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
@@ -74,7 +71,6 @@ async def test_run(sync, db, capsys, target, expected, substr):
     assert substr in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.asyncio
 async def test_run_nothing_to_do(sync, db):
@@ -97,7 +93,6 @@ async def test_run_nothing_to_do(sync, db):
     assert ret == 0
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.asyncio
 async def test_run_no_sync_uses_existing_db(sync, db, capsys):
@@ -120,7 +115,6 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
     assert "[Checking] *    -$60.00 - Payee" in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.do_reconcile", new_callable=AsyncMock)
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
@@ -142,7 +136,7 @@ async def test_run_reconciles_with_for_real(sync, do_reconcile_mock, db):
     do_reconcile_mock.assert_called()
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
+@pytest.mark.token_env("")
 @pytest.mark.asyncio
 async def test_run_no_token():
     with pytest.raises(ValueError) as excinfo:
@@ -271,7 +265,6 @@ async def test_run_mode_interactive_batch_requires_matching_target_count(_):
     assert "requires 2 target balances" in str(excinfo.value)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
@@ -302,7 +295,6 @@ async def test_run_mode_batch(sync, db):
     assert ret == 0
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
@@ -337,7 +329,6 @@ async def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
     assert "[Credit Card] Balance already reconciled to target" in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.parametrize(
@@ -404,7 +395,6 @@ async def test_fetch_transactions_filters_unapproved(db):
 )
 @patch("manager_for_ynab.reconciler.patch_stdout", return_value=nullcontext())
 @pytest.mark.usefixtures(db.__name__)
-@patch.dict("os.environ", {_ENV_TOKEN: TOKEN})
 @pytest.mark.asyncio
 async def test_run_mode_interactive_batch_with_account_likes(_, sync, db):
     ret = await run(
