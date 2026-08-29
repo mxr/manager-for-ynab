@@ -14,6 +14,7 @@ INSERT INTO plans (
 INSERT INTO accounts (
     id
     , plan_id
+    , balance
     , cleared_balance
     , closed
     , deleted
@@ -22,6 +23,7 @@ INSERT INTO accounts (
 ) VALUES (
     :checking_account_id
     , :plan_id
+    , 430000
     , 430000
     , 0
     , 0
@@ -33,6 +35,7 @@ INSERT INTO accounts (
 INSERT INTO accounts (
     id
     , plan_id
+    , balance
     , cleared_balance
     , closed
     , deleted
@@ -41,6 +44,7 @@ INSERT INTO accounts (
 ) VALUES (
     :credit_card_account_id
     , :plan_id
+    , -200000
     , -200000
     , 0
     , 0
