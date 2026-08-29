@@ -976,6 +976,12 @@ async def test_resolve_transaction_allows_transfer_without_category(
             [Decimal(0), Decimal(50)],
             id="empty-cash-account-drains-nothing",
         ),
+        pytest.param(
+            Decimal(50),
+            [],
+            [],
+            id="no-accounts-produces-no-splits",
+        ),
     ],
 )
 def test_split_amount_across_accounts(amount, balances, expected):
