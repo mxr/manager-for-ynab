@@ -407,6 +407,8 @@ async def _resolve_transaction(
             )
 
         resolved_amount = amount if amount is not None else await amount_prompt()
+        if resolved_amount == 0:
+            raise ValueError("Amount must not be 0.")
         return ResolvedTransaction(
             plan=ResolvedPlan(id=plan_id, name=plan_name),
             account=ResolvedAccount(
