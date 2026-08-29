@@ -484,17 +484,13 @@ async def _resolve_accounts(
 def _split_amount_across_accounts(
     amount: Decimal, accounts: Sequence[ResolvedAccount]
 ) -> list[Decimal]:
-    assert accounts
     remaining = int(amount * 1000)
     splits: list[int] = []
-    last_index = len(accounts) - 1
-    for index, account in enumerate(accounts):  # pragma: no branch
-        if index == last_index:
-            splits.append(remaining)
-            break
+    for account in accounts[:-1]:
         drained = min(remaining, max(0, account.balance))
         splits.append(drained)
         remaining -= drained
+    splits.append(remaining)
     return [Decimal(split) / 1000 for split in splits]
 
 
