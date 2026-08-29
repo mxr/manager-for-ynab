@@ -826,6 +826,24 @@ async def test_resolve_transaction_errors_when_no_plans(load_name_to_id_mock, tm
         )
 
 
+@pytest.mark.asyncio
+async def test_resolve_transaction_rejects_zero_amount(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    with pytest.raises(ValueError, match="Amount must not be 0."):
+        await _resolve_transaction(
+            db=db_path,
+            plan_name=None,
+            account_name="Checking",
+            payee_name="Employer",
+            category_name="Dining Out",
+            date=date(2026, 4, 26),
+            cleared=None,
+            amount=Decimal(0),
+        )
+
+
 @patch("manager_for_ynab.add_transaction.date_prompt", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction.amount_prompt", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._choice_prompt", new_callable=AsyncMock)
