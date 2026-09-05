@@ -52,7 +52,7 @@ class ResolvedAccount:
     id: str
     name: str
     type: str
-    balance: int
+    cleared_balance: int
 
 
 @dataclass(frozen=True)
@@ -487,7 +487,7 @@ def _split_amount_across_accounts(
     remaining = int(amount * 1000)
     splits: list[int] = []
     for account in accounts[:-1]:
-        drained = min(remaining, max(0, account.balance))
+        drained = min(remaining, max(0, account.cleared_balance))
         splits.append(drained)
         remaining -= drained
     splits.append(remaining)
@@ -642,7 +642,7 @@ async def _load_account_by_id(
         id=account_id,
         name=str(row["name"]),
         type=str(row["type"]),
-        balance=int(row["cleared_balance"]),
+        cleared_balance=int(row["cleared_balance"]),
     )
 
 

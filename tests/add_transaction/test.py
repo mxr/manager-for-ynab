@@ -65,7 +65,7 @@ def resolved_dining_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Checking",
             type="checking",
-            balance=430000,
+            cleared_balance=430000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -92,7 +92,7 @@ def resolved_ready_to_assign_checking_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Checking",
             type="checking",
-            balance=430000,
+            cleared_balance=430000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -119,7 +119,7 @@ def resolved_ready_to_assign_credit_card_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Credit Card",
             type="creditCard",
-            balance=-200000,
+            cleared_balance=-200000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -900,7 +900,7 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
     choice_prompt_mock.return_value = "Plan B"
     resolve_account_id_mock.return_value = "account-id"
     load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
-        id="account-id", name="Checking", type="checking", balance=430000
+        id="account-id", name="Checking", type="checking", cleared_balance=430000
     )
     resolve_payee_mock.return_value = ("payee-id", "Employer", None)
     resolve_category_mock.return_value = ("category-id", "Dining Out")
@@ -937,7 +937,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
     load_name_to_id_mock.return_value = {"My Plan": "plan-id"}
     resolve_account_id_mock.return_value = "account-id"
     load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
-        id="account-id", name="Checking", type="checking", balance=430000
+        id="account-id", name="Checking", type="checking", cleared_balance=430000
     )
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
@@ -981,7 +981,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
 def test_split_amount_across_accounts(amount, balances, expected):
     accounts = [
         add_transaction_module.ResolvedAccount(
-            id=str(index), name=str(index), type="checking", balance=balance
+            id=str(index), name=str(index), type="checking", cleared_balance=balance
         )
         for index, balance in enumerate(balances)
     ]
