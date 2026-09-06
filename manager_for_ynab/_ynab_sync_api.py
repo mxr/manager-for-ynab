@@ -1,8 +1,10 @@
 import json
 import uuid
+from typing import TYPE_CHECKING
 from typing import Any
 
-import aiohttp
+if TYPE_CHECKING:
+    import aiohttp
 
 _SYNC_URL = "https://app.ynab.com/api/v1/catalog"
 _API_VERSION = "2026-01-01"
@@ -52,8 +54,8 @@ async def _sync_budget_data(
         response.raise_for_status()
         payload: dict[str, Any] = await response.json()
 
-    if payload.get("error"):
-        raise RuntimeError(f"YNAB rejected sync request: {payload['error']}")
+    if e := payload.get("error"):
+        raise RuntimeError(f"YNAB rejected sync request: {e}")
     return payload
 
 
