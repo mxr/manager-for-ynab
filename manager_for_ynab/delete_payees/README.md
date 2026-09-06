@@ -14,10 +14,13 @@ your plan/payee data through the public API. The delta sync's device-knowledge c
 is seeded from `last_knowledge_of_server` in the local sqlite-export-for-ynab DB, so run
 with `--sync` (the default) at least once first.
 
-It previews the matched payees by default and only deletes when you pass `--for-real`.
+It previews the matched payees as a table (ID and name) by default and only deletes
+when you pass `--for-real`.
 
-`--payee-name` matches an exact payee name (case-insensitive) and can be repeated to
-delete several payees in one run.
+`--payee-ids` targets a specific payee by ID and can be repeated to delete several
+payees in one run. If omitted, it finds all unused payee IDs in the plan instead:
+payees with no approved transaction, scheduled transaction, or subtransaction, plus
+transfer payees and duplicate-named payees.
 
 ## Auth
 
@@ -46,26 +49,32 @@ the personal access token.
 
 ## Usage
 
-Preview which payees would be deleted:
+Preview all unused payees in the plan:
 
 ```console
-$ manager-for-ynab delete-payees --payee-name 'Amazon Duplicate'
+$ manager-for-ynab delete-payees
+```
+
+Preview a specific payee:
+
+```console
+$ manager-for-ynab delete-payees --payee-ids <payee-id>
 ```
 
 Delete more than one at once:
 
 ```console
-$ manager-for-ynab delete-payees --payee-name 'Amazon Duplicate' --payee-name 'Old Landlord'
+$ manager-for-ynab delete-payees --payee-ids <payee-id-1> --payee-ids <payee-id-2>
 ```
 
 If you have more than one plan, specify which one:
 
 ```console
-$ manager-for-ynab delete-payees --plan-id <plan-id> --payee-name 'Amazon Duplicate'
+$ manager-for-ynab delete-payees --plan-id <plan-id>
 ```
 
 Delete for real:
 
 ```console
-$ manager-for-ynab delete-payees --payee-name 'Amazon Duplicate' --for-real
+$ manager-for-ynab delete-payees --for-real
 ```

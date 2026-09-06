@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 import aiosqlite
+import rich
+from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
@@ -34,11 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--plan-id", help="YNAB plan ID. Required if you have more than one plan."
     )
     parser.add_argument(
-        "--payee-name",
-        dest="payee_names",
+        "--payee-ids",
+        dest="payee_ids",
         action="append",
-        required=True,
-        help="Exact payee name to delete (case-insensitive). Repeat for multiple payees.",
+        help=(
+            "Payee ID to delete. Repeat for multiple payees. If omitted, finds all "
+            "unused payee IDs in the plan (unreferenced payees, transfer payees, and "
+            "duplicate-named payees)."
+        ),
     )
     parser.add_argument(
         "--for-real",
@@ -69,9 +74,9 @@ async def _resolve_plan_id(con: aiosqlite.Connection, plan_id: str | None) -> st
     async with con.execute("SELECT id, name FROM plans") as cur:
         rows = await cur.fetchall()
     plans = {str(row["id"]): str(row["name"]) for row in rows}
-
     if not plans:
         raise RuntimeError("No plans found in this YNAB account.")
+
     if plan_id:
         if plan_id not in plans:
             raise RuntimeError(f"No plan found with id '{plan_id}'.")
@@ -88,47 +93,128 @@ async def _load_server_knowledge(con: aiosqlite.Connection, plan_id: str) -> int
         "SELECT last_knowledge_of_server FROM plans WHERE id = ?", (plan_id,)
     ) as cur:
         row = await cur.fetchone()
+
     if row is None or row["last_knowledge_of_server"] is None:
         raise RuntimeError(
             f"No last_knowledge_of_server recorded for plan '{plan_id}'. Run with "
             "--sync first."
         )
+
     return int(row["last_knowledge_of_server"])
 
 
 async def _resolve_payees(
-    con: aiosqlite.Connection, plan_id: str, payee_names: Sequence[str]
+    con: aiosqlite.Connection, plan_id: str, payee_ids: Sequence[str]
 ) -> list[tuple[str, str]]:
     async with con.execute(
-        "SELECT id, name FROM payees WHERE plan_id = ? AND NOT deleted AND name IS NOT NULL",
-        (plan_id,),
+        "SELECT id, name FROM payees WHERE plan_id = ? AND NOT deleted", (plan_id,)
     ) as cur:
         rows = await cur.fetchall()
 
-    by_lower_name: dict[str, list[tuple[str, str]]] = {}
-    for row in rows:
-        by_lower_name.setdefault(str(row["name"]).lower(), []).append(
-            (str(row["id"]), str(row["name"]))
-        )
+    names_by_id = {str(row["id"]): str(row["name"]) for row in rows}
 
     resolved: list[tuple[str, str]] = []
     missing: list[str] = []
-    for payee_name in payee_names:
-        matches = by_lower_name.get(payee_name.lower())
-        if not matches:
-            missing.append(payee_name)
+    for payee_id in payee_ids:
+        name = names_by_id.get(payee_id)
+        if name is None:
+            missing.append(payee_id)
             continue
-        resolved.extend(matches)
+        resolved.append((payee_id, name))
 
     if missing:
-        raise RuntimeError(f"No payee found matching name(s): {', '.join(missing)}.")
+        raise RuntimeError(f"No payee found matching id(s): {', '.join(missing)}.")
+
     return resolved
+
+
+_UNUSED_PAYEES_QUERY = """
+WITH used_payees AS (
+    SELECT
+        plan_id
+        , payee_id
+    FROM transactions
+    WHERE
+        TRUE
+        AND approved
+        AND payee_id IS NOT NULL
+        AND NOT deleted
+    UNION
+    SELECT
+        plan_id
+        , payee_id
+    FROM subtransactions
+    WHERE
+        TRUE
+        AND payee_id IS NOT NULL
+        AND NOT deleted
+    UNION
+    SELECT
+        plan_id
+        , payee_id
+    FROM scheduled_transactions
+    WHERE
+        TRUE
+        AND payee_id IS NOT NULL
+        AND NOT deleted
+    UNION
+    SELECT
+        plan_id
+        , payee_id
+    FROM scheduled_subtransactions
+    WHERE
+        TRUE
+        AND payee_id IS NOT NULL
+        AND NOT deleted
+), candidates AS (
+    SELECT
+        p.plan_id
+        , p.name
+    FROM payees AS p
+    LEFT JOIN used_payees AS up ON p.plan_id = up.plan_id AND p.id = up.payee_id
+    WHERE
+        TRUE
+        AND up.payee_id IS NULL
+        AND p.transfer_account_id IS NULL
+        AND p.name != 'Reconciliation Balance Adjustment'
+        AND p.name != 'Manual Balance Adjustment'
+        AND NOT p.deleted
+        AND p.plan_id = :plan_id
+    UNION
+    SELECT
+        plan_id
+        , name
+    FROM payees
+    WHERE
+        TRUE
+        AND NOT deleted
+        AND plan_id = :plan_id
+    GROUP BY plan_id, name
+    HAVING COUNT(*) > 1
+)
+SELECT
+    p.id AS payee_id
+    , p.name AS payee_name
+FROM candidates AS c
+INNER JOIN payees AS p ON p.plan_id = c.plan_id AND p.name = c.name AND NOT p.deleted
+ORDER BY p.name, p.id
+;
+"""
+
+
+async def _find_unused_payees(
+    con: aiosqlite.Connection, plan_id: str
+) -> list[tuple[str, str]]:
+    async with con.execute(_UNUSED_PAYEES_QUERY, {"plan_id": plan_id}) as cur:
+        rows = await cur.fetchall()
+
+    return [(str(row["payee_id"]), str(row["payee_name"])) for row in rows]
 
 
 async def delete_payees(
     *,
     plan_id: str | None,
-    payee_names: Sequence[str],
+    payee_ids: Sequence[str] | None,
     for_real: bool,
     db: Path,
     full_refresh: bool,
@@ -148,7 +234,12 @@ async def delete_payees(
         async with aiosqlite.connect(db) as con:
             con.row_factory = aiosqlite.Row
             resolved_plan_id = await _resolve_plan_id(con, plan_id)
-            resolved_payees = await _resolve_payees(con, resolved_plan_id, payee_names)
+            if payee_ids:
+                resolved_payees = await _resolve_payees(
+                    con, resolved_plan_id, payee_ids
+                )
+            else:
+                resolved_payees = await _find_unused_payees(con, resolved_plan_id)
             server_knowledge = (
                 await _load_server_knowledge(con, resolved_plan_id) if for_real else 0
             )
@@ -156,8 +247,17 @@ async def delete_payees(
         print(err)
         return 1
 
-    names = ", ".join(f"{name!r}" for _, name in resolved_payees)
-    print(f"Targeting payees {names} in plan {resolved_plan_id}")
+    if not resolved_payees:
+        print(f"No unused payees found in plan {resolved_plan_id}.")
+        return 0
+
+    print(f"Plan: {resolved_plan_id}")
+    table = Table(title="Payees To Delete")
+    table.add_column("ID")
+    table.add_column("Payee")
+    for payee_id, payee_name in resolved_payees:
+        table.add_row(payee_id, payee_name)
+    rich.print(table)
 
     if not for_real:
         print("Use --for-real to actually delete the payees.")
@@ -201,7 +301,7 @@ async def run(
     args = build_parser().parse_args(argv)
     return await delete_payees(
         plan_id=args.plan_id,
-        payee_names=args.payee_names,
+        payee_ids=args.payee_ids,
         for_real=args.for_real,
         db=args.sqlite_export_for_ynab_db,
         full_refresh=args.sqlite_export_for_ynab_full_refresh,

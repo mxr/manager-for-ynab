@@ -105,7 +105,7 @@ def test_main_delete_payees_help(capsys):
     out, _ = capsys.readouterr()
     assert "manager-for-ynab delete-payees" in out
     assert "--for-real" in out
-    assert "--payee-name" in out
+    assert "--payee-ids" in out
 
 
 def test_main_sankey_help(capsys):

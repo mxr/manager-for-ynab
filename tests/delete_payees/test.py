@@ -7,6 +7,7 @@ import aiosqlite
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
+from manager_for_ynab.delete_payees import _find_unused_payees
 from manager_for_ynab.delete_payees import _load_server_knowledge
 from manager_for_ynab.delete_payees import _resolve_payees
 from manager_for_ynab.delete_payees import _resolve_plan_id
@@ -93,10 +94,12 @@ async def test_load_server_knowledge_raises_when_never_synced(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_payees_matches_exact_case_insensitive_names(db_path):
+async def test_resolve_payees_matches_exact_ids(db_path):
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
-        resolved = await _resolve_payees(con, PLAN_ID, ["employer", "TRANSFER"])
+        resolved = await _resolve_payees(
+            con, PLAN_ID, [EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID]
+        )
 
     assert resolved == [
         (EMPLOYER_PAYEE_ID, "Employer"),
@@ -105,13 +108,22 @@ async def test_resolve_payees_matches_exact_case_insensitive_names(db_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_payees_raises_when_any_name_missing(db_path):
+async def test_resolve_payees_raises_when_any_id_missing(db_path):
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError) as excinfo:
-            await _resolve_payees(con, PLAN_ID, ["Employer", "Nonexistent"])
+            await _resolve_payees(con, PLAN_ID, [EMPLOYER_PAYEE_ID, "nonexistent-id"])
 
-    assert "No payee found matching name(s): Nonexistent." in str(excinfo.value)
+    assert "No payee found matching id(s): nonexistent-id." in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_find_unused_payees_excludes_transfer_payees(db_path):
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        found = await _find_unused_payees(con, PLAN_ID)
+
+    assert found == [(EMPLOYER_PAYEE_ID, "Employer")]
 
 
 @patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
@@ -119,7 +131,7 @@ async def test_resolve_payees_raises_when_any_name_missing(db_path):
 async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, capsys):
     ret = await delete_payees(
         plan_id=None,
-        payee_names=["Employer"],
+        payee_ids=[EMPLOYER_PAYEE_ID],
         for_real=False,
         db=db_path,
         full_refresh=False,
@@ -130,7 +142,10 @@ async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, 
     out, _ = capsys.readouterr()
     assert ret == 0
     sync_mock.assert_not_awaited()
-    assert "Targeting payees 'Employer' in plan" in out
+    assert f"Plan: {PLAN_ID}" in out
+    assert "Payees To Delete" in out
+    assert EMPLOYER_PAYEE_ID in out
+    assert "Employer" in out
     assert "Use --for-real to actually delete the payees." in out
 
 
@@ -138,7 +153,7 @@ async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, 
 async def test_delete_payees_returns_one_when_resolution_fails(db_path):
     ret = await delete_payees(
         plan_id=None,
-        payee_names=["nonexistent"],
+        payee_ids=["nonexistent-id"],
         for_real=False,
         db=db_path,
         full_refresh=False,
@@ -147,6 +162,53 @@ async def test_delete_payees_returns_one_when_resolution_fails(db_path):
     )
 
     assert ret == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_payees_reports_when_no_unused_payees_found(db_path, capsys):
+    async with aiosqlite.connect(db_path) as con:
+        await con.execute(
+            "INSERT INTO transactions (id, plan_id, payee_id, approved, deleted) "
+            "VALUES ('txn-1', ?, ?, 1, 0)",
+            (PLAN_ID, EMPLOYER_PAYEE_ID),
+        )
+        await con.commit()
+
+    ret = await delete_payees(
+        plan_id=None,
+        payee_ids=None,
+        for_real=False,
+        db=db_path,
+        full_refresh=False,
+        should_sync=False,
+        token_override="token",
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    assert f"No unused payees found in plan {PLAN_ID}." in out
+
+
+@patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_delete_payees_finds_unused_payees_when_ids_omitted(
+    sync_mock, db_path, capsys
+):
+    ret = await delete_payees(
+        plan_id=None,
+        payee_ids=None,
+        for_real=False,
+        db=db_path,
+        full_refresh=False,
+        should_sync=False,
+        token_override="token",
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync_mock.assert_not_awaited()
+    assert EMPLOYER_PAYEE_ID in out
+    assert "Employer" in out
 
 
 @patch("manager_for_ynab.delete_payees.delete_payee_entity", new_callable=AsyncMock)
@@ -161,7 +223,7 @@ async def test_delete_payees_for_real_calls_sync_api_for_each_payee(
 
     ret = await delete_payees(
         plan_id=None,
-        payee_names=["Employer", "Transfer"],
+        payee_ids=[EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID],
         for_real=True,
         db=db_path,
         full_refresh=False,
@@ -197,7 +259,7 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, ca
 
     ret = await delete_payees(
         plan_id=None,
-        payee_names=["Employer"],
+        payee_ids=[EMPLOYER_PAYEE_ID],
         for_real=True,
         db=path,
         full_refresh=False,
@@ -223,7 +285,7 @@ async def test_delete_payees_for_real_returns_one_when_session_auth_missing(db_p
     ):
         ret = await delete_payees(
             plan_id=None,
-            payee_names=["Employer"],
+            payee_ids=[EMPLOYER_PAYEE_ID],
             for_real=True,
             db=db_path,
             full_refresh=False,
@@ -243,7 +305,7 @@ async def test_delete_payees_for_real_reports_client_error(
 
     ret = await delete_payees(
         plan_id=None,
-        payee_names=["Employer"],
+        payee_ids=[EMPLOYER_PAYEE_ID],
         for_real=True,
         db=db_path,
         full_refresh=False,
@@ -262,7 +324,7 @@ async def test_delete_payees_for_real_reports_client_error(
 @pytest.mark.asyncio
 async def test_run_requires_token():
     with pytest.raises(ValueError) as excinfo:
-        await run(("--payee-name", "Employer"))
+        await run(("--payee-ids", "some-payee-id"))
 
     assert "Must set YNAB access token" in str(excinfo.value)
 
@@ -276,10 +338,10 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
         (
             "--plan-id",
             "plan-1",
-            "--payee-name",
-            "Employer",
-            "--payee-name",
-            "Transfer",
+            "--payee-ids",
+            EMPLOYER_PAYEE_ID,
+            "--payee-ids",
+            TRANSFER_PAYEE_ID,
             "--for-real",
             "--no-sync",
         ),
@@ -290,7 +352,7 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
     delete_payees_mock.assert_awaited_once()
     _, kwargs = delete_payees_mock.call_args
     assert kwargs["plan_id"] == "plan-1"
-    assert kwargs["payee_names"] == ["Employer", "Transfer"]
+    assert kwargs["payee_ids"] == [EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID]
     assert kwargs["for_real"] is True
     assert kwargs["should_sync"] is False
     assert kwargs["token_override"] == "override-token"
