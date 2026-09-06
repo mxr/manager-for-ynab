@@ -1,6 +1,6 @@
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 65dbdb59d2f2d9c3bdc343c566821ad3319ddaa3  # frozen: v0.16.3
+  rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
   hooks:
   - id: ruff-check
     args: [--fix]
@@ -12,8 +12,25 @@ repos:
     args: [--autofix, --trailing-commas]
   - id: pretty-format-yaml
     args: [--autofix]
+- repo: https://github.com/mxr/mirrors-pyright
+  rev: 789d36e40263da0e4d83395ed125b03a3a0e2c5f  # frozen: v1.1.412
+  hooks:
+  - id: pyright
+    additional_dependencies:
+    - Babel
+    - aiohttp
+    - aiosqlite
+    - asyncio-for-ynab~=1.86.0
+    - coverage
+    - prompt-toolkit
+    - pyecharts
+    - pytest
+    - pytest-asyncio
+    - rich>=10
+    - sqlite-export-for-ynab~=2.9.6
+    - types-setuptools
 - repo: https://github.com/mxr/mirrors-ty
-  rev: 398c915cc4577232a73248ca3d9a30bc5f5ba602  # frozen: v0.0.72
+  rev: 429804df3fe7b725a9a36f196e9a5390c9f12cd3  # frozen: v0.0.76
   hooks:
   - id: ty
     additional_dependencies:
@@ -31,7 +48,7 @@ repos:
     - types-setuptools
     language_version: python3.14
 - repo: https://github.com/mxr/sync-typing-deps
-  rev: a8b960f5e2bb3627b5a1fc8171fe224cdd64ff0a  # frozen: v0.5.4
+  rev: 896a112838d434d8e607d4d636323c5914ab933f  # frozen: v0.7.0
   hooks:
   - id: sync-typing-deps
 - repo: https://github.com/pre-commit/mirrors-mypy
@@ -73,7 +90,7 @@ repos:
   - id: sqlfluff-fix
     args: [--dialect, sqlite]
 - repo: https://github.com/zizmorcore/zizmor-pre-commit
-  rev: 451b56af716f9f0d0c2b816503a3fd0cf8b036fa  # frozen: v1.29.0
+  rev: cef8b8350da46d8114c7e6b7272aebdccdf193ce  # frozen: v1.30.0
   hooks:
   - id: zizmor
     args: [--no-progress, --fix]

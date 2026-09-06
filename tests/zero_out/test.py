@@ -7,7 +7,6 @@ from unittest.mock import patch
 import pytest
 from asyncio_for_ynab import ApiException
 
-from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.zero_out import _get_category_id
 from manager_for_ynab.zero_out import _get_plan
 from manager_for_ynab.zero_out import _regex_search
@@ -331,11 +330,9 @@ async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
     assert "2025-10: set planned to 0." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
+@pytest.mark.token_env("")
 @pytest.mark.asyncio
 async def test_run_requires_token():
-    # patch.dict mutates os.environ before resolve_token reads it.
-
     with pytest.raises(ValueError) as excinfo:
         await run(("--category-name", "Rent", "--start", "2025-01"))
 
@@ -382,7 +379,6 @@ async def test_run_uses_token_override(
     assert "Targeting Fixed - Rent from plan New" in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._run_updates")
 @pytest.mark.asyncio
 async def test_run_dry_run_prints_preview(
@@ -424,7 +420,6 @@ async def test_run_dry_run_prints_preview(
     assert "Use --for-real to actually update categories." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_run_returns_error_when_plan_lookup_fails(
@@ -463,7 +458,6 @@ async def test_run_returns_error_when_plan_lookup_fails(
         ),
     ],
 )
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_category_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out.datetime.date")
@@ -495,7 +489,6 @@ async def test_run_month_selection(
     assert expected in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_run_for_real_runs_updates(

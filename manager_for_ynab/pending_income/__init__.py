@@ -8,6 +8,7 @@ from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import cast
 
 import aiosqlite
 import rich
@@ -63,12 +64,12 @@ async def run(
     parser.add_argument("--quiet", action="store_true")
 
     args = parser.parse_args(argv)
-    db: Path = args.sqlite_export_for_ynab_db
-    full_refresh: bool = args.sqlite_export_for_ynab_full_refresh
-    should_sync: bool = args.sync
-    for_real: bool = args.for_real
-    skip_matched: bool = args.skip_matched
-    quiet: bool = args.quiet
+    db = cast("Path", args.sqlite_export_for_ynab_db)
+    full_refresh = cast("bool", args.sqlite_export_for_ynab_full_refresh)
+    should_sync = cast("bool", args.sync)
+    for_real = cast("bool", args.for_real)
+    skip_matched = cast("bool", args.skip_matched)
+    quiet = cast("bool", args.quiet)
 
     result = await pending_income(
         db=db,

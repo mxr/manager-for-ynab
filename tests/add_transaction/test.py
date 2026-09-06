@@ -25,10 +25,12 @@ from manager_for_ynab.add_transaction import _fund_category
 from manager_for_ynab.add_transaction import _load_account_by_id
 from manager_for_ynab.add_transaction import _prompt
 from manager_for_ynab.add_transaction import _resolve_account_id
+from manager_for_ynab.add_transaction import _resolve_accounts
 from manager_for_ynab.add_transaction import _resolve_category
 from manager_for_ynab.add_transaction import _resolve_credit_card_payment_category
 from manager_for_ynab.add_transaction import _resolve_payee
 from manager_for_ynab.add_transaction import _resolve_transaction
+from manager_for_ynab.add_transaction import _split_amount_across_accounts
 from manager_for_ynab.add_transaction import add_transaction
 from manager_for_ynab.add_transaction import amount_prompt
 from manager_for_ynab.add_transaction import build_parser
@@ -63,6 +65,7 @@ def resolved_dining_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Checking",
             type="checking",
+            cleared_balance=430000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -89,6 +92,7 @@ def resolved_ready_to_assign_checking_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Checking",
             type="checking",
+            cleared_balance=430000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -115,6 +119,7 @@ def resolved_ready_to_assign_credit_card_transaction():
             id="22222222-2222-2222-2222-222222222222",
             name="Credit Card",
             type="creditCard",
+            cleared_balance=-200000,
         ),
         payee=add_transaction_module.ResolvedPayee(
             id="33333333-3333-3333-3333-333333333333",
@@ -132,6 +137,13 @@ def resolved_ready_to_assign_credit_card_transaction():
 
 def test_build_parser_uses_expected_prog():
     assert build_parser().prog == "manager-for-ynab add-transaction"
+
+
+def test_build_parser_extends_repeated_account_name_flags():
+    args = build_parser().parse_args(
+        ("--account-name", "Checking", "--account-name", "Credit Card")
+    )
+    assert args.account_name == ["Checking", "Credit Card"]
 
 
 @pytest.mark.parametrize(
@@ -173,7 +185,7 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved_ready_to_assign_checking_transaction,
+        resolved=[resolved_ready_to_assign_checking_transaction],
         token="token",
         db=tmp_path / "add-transaction.sqlite",
         for_real=True,
@@ -185,7 +197,7 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     categories_api_cls.assert_not_called()
 
     created_wrapper = transactions_api.create_transaction.call_args.args[1]
-    assert created_wrapper.transaction.amount == -12340
+    assert created_wrapper.transactions[0].amount == -12340
 
 
 @patch("manager_for_ynab.add_transaction.CategoriesApi")
@@ -234,7 +246,7 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved,
+        resolved=[resolved],
         token="token",
         db=db_path,
         for_real=True,
@@ -247,7 +259,7 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     categories_api.update_month_category.assert_called_once()
 
     created_wrapper = transactions_api.create_transaction.call_args.args[1]
-    assert created_wrapper.transaction.amount == -12340
+    assert created_wrapper.transactions[0].amount == -12340
     assert (
         categories_api.update_month_category.call_args.kwargs["data"].category.budgeted
         == 17660
@@ -288,7 +300,7 @@ async def test_run_delegates_parsed_args(add_transaction_mock):
     add_transaction_mock.assert_awaited_once()
     kwargs = add_transaction_mock.await_args.kwargs
     assert kwargs["plan_name"] == "My Plan"
-    assert kwargs["account_name"] == "Checking"
+    assert kwargs["account_names"] == ["Checking"]
     assert kwargs["payee_name"] == "Employer"
     assert kwargs["category_name"] == "Inflow: Ready to Assign"
     assert kwargs["date"] == date(2026, 4, 26)
@@ -328,7 +340,7 @@ async def test_move_funds_dry_run(
 ):
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved_ready_to_assign_checking_transaction,
+        resolved=[resolved_ready_to_assign_checking_transaction],
         token="token",
         db=tmp_path / "add-transaction.sqlite",
         for_real=False,
@@ -355,7 +367,7 @@ async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, cap
 
     ret = await add_transaction(
         plan_name=None,
-        account_name="Checking",
+        account_names=["Checking"],
         payee_name="Employer",
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
@@ -390,7 +402,7 @@ async def test_add_transaction_returns_one_when_resolution_fails(
 
     ret = await add_transaction(
         plan_name=None,
-        account_name="Checking",
+        account_names=["Checking"],
         payee_name="Employer",
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
@@ -440,7 +452,7 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved,
+        resolved=[resolved],
         token="token",
         db=db_path,
         for_real=True,
@@ -503,7 +515,7 @@ async def test_move_funds_reports_returned_credit_card_payment(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved,
+        resolved=[resolved],
         token="token",
         db=db_path,
         for_real=True,
@@ -551,7 +563,7 @@ async def test_move_funds_reports_returned_budget_delta(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved,
+        resolved=[resolved],
         token="token",
         db=db_path,
         for_real=True,
@@ -598,7 +610,7 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     fund_category_mock.return_value = 5000
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
-        resolved=resolved_dining_transaction,
+        resolved=[resolved_dining_transaction],
         token="token",
         db=db_path,
         fund=fund,
@@ -645,7 +657,7 @@ async def test_sync_and_resolve_transaction_raises_when_transaction_resolution_f
     with pytest.raises(ValueError, match="boom"):
         await sync_and_resolve_transaction(
             plan_name=None,
-            account_name="Checking",
+            account_names=["Checking"],
             payee_name="Employer",
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
@@ -671,7 +683,7 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
 
     resolved = await sync_and_resolve_transaction(
         plan_name="My Plan",
-        account_name="Checking",
+        account_names=["Checking"],
         payee_name="Employer",
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
@@ -683,11 +695,11 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
         quiet=True,
     )
 
-    assert resolved.plan.id == PLAN_ID
-    assert resolved.account.id == CHECKING_ACCOUNT_ID
-    assert resolved.payee.id == EMPLOYER_PAYEE_ID
-    assert resolved.category is not None
-    assert resolved.category.id == READY_TO_ASSIGN_CATEGORY_ID
+    assert resolved[0].plan.id == PLAN_ID
+    assert resolved[0].account.id == CHECKING_ACCOUNT_ID
+    assert resolved[0].payee.id == EMPLOYER_PAYEE_ID
+    assert resolved[0].category is not None
+    assert resolved[0].category.id == READY_TO_ASSIGN_CATEGORY_ID
     sync_mock.assert_awaited_once_with("token", db_path, False, quiet=True)
 
 
@@ -713,7 +725,7 @@ async def test_move_funds_returns_one_when_api_raises(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved_ready_to_assign_checking_transaction,
+        resolved=[resolved_ready_to_assign_checking_transaction],
         token="token",
         db=tmp_path / "add-transaction.sqlite",
         for_real=True,
@@ -757,7 +769,7 @@ async def test_move_funds_returns_one_when_funding_fails(
 
     ret = await add_transaction_module.add_transaction_and_move_funds(
         fund=True,
-        resolved=resolved_dining_transaction,
+        resolved=[resolved_dining_transaction],
         token="token",
         db=tmp_path / "add-transaction.sqlite",
         for_real=True,
@@ -790,7 +802,7 @@ async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
     with pytest.raises(RuntimeError, match="boom"):
         await sync_and_resolve_transaction(
             plan_name=None,
-            account_name="Checking",
+            account_names=["Checking"],
             payee_name="Employer",
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
@@ -817,7 +829,7 @@ async def test_resolve_transaction_errors_when_no_plans(load_name_to_id_mock, tm
         await _resolve_transaction(
             db=db_path,
             plan_name=None,
-            account_name="Checking",
+            account_names=["Checking"],
             payee_name="Employer",
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
@@ -849,7 +861,7 @@ async def test_resolve_transaction_prompts_for_missing_values(
     resolved = await _resolve_transaction(
         db=db_path,
         plan_name=None,
-        account_name=None,
+        account_names=None,
         payee_name=None,
         category_name=None,
         date=None,
@@ -857,13 +869,13 @@ async def test_resolve_transaction_prompts_for_missing_values(
         amount=None,
     )
 
-    assert resolved.plan.id == PLAN_ID
-    assert resolved.account.id == CHECKING_ACCOUNT_ID
-    assert resolved.payee.id == EMPLOYER_PAYEE_ID
-    assert resolved.category is not None
-    assert resolved.category.id == READY_TO_ASSIGN_CATEGORY_ID
-    assert resolved.date == date(2026, 4, 26)
-    assert resolved.amount == Decimal("12.34")
+    assert resolved[0].plan.id == PLAN_ID
+    assert resolved[0].account.id == CHECKING_ACCOUNT_ID
+    assert resolved[0].payee.id == EMPLOYER_PAYEE_ID
+    assert resolved[0].category is not None
+    assert resolved[0].category.id == READY_TO_ASSIGN_CATEGORY_ID
+    assert resolved[0].date == date(2026, 4, 26)
+    assert resolved[0].amount == Decimal("12.34")
 
 
 @patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
@@ -887,14 +899,16 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
     load_name_to_id_mock.return_value = {"Plan A": "plan-a", "Plan B": "plan-b"}
     choice_prompt_mock.return_value = "Plan B"
     resolve_account_id_mock.return_value = "account-id"
-    load_account_by_id_mock.return_value = ("Checking", "checking")
+    load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
+        id="account-id", name="Checking", type="checking", cleared_balance=430000
+    )
     resolve_payee_mock.return_value = ("payee-id", "Employer", None)
     resolve_category_mock.return_value = ("category-id", "Dining Out")
 
     resolved = await _resolve_transaction(
         db=db_path,
         plan_name=None,
-        account_name="Checking",
+        account_names=["Checking"],
         payee_name="Employer",
         category_name="Dining Out",
         date=date(2026, 4, 26),
@@ -902,8 +916,8 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
         amount=Decimal("12.34"),
     )
 
-    assert resolved.plan.id == "plan-b"
-    assert resolved.plan.name == "Plan B"
+    assert resolved[0].plan.id == "plan-b"
+    assert resolved[0].plan.name == "Plan B"
 
 
 @patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
@@ -922,13 +936,15 @@ async def test_resolve_transaction_allows_transfer_without_category(
     _create_add_transaction_db(db_path)
     load_name_to_id_mock.return_value = {"My Plan": "plan-id"}
     resolve_account_id_mock.return_value = "account-id"
-    load_account_by_id_mock.return_value = ("Checking", "checking")
+    load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
+        id="account-id", name="Checking", type="checking", cleared_balance=430000
+    )
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
     resolved = await _resolve_transaction(
         db=db_path,
         plan_name=None,
-        account_name="Checking",
+        account_names=["Checking"],
         payee_name="Transfer",
         category_name=None,
         date=date(2026, 4, 26),
@@ -936,7 +952,180 @@ async def test_resolve_transaction_allows_transfer_without_category(
         amount=Decimal("12.34"),
     )
 
-    assert resolved.category is None
+    assert resolved[0].category is None
+
+
+@pytest.mark.parametrize(
+    ("amount", "balances", "expected"),
+    [
+        pytest.param(
+            Decimal(50),
+            [40000, -200000],
+            [Decimal(40), Decimal(10)],
+            id="cash-then-credit-card-overflow",
+        ),
+        pytest.param(
+            Decimal(50),
+            [40000],
+            [Decimal(50)],
+            id="single-account-always-takes-remainder",
+        ),
+        pytest.param(
+            Decimal(50),
+            [0, -200000],
+            [Decimal(0), Decimal(50)],
+            id="empty-cash-account-drains-nothing",
+        ),
+    ],
+)
+def test_split_amount_across_accounts(amount, balances, expected):
+    accounts = [
+        add_transaction_module.ResolvedAccount(
+            id=str(index), name=str(index), type="checking", cleared_balance=balance
+        )
+        for index, balance in enumerate(balances)
+    ]
+    assert _split_amount_across_accounts(amount, accounts) == expected
+
+
+@pytest.mark.asyncio
+async def test_resolve_transaction_rejects_zero_amount(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    with pytest.raises(ValueError, match="Amount must not be 0."):
+        await _resolve_transaction(
+            db=db_path,
+            plan_name=None,
+            account_names=["Checking"],
+            payee_name="Employer",
+            category_name="Dining Out",
+            date=date(2026, 4, 26),
+            cleared=None,
+            amount=Decimal(0),
+        )
+
+
+@pytest.mark.asyncio
+async def test_resolve_transaction_splits_amount_and_drops_unused_credit_card(
+    tmp_path,
+):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    resolved = await _resolve_transaction(
+        db=db_path,
+        plan_name=None,
+        account_names=["Checking", "Credit Card"],
+        payee_name="Employer",
+        category_name="Dining Out",
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal(500),
+    )
+
+    assert [leg.account.name for leg in resolved] == ["Checking", "Credit Card"]
+    assert [leg.amount for leg in resolved] == [Decimal(430), Decimal(70)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_transaction_skips_credit_card_leg_when_cash_covers_amount(
+    tmp_path,
+):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    resolved = await _resolve_transaction(
+        db=db_path,
+        plan_name=None,
+        account_names=["Checking", "Credit Card"],
+        payee_name="Employer",
+        category_name="Dining Out",
+        date=date(2026, 4, 26),
+        cleared=None,
+        amount=Decimal(100),
+    )
+
+    assert [leg.account.name for leg in resolved] == ["Checking"]
+    assert [leg.amount for leg in resolved] == [Decimal(100)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_accounts_rejects_credit_card_not_listed_last(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(ValueError, match="Credit card account must be listed last"):
+            await _resolve_accounts(con, PLAN_ID, ["Credit Card", "Checking"])
+
+
+@pytest.mark.asyncio
+async def test_resolve_accounts_rejects_multiple_credit_cards(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(
+            ValueError, match="Only one credit card account may be used"
+        ):
+            await _resolve_accounts(con, PLAN_ID, ["Credit Card", "Credit Card"])
+
+
+@patch("manager_for_ynab.add_transaction._fund_category", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction.TransactionsApi")
+@patch("manager_for_ynab.add_transaction.ApiClient")
+@patch("manager_for_ynab.add_transaction.Configuration")
+@pytest.mark.asyncio
+async def test_move_funds_creates_all_legs_together_and_funds_once(
+    configuration_cls,
+    api_client_cls,
+    transactions_api_cls,
+    fund_category_mock,
+    resolved_dining_transaction,
+    tmp_path,
+):
+    configuration_cls.return_value = AsyncMock()
+    api_client_cls.return_value = AsyncMock()
+    transactions_api_cls.return_value = AsyncMock()
+    fund_category_mock.return_value = 0
+    second_leg = replace(
+        resolved_dining_transaction,
+        account=replace(
+            resolved_dining_transaction.account,
+            id="55555555-5555-5555-5555-555555555555",
+            name="Credit Card",
+            type="creditCard",
+        ),
+        amount=Decimal("1.00"),
+    )
+
+    ret = await add_transaction_module.add_transaction_and_move_funds(
+        resolved=[resolved_dining_transaction, second_leg],
+        token="token",
+        db=tmp_path / "add-transaction.sqlite",
+        fund=True,
+        for_real=True,
+        quiet=True,
+    )
+
+    assert ret == 0
+    transactions_api_cls.return_value.create_transaction.assert_called_once()
+    created_wrapper = (
+        transactions_api_cls.return_value.create_transaction.call_args.args[1]
+    )
+    assert [txn.amount for txn in created_wrapper.transactions] == [-12340, -1000]
+    fund_category_mock.assert_awaited_once_with(
+        api_client_cls.return_value.__aenter__.return_value,
+        resolved_dining_transaction.plan.id,
+        resolved_dining_transaction.date,
+        resolved_dining_transaction.category.id,
+        -13340,
+    )
 
 
 @patch("manager_for_ynab.add_transaction._matching_entry", new_callable=AsyncMock)
@@ -958,7 +1147,7 @@ async def test_resolve_transaction_rejects_category_for_transfer(
         await _resolve_transaction(
             db=db_path,
             plan_name=None,
-            account_name="Checking",
+            account_names=["Checking"],
             payee_name="Transfer",
             category_name="Dining Out",
             date=date(2026, 4, 26),

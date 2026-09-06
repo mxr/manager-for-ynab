@@ -157,8 +157,8 @@ async def run(
     argv: Sequence[str] | None = None, *, token_override: str | None = None
 ) -> int:
     args = build_parser().parse_args(argv)
-    raw_start: date | None = args.start
-    end: date = args.end or _today()
+    raw_start = cast("date | None", args.start)
+    end = cast("date", args.end) or _today()
     if raw_start and raw_start > end:
         build_parser().error("--start must be before or equal to --end")
 
@@ -400,7 +400,8 @@ def build_echarts_html(
         if amounts[source] == 0:
             amounts[source] = value
 
-    html = (
+    return cast(
+        "str",
         charts.Sankey(
             init_opts=options.InitOpts(
                 width="100%",
@@ -455,9 +456,8 @@ def build_echarts_html(
         .replace(
             "</head>",
             f"{_DARK_THEME_SCRIPT}\n</head>" if theme == Theme.DARK else "</head>",
-        )
+        ),
     )
-    return cast("str", html)
 
 
 __all__ = [

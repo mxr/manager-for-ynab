@@ -9,7 +9,6 @@ import aiosqlite
 import pytest
 import pytest_asyncio
 
-from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.sankey import SankeyRow
 from manager_for_ynab.sankey import SortBy
 from manager_for_ynab.sankey import Theme
@@ -494,7 +493,6 @@ async def test_run_rejects_end_before_start(db):
     assert excinfo.value.code == 2
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
@@ -517,7 +515,6 @@ async def test_run_writes_html_to_stdout(sync, build_echarts_html_mock, db, caps
     assert out.endswith("<echarts></echarts>")
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey._today", return_value=date(2026, 4, 30))
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
@@ -540,7 +537,6 @@ async def test_run_defaults_start_to_first_txn_and_end_to_today(
     assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey._today", return_value=date(2026, 4, 30))
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
@@ -565,7 +561,6 @@ async def test_run_accepts_today_for_end(sync, build_echarts_html_mock, today, d
     assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
@@ -587,7 +582,6 @@ async def test_run_no_sync_uses_existing_db(sync, build_echarts_html_mock, db):
     build_echarts_html_mock.assert_called_once()
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
@@ -617,7 +611,6 @@ async def test_run_writes_html_to_out(
     assert out_path.read_text() == "<echarts></echarts>"
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
 async def test_sankey_skips_empty_data(sync, db, capsys):
@@ -640,7 +633,6 @@ async def test_sankey_skips_empty_data(sync, db, capsys):
     assert out == "No Sankey data found.\n"
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.sankey.sync")
 @pytest.mark.asyncio
 async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):

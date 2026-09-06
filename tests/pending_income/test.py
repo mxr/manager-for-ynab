@@ -7,7 +7,6 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.pending_income import PendingIncomeResult
 from manager_for_ynab.pending_income import Transaction
 from manager_for_ynab.pending_income import build_updates
@@ -81,7 +80,7 @@ def test_build_updates_groups_by_plan():
     )
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
+@pytest.mark.token_env("")
 @pytest.mark.asyncio
 async def test_run_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
@@ -91,7 +90,7 @@ async def test_run_requires_token(db):
 
 
 @pytest.mark.asyncio
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
+@pytest.mark.token_env("")
 async def test_pending_income_requires_token(db):
     with pytest.raises(ValueError) as excinfo:
         await pending_income(
@@ -162,7 +161,6 @@ async def test_pending_income_uses_token_override(sync, db):
     assert result == _expected_pending_income_result(0)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
@@ -180,7 +178,6 @@ async def test_pending_income_skip_matched_excludes_matched_transactions(sync, d
     assert result == _expected_pending_income_result(0, include_matched=False)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
@@ -200,7 +197,6 @@ async def test_pending_income_quiet_suppresses_refresh_logs(sync, db, capsys):
     assert result == _expected_pending_income_result(0)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_pending_income_for_real_returns_updated_count(
@@ -230,7 +226,6 @@ async def test_pending_income_for_real_returns_updated_count(
     assert result == _expected_pending_income_result(3)
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
@@ -246,7 +241,6 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     assert "Use --for-real to actually update transactions." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
@@ -259,7 +253,6 @@ async def test_run_quiet_suppresses_all_output(sync, db, capsys):
     assert out == ""
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
@@ -273,7 +266,6 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
     assert "Found 3 income transaction(s) to update." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_no_matching_transactions(sync, db, capsys):
@@ -290,7 +282,6 @@ async def test_run_no_matching_transactions(sync, db, capsys):
     assert "Found 0 income transaction(s) to update." in out
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio
 async def test_run_for_real_updates_transactions_grouped_by_plan(
@@ -313,7 +304,6 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
     assert updates[1][1].transactions[0].id == "keep-2"
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: "token"})
 @patch("manager_for_ynab.pending_income.TransactionsApi", unexpected_transactions_api)
 @patch("manager_for_ynab.pending_income.sync")
 @pytest.mark.asyncio

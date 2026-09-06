@@ -52,6 +52,7 @@ class ResolvedAccount:
     id: str
     name: str
     type: str
+    cleared_balance: int
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,19 @@ def build_parser() -> argparse.ArgumentParser:
         description="Create a transaction in YNAB and try to fund a category from Ready to Assign.",
     )
     parser.add_argument("--plan-name", help="YNAB plan name. If omitted, prompts.")
-    parser.add_argument("--account-name", help="Account name. If omitted, prompts.")
+    parser.add_argument(
+        "--account-name",
+        nargs="+",
+        action="extend",
+        help=(
+            "Account name(s). If omitted, prompts for a single account. "
+            "If multiple are given, the amount is split across them in order: "
+            "each account is drained up to its balance before moving to the "
+            "next. At most one may be a credit card account, and it must be "
+            "listed last, since it is only used to cover whatever is left "
+            "after the other accounts are drained."
+        ),
+    )
     parser.add_argument("--payee-name", help="Payee name. If omitted, prompts.")
     parser.add_argument(
         "--category-name",
@@ -157,7 +170,7 @@ async def run(
     args = build_parser().parse_args(argv)
     return await add_transaction(
         plan_name=args.plan_name,
-        account_name=args.account_name,
+        account_names=args.account_name,
         payee_name=args.payee_name,
         category_name=args.category_name,
         date=args.date,
@@ -176,7 +189,7 @@ async def run(
 async def add_transaction(
     *,
     plan_name: str | None,
-    account_name: str | None,
+    account_names: Sequence[str] | None,
     payee_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
@@ -194,7 +207,7 @@ async def add_transaction(
     try:
         resolved = await sync_and_resolve_transaction(
             plan_name=plan_name,
-            account_name=account_name,
+            account_names=account_names,
             payee_name=payee_name,
             category_name=category_name,
             date=date,
@@ -222,7 +235,7 @@ async def add_transaction(
 async def sync_and_resolve_transaction(
     *,
     plan_name: str | None,
-    account_name: str | None,
+    account_names: Sequence[str] | None,
     payee_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
@@ -233,7 +246,7 @@ async def sync_and_resolve_transaction(
     should_sync: bool = True,
     token: str,
     quiet: bool,
-) -> ResolvedTransaction:
+) -> list[ResolvedTransaction]:
     if should_sync:
         _print("** Refreshing SQLite DB **", quiet=quiet)
         await sync(token, db, full_refresh, quiet=quiet)
@@ -242,7 +255,7 @@ async def sync_and_resolve_transaction(
     return await _resolve_transaction(
         db=db,
         plan_name=plan_name,
-        account_name=account_name,
+        account_names=account_names,
         payee_name=payee_name,
         category_name=category_name,
         date=date,
@@ -253,21 +266,22 @@ async def sync_and_resolve_transaction(
 
 async def add_transaction_and_move_funds(
     *,
-    resolved: ResolvedTransaction,
+    resolved: Sequence[ResolvedTransaction],
     token: str,
     db: Path,
     fund: bool,
     for_real: bool,
     quiet: bool,
 ) -> int:
-    txn = _build_transaction(resolved)
+    txns = [_build_transaction(leg) for leg in resolved]
+    plural = "" if len(txns) == 1 else "s"
     if not for_real:
-        _print("Dry run, not creating transaction:", quiet=quiet)
+        _print(f"Dry run, not creating transaction{plural}:", quiet=quiet)
         if not quiet:
-            rich.print(txn)
+            for txn in txns:
+                rich.print(txn)
         return 0
 
-    applied_delta = 0
     try:
         async with AsyncExitStack() as stack:
             con = await stack.enter_async_context(aiosqlite.connect(db))
@@ -279,58 +293,47 @@ async def add_transaction_and_move_funds(
             transactions_api = TransactionsApi(api_client)
 
             await transactions_api.create_transaction(
-                resolved.plan.id,
-                PostTransactionsWrapper(transaction=txn),
+                resolved[0].plan.id,
+                PostTransactionsWrapper(transactions=txns),
             )
 
-            if (
-                resolved.category is not None
-                and resolved.category.name == "Inflow: Ready to Assign"
-                and resolved.account.type == "creditCard"
-            ):
-                (
-                    payment_category_id,
-                    payment_category_name,
-                ) = await _resolve_credit_card_payment_category(
-                    con, resolved.plan.id, resolved.account.name
-                )
-                assert txn.amount is not None
-                applied_delta = await _apply_category_budget_delta(
-                    api_client,
-                    resolved.plan.id,
-                    resolved.date,
-                    payment_category_id,
-                    txn.amount,
-                )
-                _print("Created transaction:", quiet=quiet)
-                if not quiet:
+            _print(f"Created transaction{plural}:", quiet=quiet)
+            if not quiet:
+                for txn in txns:
                     rich.print(txn)
-                if applied_delta > 0:
-                    _print(
-                        f"Applied {applied_delta / 1000:.2f} USD to {payment_category_name!r} from Ready to Assign.",
-                        quiet=quiet,
-                    )
-                if applied_delta < 0:
-                    _print(
-                        f"Returned {abs(applied_delta) / 1000:.2f} USD from "
-                        f"{payment_category_name!r} to Ready to Assign.",
-                        quiet=quiet,
-                    )
-                return 0
 
-            if (
-                fund
-                and resolved.category is not None
-                and resolved.category.name != "Inflow: Ready to Assign"
-            ):
-                assert txn.amount is not None
+            fundable_category: ResolvedCategory | None = None
+            fundable_amount = 0
+            for leg, txn in zip(resolved, txns, strict=True):
+                if (
+                    leg.category is not None
+                    and leg.category.name == "Inflow: Ready to Assign"
+                    and leg.account.type == "creditCard"
+                ):
+                    await _settle_credit_card_payment_leg(
+                        api_client, con, leg, txn, quiet=quiet
+                    )
+                elif (
+                    fund
+                    and leg.category is not None
+                    and leg.category.name != "Inflow: Ready to Assign"
+                ):
+                    assert txn.amount is not None
+                    fundable_category = leg.category
+                    fundable_amount += txn.amount
+
+            if fundable_category is not None and fundable_amount != 0:
                 applied_delta = await _fund_category(
                     api_client,
-                    resolved.plan.id,
-                    resolved.date,
-                    resolved.category.id,
-                    txn.amount,
+                    resolved[0].plan.id,
+                    resolved[0].date,
+                    fundable_category.id,
+                    fundable_amount,
                 )
+                if applied_delta > 0:
+                    print(
+                        f"Funded {fundable_category.name!r} from 'Ready to Assign' by {applied_delta / 1000:.2f} USD"
+                    )
     except ApiException as err:
         print(f"Failed to create transaction: {err}", file=sys.stderr)
         return 1
@@ -341,29 +344,55 @@ async def add_transaction_and_move_funds(
         print(err)
         return 1
 
-    _print("Created transaction:", quiet=quiet)
-    if not quiet:
-        rich.print(txn)
-
-    if resolved.category is not None and applied_delta > 0:
-        print(
-            f"Funded {resolved.category.name!r} from 'Ready to Assign' by {applied_delta / 1000:.2f} USD"
-        )
-
     return 0
+
+
+async def _settle_credit_card_payment_leg(
+    api_client: ApiClient,
+    con: aiosqlite.Connection,
+    resolved: ResolvedTransaction,
+    txn: NewTransaction,
+    *,
+    quiet: bool,
+) -> None:
+    (
+        payment_category_id,
+        payment_category_name,
+    ) = await _resolve_credit_card_payment_category(
+        con, resolved.plan.id, resolved.account.name
+    )
+    assert txn.amount is not None
+    applied_delta = await _apply_category_budget_delta(
+        api_client,
+        resolved.plan.id,
+        resolved.date,
+        payment_category_id,
+        txn.amount,
+    )
+    if applied_delta > 0:
+        _print(
+            f"Applied {applied_delta / 1000:.2f} USD to {payment_category_name!r} from Ready to Assign.",
+            quiet=quiet,
+        )
+    if applied_delta < 0:
+        _print(
+            f"Returned {abs(applied_delta) / 1000:.2f} USD from "
+            f"{payment_category_name!r} to Ready to Assign.",
+            quiet=quiet,
+        )
 
 
 async def _resolve_transaction(
     *,
     db: Path,
     plan_name: str | None,
-    account_name: str | None,
+    account_names: Sequence[str] | None,
     payee_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
     amount: Decimal | None,
-) -> ResolvedTransaction:
+) -> list[ResolvedTransaction]:
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
@@ -386,10 +415,7 @@ async def _resolve_transaction(
             plan_id = plans[plan_name]
 
         current_date = date or await date_prompt()
-        account_id = await _resolve_account_id(con, plan_id, account_name)
-        resolved_account_name, resolved_account_type = await _load_account_by_id(
-            con, account_id
-        )
+        accounts = await _resolve_accounts(con, plan_id, account_names)
         payee_id, resolved_payee_name, transfer_account_id = await _resolve_payee(
             con, plan_id, payee_name
         )
@@ -407,19 +433,65 @@ async def _resolve_transaction(
             )
 
         resolved_amount = amount if amount is not None else await amount_prompt()
-        return ResolvedTransaction(
-            plan=ResolvedPlan(id=plan_id, name=plan_name),
-            account=ResolvedAccount(
-                id=account_id,
-                name=resolved_account_name,
-                type=resolved_account_type,
-            ),
-            payee=ResolvedPayee(id=payee_id, name=resolved_payee_name),
-            category=resolved_category,
-            date=current_date,
-            cleared=cleared or TransactionClearedStatus.UNCLEARED,
-            amount=resolved_amount,
+        if resolved_amount == 0:
+            raise ValueError("Amount must not be 0.")
+        splits = _split_amount_across_accounts(resolved_amount, accounts)
+        legs = [
+            (account, split_amount)
+            for account, split_amount in zip(accounts, splits, strict=True)
+            if split_amount != 0
+        ]
+
+        return [
+            ResolvedTransaction(
+                plan=ResolvedPlan(id=plan_id, name=plan_name),
+                account=account,
+                payee=ResolvedPayee(id=payee_id, name=resolved_payee_name),
+                category=resolved_category,
+                date=current_date,
+                cleared=cleared or TransactionClearedStatus.UNCLEARED,
+                amount=split_amount,
+            )
+            for account, split_amount in legs
+        ]
+
+
+async def _resolve_accounts(
+    con: aiosqlite.Connection, plan_id: str, account_names: Sequence[str] | None
+) -> list[ResolvedAccount]:
+    if not account_names:
+        account_id = await _resolve_account_id(con, plan_id, None)
+        return [await _load_account_by_id(con, account_id)]
+
+    accounts = [
+        await _load_account_by_id(con, await _resolve_account_id(con, plan_id, name))
+        for name in account_names
+    ]
+
+    credit_card_indexes = [
+        index for index, account in enumerate(accounts) if account.type == "creditCard"
+    ]
+    if len(credit_card_indexes) > 1:
+        raise ValueError("Only one credit card account may be used per transaction.")
+    if credit_card_indexes and credit_card_indexes[0] != len(accounts) - 1:
+        raise ValueError(
+            "Credit card account must be listed last, since it is only used to "
+            "cover whatever is left after the other accounts are drained."
         )
+    return accounts
+
+
+def _split_amount_across_accounts(
+    amount: Decimal, accounts: Sequence[ResolvedAccount]
+) -> list[Decimal]:
+    remaining = int(amount * 1000)
+    splits: list[int] = []
+    for account in accounts[:-1]:
+        drained = min(remaining, max(0, account.cleared_balance))
+        splits.append(drained)
+        remaining -= drained
+    splits.append(remaining)
+    return [Decimal(split) / 1000 for split in splits]
 
 
 def _build_transaction(resolved: ResolvedTransaction) -> NewTransaction:
@@ -554,10 +626,10 @@ async def _apply_category_budget_delta(
 
 async def _load_account_by_id(
     con: aiosqlite.Connection, account_id: str
-) -> tuple[str, str]:
+) -> ResolvedAccount:
     async with con.execute(
         """
-        SELECT name, type
+        SELECT name, type, cleared_balance
         FROM accounts
         WHERE id = ? AND NOT deleted
         """,
@@ -566,7 +638,12 @@ async def _load_account_by_id(
         row = await cur.fetchone()
     if row is None:
         raise RuntimeError(f"No account found with id {account_id!r}.")
-    return str(row["name"]), str(row["type"])
+    return ResolvedAccount(
+        id=account_id,
+        name=str(row["name"]),
+        type=str(row["type"]),
+        cleared_balance=int(row["cleared_balance"]),
+    )
 
 
 async def _resolve_credit_card_payment_category(
