@@ -32,15 +32,13 @@ $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
 
 You additionally need two things from a logged-in app.ynab.com browser session:
 
-- **Session cookie**: read automatically from your Firefox cookie jar if you're logged
-  into app.ynab.com there. Otherwise, set `YNAB_SESSION_COOKIE` to the full `Cookie`
-  header value from a request to app.ynab.com (browser devtools -> Network tab).
+- **Session cookie**: read automatically from your Firefox cookie jar. You must be
+  logged into app.ynab.com in Firefox for this to work.
 - **Session token**: not stored as a cookie, so it can't be read automatically. Set
   `YNAB_SESSION_TOKEN` to the `X-Session-Token` request header value from any XHR
   request to `/api/v1/catalog` (browser devtools -> Network tab).
 
 ```console
-$ export YNAB_SESSION_COOKIE="..."       # optional if using Firefox
 $ export YNAB_SESSION_TOKEN="..."
 ```
 

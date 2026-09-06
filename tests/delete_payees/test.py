@@ -6,7 +6,6 @@ import aiohttp
 import aiosqlite
 import pytest
 
-from manager_for_ynab._auth import _ENV_TOKEN
 from manager_for_ynab.delete_payees import _find_unused_payees
 from manager_for_ynab.delete_payees import _load_server_knowledge
 from manager_for_ynab.delete_payees import _resolve_payees
@@ -16,6 +15,7 @@ from manager_for_ynab.delete_payees import run
 from testing.fixtures import EMPLOYER_PAYEE_ID
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TRANSFER_PAYEE_ID
+from testing.fixtures import apply_ddl
 from testing.fixtures import execute_seed
 
 
@@ -32,6 +32,20 @@ def db_path(tmp_path):
     path = tmp_path / "delete-payees.sqlite"
     _create_db(path)
     return path
+
+
+@pytest.mark.asyncio
+async def test_resolve_plan_id_raises_when_no_plans(tmp_path):
+    path = tmp_path / "no-plans.sqlite"
+    with sqlite3.connect(path) as con:
+        apply_ddl(con)
+
+    async with aiosqlite.connect(path) as con:
+        con.row_factory = aiosqlite.Row
+        with pytest.raises(RuntimeError) as excinfo:
+            await _resolve_plan_id(con, None)
+
+    assert "No plans found in this YNAB account." in str(excinfo.value)
 
 
 @pytest.mark.asyncio
@@ -149,6 +163,28 @@ async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, 
     assert "Use --for-real to actually delete the payees." in out
 
 
+@patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_delete_payees_syncs_db_first_when_should_sync(
+    sync_mock, db_path, capsys
+):
+    ret = await delete_payees(
+        plan_id=None,
+        payee_ids=[EMPLOYER_PAYEE_ID],
+        for_real=False,
+        db=db_path,
+        full_refresh=False,
+        should_sync=True,
+        token_override="token",
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync_mock.assert_awaited_once_with("token", db_path, False)
+    assert "** Refreshing SQLite DB **" in out
+    assert "** Done **" in out
+
+
 @pytest.mark.asyncio
 async def test_delete_payees_returns_one_when_resolution_fails(db_path):
     ret = await delete_payees(
@@ -211,10 +247,21 @@ async def test_delete_payees_finds_unused_payees_when_ids_omitted(
     assert "Employer" in out
 
 
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_token",
+    return_value="session-token-value",
+)
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+)
 @patch("manager_for_ynab.delete_payees.delete_payee_entity", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_calls_sync_api_for_each_payee(
-    delete_payee_entity_mock, db_path, capsys
+    delete_payee_entity_mock,
+    resolve_cookie_mock,
+    resolve_session_token_mock,
+    db_path,
+    capsys,
 ):
     delete_payee_entity_mock.side_effect = [
         {"error": None, "current_server_knowledge": 7020},
@@ -229,8 +276,6 @@ async def test_delete_payees_for_real_calls_sync_api_for_each_payee(
         full_refresh=False,
         should_sync=False,
         token_override="token",
-        cookie_override="cookie-value",
-        session_token_override="session-token-value",
     )
 
     out, _ = capsys.readouterr()
@@ -265,8 +310,6 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, ca
         full_refresh=False,
         should_sync=False,
         token_override="token",
-        cookie_override="cookie-value",
-        session_token_override="session-token-value",
     )
 
     out, _ = capsys.readouterr()
@@ -274,32 +317,42 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, ca
     assert "Run with --sync first." in out
 
 
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_cookie",
+    side_effect=ValueError("no cookie"),
+)
 @pytest.mark.asyncio
-async def test_delete_payees_for_real_returns_one_when_session_auth_missing(db_path):
-    with (
-        patch.dict("os.environ", {}, clear=True),
-        patch(
-            "manager_for_ynab.delete_payees.resolve_session_cookie",
-            side_effect=ValueError("no cookie"),
-        ),
-    ):
-        ret = await delete_payees(
-            plan_id=None,
-            payee_ids=[EMPLOYER_PAYEE_ID],
-            for_real=True,
-            db=db_path,
-            full_refresh=False,
-            should_sync=False,
-            token_override="token",
-        )
+async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
+    resolve_cookie_mock, db_path
+):
+    ret = await delete_payees(
+        plan_id=None,
+        payee_ids=[EMPLOYER_PAYEE_ID],
+        for_real=True,
+        db=db_path,
+        full_refresh=False,
+        should_sync=False,
+        token_override="token",
+    )
 
     assert ret == 1
 
 
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_token",
+    return_value="session-token-value",
+)
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+)
 @patch("manager_for_ynab.delete_payees.delete_payee_entity", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_reports_client_error(
-    delete_payee_entity_mock, db_path, capsys
+    delete_payee_entity_mock,
+    resolve_cookie_mock,
+    resolve_session_token_mock,
+    db_path,
+    capsys,
 ):
     delete_payee_entity_mock.side_effect = aiohttp.ClientError("boom")
 
@@ -311,8 +364,6 @@ async def test_delete_payees_for_real_reports_client_error(
         full_refresh=False,
         should_sync=False,
         token_override="token",
-        cookie_override="cookie-value",
-        session_token_override="session-token-value",
     )
 
     _, err = capsys.readouterr()
@@ -320,7 +371,7 @@ async def test_delete_payees_for_real_reports_client_error(
     assert "Failed to delete payee 'Employer'" in err
 
 
-@patch.dict("os.environ", {_ENV_TOKEN: ""})
+@pytest.mark.token_env("")
 @pytest.mark.asyncio
 async def test_run_requires_token():
     with pytest.raises(ValueError) as excinfo:

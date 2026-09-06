@@ -1,5 +1,6 @@
 import argparse
 import sys
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,9 @@ if TYPE_CHECKING:
 
 
 _PACKAGE = "manager-for-ynab delete-payees"
+_UNUSED_PAYEES_QUERY = (
+    files("manager_for_ynab.delete_payees").joinpath("unused_payees.sql").read_text()
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -128,80 +132,6 @@ async def _resolve_payees(
     return resolved
 
 
-_UNUSED_PAYEES_QUERY = """
-WITH used_payees AS (
-    SELECT
-        plan_id
-        , payee_id
-    FROM transactions
-    WHERE
-        TRUE
-        AND approved
-        AND payee_id IS NOT NULL
-        AND NOT deleted
-    UNION
-    SELECT
-        plan_id
-        , payee_id
-    FROM subtransactions
-    WHERE
-        TRUE
-        AND payee_id IS NOT NULL
-        AND NOT deleted
-    UNION
-    SELECT
-        plan_id
-        , payee_id
-    FROM scheduled_transactions
-    WHERE
-        TRUE
-        AND payee_id IS NOT NULL
-        AND NOT deleted
-    UNION
-    SELECT
-        plan_id
-        , payee_id
-    FROM scheduled_subtransactions
-    WHERE
-        TRUE
-        AND payee_id IS NOT NULL
-        AND NOT deleted
-), candidates AS (
-    SELECT
-        p.plan_id
-        , p.name
-    FROM payees AS p
-    LEFT JOIN used_payees AS up ON p.plan_id = up.plan_id AND p.id = up.payee_id
-    WHERE
-        TRUE
-        AND up.payee_id IS NULL
-        AND p.transfer_account_id IS NULL
-        AND p.name != 'Reconciliation Balance Adjustment'
-        AND p.name != 'Manual Balance Adjustment'
-        AND NOT p.deleted
-        AND p.plan_id = :plan_id
-    UNION
-    SELECT
-        plan_id
-        , name
-    FROM payees
-    WHERE
-        TRUE
-        AND NOT deleted
-        AND plan_id = :plan_id
-    GROUP BY plan_id, name
-    HAVING COUNT(*) > 1
-)
-SELECT
-    p.id AS payee_id
-    , p.name AS payee_name
-FROM candidates AS c
-INNER JOIN payees AS p ON p.plan_id = c.plan_id AND p.name = c.name AND NOT p.deleted
-ORDER BY p.name, p.id
-;
-"""
-
-
 async def _find_unused_payees(
     con: aiosqlite.Connection, plan_id: str
 ) -> list[tuple[str, str]]:
@@ -220,8 +150,6 @@ async def delete_payees(
     full_refresh: bool,
     should_sync: bool = True,
     token_override: str | None,
-    cookie_override: str | None = None,
-    session_token_override: str | None = None,
 ) -> int:
     token = resolve_token(token_override)
 
@@ -264,8 +192,8 @@ async def delete_payees(
         return 0
 
     try:
-        cookie = resolve_session_cookie(cookie_override)
-        session_token = resolve_session_token(session_token_override)
+        cookie = await resolve_session_cookie()
+        session_token = resolve_session_token()
     except ValueError as err:
         print(err)
         return 1

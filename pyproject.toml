@@ -65,7 +65,10 @@ module = "tests.*"
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
 asyncio_default_fixture_loop_scope = "function"
-markers = ["token_env(value): override the YNAB access token env var for this test"]
+markers = [
+  "token_env(value): override the YNAB access token env var for this test",
+  "session_token_env(value): set (or, if None, unset) the YNAB session token env var for this test",
+]
 python_files = ["test.py"]
 
 [tool.ruff]
@@ -88,6 +91,7 @@ force-single-line = true
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
 "manager_for_ynab.auto_approve" = ["*.sql"]
+"manager_for_ynab.delete_payees" = ["*.sql"]
 "manager_for_ynab.pending_income" = ["*.sql"]
 "manager_for_ynab.sankey" = ["*.sql"]
 
