@@ -12,9 +12,11 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
 from manager_for_ynab._auth import resolve_token
-from manager_for_ynab._browser_session import resolve_session_cookie
-from manager_for_ynab._browser_session import resolve_session_token
-from manager_for_ynab._ynab_sync_api import delete_payee as delete_payee_entity
+from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
+from manager_for_ynab.delete_payees._browser_session import resolve_session_token
+from manager_for_ynab.delete_payees._ynab_sync_api import (
+    delete_payee as delete_payee_entity,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

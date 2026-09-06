@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from manager_for_ynab._auth import _ENV_TOKEN
-from manager_for_ynab._browser_session import _ENV_SESSION_TOKEN
+from manager_for_ynab.delete_payees._browser_session import _ENV_SESSION_TOKEN
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -22,34 +22,34 @@ async def _sync_budget_data(
     device_knowledge_of_server: int,
     changed_entities: dict[str, Any],
 ) -> dict[str, Any]:
-    request_data = {
-        "budget_version_id": budget_version_id,
-        "sync_type": "delta",
-        "starting_device_knowledge": starting_device_knowledge,
-        "ending_device_knowledge": ending_device_knowledge,
-        "device_knowledge_of_server": device_knowledge_of_server,
-        "calculated_entities_included": False,
-        "schema_version": _SCHEMA_VERSION,
-        "schema_version_of_knowledge": _SCHEMA_VERSION,
-        "changed_entities": changed_entities,
-    }
-    headers = {
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-YNAB-Client-Request-Id": str(uuid.uuid4()),
-        "X-YNAB-Api-Version": _API_VERSION,
-        "X-YNAB-Device-OS": "web",
-        "X-Session-Token": session_token,
-        "Cookie": cookie,
-    }
     async with session.post(
         _SYNC_URL,
         data={
             "operation_name": "syncBudgetData",
-            "request_data": json.dumps(request_data),
+            "request_data": json.dumps(
+                {
+                    "budget_version_id": budget_version_id,
+                    "sync_type": "delta",
+                    "starting_device_knowledge": starting_device_knowledge,
+                    "ending_device_knowledge": ending_device_knowledge,
+                    "device_knowledge_of_server": device_knowledge_of_server,
+                    "calculated_entities_included": False,
+                    "schema_version": _SCHEMA_VERSION,
+                    "schema_version_of_knowledge": _SCHEMA_VERSION,
+                    "changed_entities": changed_entities,
+                }
+            ),
         },
-        headers=headers,
+        headers={
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-YNAB-Client-Request-Id": str(uuid.uuid4()),
+            "X-YNAB-Api-Version": _API_VERSION,
+            "X-YNAB-Device-OS": "web",
+            "X-Session-Token": session_token,
+            "Cookie": cookie,
+        },
     ) as response:
         response.raise_for_status()
         payload: dict[str, Any] = await response.json()
