@@ -629,18 +629,8 @@ async def test_resolve_session_cookie_raises_when_nothing_found(find_cookie_head
     assert "Firefox" in str(excinfo.value)
 
 
-@pytest.mark.session_token_env("from-env")
 @pytest.mark.asyncio
-async def test_resolve_session_token_uses_env_var(session_token_db_path):
-    assert (
-        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
-        == "from-env"
-    )
-
-
-@pytest.mark.session_token_env(None)
-@pytest.mark.asyncio
-async def test_resolve_session_token_uses_stored_token_when_no_env_var(
+async def test_resolve_session_token_uses_stored_token(
     session_token_db_path,
 ):
     await save_session_token(session_token_db_path, "from-store")
@@ -656,7 +646,6 @@ async def test_resolve_session_token_uses_stored_token_when_no_env_var(
     new_callable=AsyncMock,
     return_value="from-browser",
 )
-@pytest.mark.session_token_env(None)
 @pytest.mark.asyncio
 async def test_resolve_session_token_captures_and_persists_via_browser(
     capture_mock, session_token_db_path
@@ -675,7 +664,6 @@ async def test_resolve_session_token_captures_and_persists_via_browser(
     new_callable=AsyncMock,
     side_effect=TimeoutError,
 )
-@pytest.mark.session_token_env(None)
 @pytest.mark.asyncio
 async def test_resolve_session_token_raises_when_browser_capture_times_out(
     capture_mock, session_token_db_path

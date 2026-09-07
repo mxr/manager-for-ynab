@@ -1,5 +1,4 @@
 import asyncio
-import os
 import shutil
 import sys
 import tempfile
@@ -19,7 +18,6 @@ if TYPE_CHECKING:
     from playwright._impl._api_structures import SetCookieParam
     from playwright.async_api import BrowserType
 
-_ENV_SESSION_TOKEN = "YNAB_SESSION_TOKEN"
 _COOKIE_DOMAIN = "app.ynab.com"
 # The actual session cookie ("ys") is set on the apex domain, not app.ynab.com, so
 # both must be read - app.ynab.com-only cookies are just analytics/tracking ones.
@@ -97,11 +95,9 @@ async def _ensure_playwright_firefox_installed(firefox: BrowserType) -> None:
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-m", "playwright", "install", "firefox"
     )
-    returncode = await proc.wait()
-    if returncode != 0:
-        raise RuntimeError(
-            f"'playwright install firefox' failed with exit code {returncode}."
-        )
+    ret = await proc.wait()
+    if ret != 0:
+        raise RuntimeError(f"'playwright install firefox' failed with exit code {ret}.")
 
 
 def _cookie_header_to_playwright_cookies(cookie: str) -> list[SetCookieParam]:
@@ -133,23 +129,16 @@ async def capture_session_token_via_browser(
 
     async with async_playwright() as playwright:
         await _ensure_playwright_firefox_installed(playwright.firefox)
-        browser = await playwright.firefox.launch(headless=False)
-        try:
+        async with await playwright.firefox.launch(headless=False) as browser:
             context = await browser.new_context(user_agent=_FIREFOX_USER_AGENT)
             await context.add_cookies(_cookie_header_to_playwright_cookies(cookie))
             page = await context.new_page()
             page.on("request", _on_request)
             await page.goto("https://app.ynab.com/")
             return await asyncio.wait_for(token_future, timeout=timeout)
-        finally:
-            await browser.close()
 
 
 async def resolve_session_token(*, db: Path, cookie: str) -> str:
-    token = os.environ.get(_ENV_SESSION_TOKEN)
-    if token:
-        return token
-
     stored = await load_session_token(db)
     if stored:
         return stored
@@ -167,7 +156,6 @@ async def resolve_session_token(*, db: Path, cookie: str) -> str:
 
 
 __all__ = [
-    "_ENV_SESSION_TOKEN",
     "capture_session_token_via_browser",
     "find_browser_cookie_header",
     "resolve_session_cookie",

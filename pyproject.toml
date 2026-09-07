@@ -68,7 +68,6 @@ addopts = "--import-mode=importlib"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
   "token_env(value): override the YNAB access token env var for this test",
-  "session_token_env(value): set (or, if None, unset) the YNAB session token env var for this test",
 ]
 python_files = ["test.py"]
 
