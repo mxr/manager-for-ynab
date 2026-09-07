@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -14,8 +15,11 @@ from sqlite_export_for_ynab import sync
 from manager_for_ynab._auth import resolve_token
 from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
 from manager_for_ynab.delete_payees._browser_session import resolve_session_token
+from manager_for_ynab.delete_payees._session_token_store import (
+    default_session_token_db_path,
+)
 from manager_for_ynab.delete_payees._ynab_sync_api import (
-    delete_payee as delete_payee_entity,
+    delete_payees as delete_payees_batch,
 )
 
 if TYPE_CHECKING:
@@ -72,6 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Refresh the SQLite DB before using it.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Number of payees to delete per sync request.",
+    )
+    parser.add_argument(
+        "--session-token-db",
+        type=Path,
+        default=default_session_token_db_path(),
+        help=(
+            "Path to SQLite DB file used to cache the browser-captured "
+            "X-Session-Token, so it doesn't need to be recaptured every run."
+        ),
     )
     return parser
 
@@ -152,6 +171,8 @@ async def delete_payees(
     full_refresh: bool,
     should_sync: bool = True,
     token_override: str | None,
+    session_token_db: Path,
+    batch_size: int = 10,
 ) -> int:
     token = resolve_token(token_override)
 
@@ -195,32 +216,34 @@ async def delete_payees(
 
     try:
         cookie = await resolve_session_cookie()
-        session_token = resolve_session_token()
+        session_token = await resolve_session_token(db=session_token_db, cookie=cookie)
     except ValueError as err:
         print(err)
         return 1
 
     device_knowledge = 0
+    batches = itertools.batched(resolved_payees, batch_size, strict=False)
     async with aiohttp.ClientSession() as session:
-        for payee_id, payee_name in resolved_payees:
+        for batch in batches:
             try:
-                result = await delete_payee_entity(
+                result = await delete_payees_batch(
                     session,
                     cookie=cookie,
                     session_token=session_token,
                     budget_version_id=resolved_plan_id,
-                    payee_id=payee_id,
-                    payee_name=payee_name,
+                    payees=batch,
                     starting_device_knowledge=device_knowledge,
-                    ending_device_knowledge=device_knowledge + 1,
+                    ending_device_knowledge=device_knowledge + len(batch),
                     device_knowledge_of_server=server_knowledge,
                 )
             except (aiohttp.ClientError, RuntimeError) as err:
-                print(f"Failed to delete payee {payee_name!r}: {err}", file=sys.stderr)
+                names = ", ".join(repr(payee_name) for _, payee_name in batch)
+                print(f"Failed to delete payees {names}: {err}", file=sys.stderr)
                 return 1
-            device_knowledge += 1
+            device_knowledge += len(batch)
             server_knowledge = result.get("current_server_knowledge", server_knowledge)
-            print(f"Deleted payee {payee_name!r}.")
+            for _, payee_name in batch:
+                print(f"Deleted payee {payee_name!r}.")
 
     return 0
 
@@ -237,6 +260,8 @@ async def run(
         full_refresh=args.sqlite_export_for_ynab_full_refresh,
         should_sync=args.sync,
         token_override=token_override,
+        session_token_db=args.session_token_db,
+        batch_size=args.batch_size,
     )
 
 

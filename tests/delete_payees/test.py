@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import sys
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -14,13 +15,22 @@ from manager_for_ynab.delete_payees import _resolve_payees
 from manager_for_ynab.delete_payees import _resolve_plan_id
 from manager_for_ynab.delete_payees import delete_payees
 from manager_for_ynab.delete_payees import run
-from manager_for_ynab.delete_payees._browser_session import _ENV_SESSION_TOKEN
+from manager_for_ynab.delete_payees._browser_session import (
+    _cookie_header_to_playwright_cookies,
+)
+from manager_for_ynab.delete_payees._browser_session import (
+    _ensure_playwright_firefox_installed,
+)
 from manager_for_ynab.delete_payees._browser_session import _firefox_cookie_db_paths
 from manager_for_ynab.delete_payees._browser_session import _read_cookies_from_db
 from manager_for_ynab.delete_payees._browser_session import find_browser_cookie_header
 from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
 from manager_for_ynab.delete_payees._browser_session import resolve_session_token
-from manager_for_ynab.delete_payees._ynab_sync_api import delete_payee
+from manager_for_ynab.delete_payees._session_token_store import load_session_token
+from manager_for_ynab.delete_payees._session_token_store import save_session_token
+from manager_for_ynab.delete_payees._ynab_sync_api import (
+    delete_payees as delete_payees_batch_api,
+)
 from testing.fixtures import EMPLOYER_PAYEE_ID
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TRANSFER_PAYEE_ID
@@ -41,6 +51,11 @@ def db_path(tmp_path):
     path = tmp_path / "delete-payees.sqlite"
     _create_db(path)
     return path
+
+
+@pytest.fixture
+def session_token_db_path(tmp_path):
+    return tmp_path / "session-token.sqlite"
 
 
 @pytest.mark.asyncio
@@ -151,7 +166,9 @@ async def test_find_unused_payees_excludes_transfer_payees(db_path):
 
 @patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, capsys):
+async def test_delete_payees_dry_run_does_not_touch_session(
+    sync_mock, db_path, session_token_db_path, capsys
+):
     ret = await delete_payees(
         plan_id=None,
         payee_ids=[EMPLOYER_PAYEE_ID],
@@ -160,6 +177,7 @@ async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, 
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     out, _ = capsys.readouterr()
@@ -175,7 +193,7 @@ async def test_delete_payees_dry_run_does_not_touch_session(sync_mock, db_path, 
 @patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_syncs_db_first_when_should_sync(
-    sync_mock, db_path, capsys
+    sync_mock, db_path, session_token_db_path, capsys
 ):
     ret = await delete_payees(
         plan_id=None,
@@ -185,6 +203,7 @@ async def test_delete_payees_syncs_db_first_when_should_sync(
         full_refresh=False,
         should_sync=True,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     out, _ = capsys.readouterr()
@@ -195,7 +214,9 @@ async def test_delete_payees_syncs_db_first_when_should_sync(
 
 
 @pytest.mark.asyncio
-async def test_delete_payees_returns_one_when_resolution_fails(db_path):
+async def test_delete_payees_returns_one_when_resolution_fails(
+    db_path, session_token_db_path
+):
     ret = await delete_payees(
         plan_id=None,
         payee_ids=["nonexistent-id"],
@@ -204,13 +225,16 @@ async def test_delete_payees_returns_one_when_resolution_fails(db_path):
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     assert ret == 1
 
 
 @pytest.mark.asyncio
-async def test_delete_payees_reports_when_no_unused_payees_found(db_path, capsys):
+async def test_delete_payees_reports_when_no_unused_payees_found(
+    db_path, session_token_db_path, capsys
+):
     async with aiosqlite.connect(db_path) as con:
         await con.execute(
             "INSERT INTO transactions (id, plan_id, payee_id, approved, deleted) "
@@ -227,6 +251,7 @@ async def test_delete_payees_reports_when_no_unused_payees_found(db_path, capsys
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     out, _ = capsys.readouterr()
@@ -237,7 +262,7 @@ async def test_delete_payees_reports_when_no_unused_payees_found(db_path, capsys
 @patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_finds_unused_payees_when_ids_omitted(
-    sync_mock, db_path, capsys
+    sync_mock, db_path, session_token_db_path, capsys
 ):
     ret = await delete_payees(
         plan_id=None,
@@ -247,6 +272,7 @@ async def test_delete_payees_finds_unused_payees_when_ids_omitted(
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     out, _ = capsys.readouterr()
@@ -263,16 +289,66 @@ async def test_delete_payees_finds_unused_payees_when_ids_omitted(
 @patch(
     "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
 )
-@patch("manager_for_ynab.delete_payees.delete_payee_entity", new_callable=AsyncMock)
+@patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_delete_payees_for_real_calls_sync_api_for_each_payee(
-    delete_payee_entity_mock,
+async def test_delete_payees_for_real_batches_payees_in_one_request(
+    delete_payees_batch_mock,
     resolve_cookie_mock,
     resolve_session_token_mock,
     db_path,
+    session_token_db_path,
     capsys,
 ):
-    delete_payee_entity_mock.side_effect = [
+    delete_payees_batch_mock.return_value = {
+        "error": None,
+        "current_server_knowledge": 7020,
+    }
+
+    ret = await delete_payees(
+        plan_id=None,
+        payee_ids=[EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID],
+        for_real=True,
+        db=db_path,
+        full_refresh=False,
+        should_sync=False,
+        token_override="token",
+        session_token_db=session_token_db_path,
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    assert "Deleted payee 'Employer'." in out
+    assert "Deleted payee 'Transfer'." in out
+    delete_payees_batch_mock.assert_awaited_once()
+
+    _, kwargs = delete_payees_batch_mock.call_args
+    assert kwargs["payees"] == (
+        (EMPLOYER_PAYEE_ID, "Employer"),
+        (TRANSFER_PAYEE_ID, "Transfer"),
+    )
+    assert kwargs["starting_device_knowledge"] == 0
+    assert kwargs["ending_device_knowledge"] == 2
+    assert kwargs["device_knowledge_of_server"] == 7019
+
+
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_token",
+    return_value="session-token-value",
+)
+@patch(
+    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+)
+@patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_delete_payees_for_real_splits_into_configured_batch_size(
+    delete_payees_batch_mock,
+    resolve_cookie_mock,
+    resolve_session_token_mock,
+    db_path,
+    session_token_db_path,
+    capsys,
+):
+    delete_payees_batch_mock.side_effect = [
         {"error": None, "current_server_knowledge": 7020},
         {"error": None, "current_server_knowledge": 7021},
     ]
@@ -285,28 +361,32 @@ async def test_delete_payees_for_real_calls_sync_api_for_each_payee(
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
+        batch_size=1,
     )
 
     out, _ = capsys.readouterr()
     assert ret == 0
     assert "Deleted payee 'Employer'." in out
     assert "Deleted payee 'Transfer'." in out
-    assert delete_payee_entity_mock.await_count == 2
+    assert delete_payees_batch_mock.await_count == 2
 
-    first_call, second_call = delete_payee_entity_mock.call_args_list
-    assert first_call.kwargs["payee_id"] == EMPLOYER_PAYEE_ID
+    first_call, second_call = delete_payees_batch_mock.call_args_list
+    assert first_call.kwargs["payees"] == ((EMPLOYER_PAYEE_ID, "Employer"),)
     assert first_call.kwargs["starting_device_knowledge"] == 0
     assert first_call.kwargs["ending_device_knowledge"] == 1
     assert first_call.kwargs["device_knowledge_of_server"] == 7019
 
-    assert second_call.kwargs["payee_id"] == TRANSFER_PAYEE_ID
+    assert second_call.kwargs["payees"] == ((TRANSFER_PAYEE_ID, "Transfer"),)
     assert second_call.kwargs["starting_device_knowledge"] == 1
     assert second_call.kwargs["ending_device_knowledge"] == 2
     assert second_call.kwargs["device_knowledge_of_server"] == 7020
 
 
 @pytest.mark.asyncio
-async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, capsys):
+async def test_delete_payees_for_real_returns_one_when_never_synced(
+    tmp_path, session_token_db_path, capsys
+):
     path = tmp_path / "never-synced.sqlite"
     with sqlite3.connect(path) as con:
         execute_seed(con)
@@ -319,6 +399,7 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, ca
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     out, _ = capsys.readouterr()
@@ -332,7 +413,7 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(tmp_path, ca
 )
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
-    resolve_cookie_mock, db_path
+    resolve_cookie_mock, db_path, session_token_db_path
 ):
     ret = await delete_payees(
         plan_id=None,
@@ -342,6 +423,7 @@ async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     assert ret == 1
@@ -354,16 +436,17 @@ async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
 @patch(
     "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
 )
-@patch("manager_for_ynab.delete_payees.delete_payee_entity", new_callable=AsyncMock)
+@patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_reports_client_error(
-    delete_payee_entity_mock,
+    delete_payees_batch_mock,
     resolve_cookie_mock,
     resolve_session_token_mock,
     db_path,
+    session_token_db_path,
     capsys,
 ):
-    delete_payee_entity_mock.side_effect = aiohttp.ClientError("boom")
+    delete_payees_batch_mock.side_effect = aiohttp.ClientError("boom")
 
     ret = await delete_payees(
         plan_id=None,
@@ -373,11 +456,12 @@ async def test_delete_payees_for_real_reports_client_error(
         full_refresh=False,
         should_sync=False,
         token_override="token",
+        session_token_db=session_token_db_path,
     )
 
     _, err = capsys.readouterr()
     assert ret == 1
-    assert "Failed to delete payee 'Employer'" in err
+    assert "Failed to delete payees 'Employer'" in err
 
 
 @pytest.mark.token_env("")
@@ -433,14 +517,18 @@ async def test_read_cookies_from_db_filters_by_host(tmp_path):
         db_path,
         [
             (".app.ynab.com", "_ynab_api_session", "abc"),
-            ("app.ynab.com", "ys", "def"),
-            ("example.com", "other", "ghi"),
+            ("app.ynab.com", "g_state", "def"),
+            (".ynab.com", "ys", "ghi"),
+            ("ynab.com", "other_apex", "jkl"),
+            ("example.com", "other", "mno"),
         ],
     )
 
     assert await _read_cookies_from_db(db_path) == {
         "_ynab_api_session": "abc",
-        "ys": "def",
+        "g_state": "def",
+        "ys": "ghi",
+        "other_apex": "jkl",
     }
 
 
@@ -542,21 +630,130 @@ async def test_resolve_session_cookie_raises_when_nothing_found(find_cookie_head
 
 
 @pytest.mark.session_token_env("from-env")
-def test_resolve_session_token_uses_env_var():
-    assert resolve_session_token() == "from-env"
+@pytest.mark.asyncio
+async def test_resolve_session_token_uses_env_var(session_token_db_path):
+    assert (
+        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
+        == "from-env"
+    )
 
 
 @pytest.mark.session_token_env(None)
-def test_resolve_session_token_raises_when_missing():
-    with pytest.raises(ValueError) as excinfo:
-        resolve_session_token()
+@pytest.mark.asyncio
+async def test_resolve_session_token_uses_stored_token_when_no_env_var(
+    session_token_db_path,
+):
+    await save_session_token(session_token_db_path, "from-store")
 
-    assert _ENV_SESSION_TOKEN in str(excinfo.value)
+    assert (
+        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
+        == "from-store"
+    )
+
+
+@patch(
+    "manager_for_ynab.delete_payees._browser_session.capture_session_token_via_browser",
+    new_callable=AsyncMock,
+    return_value="from-browser",
+)
+@pytest.mark.session_token_env(None)
+@pytest.mark.asyncio
+async def test_resolve_session_token_captures_and_persists_via_browser(
+    capture_mock, session_token_db_path
+):
+    result = await resolve_session_token(
+        db=session_token_db_path, cookie="cookie-value"
+    )
+
+    assert result == "from-browser"
+    assert await load_session_token(session_token_db_path) == "from-browser"
+    capture_mock.assert_awaited_once_with(cookie="cookie-value")
+
+
+@patch(
+    "manager_for_ynab.delete_payees._browser_session.capture_session_token_via_browser",
+    new_callable=AsyncMock,
+    side_effect=TimeoutError,
+)
+@pytest.mark.session_token_env(None)
+@pytest.mark.asyncio
+async def test_resolve_session_token_raises_when_browser_capture_times_out(
+    capture_mock, session_token_db_path
+):
+    with pytest.raises(ValueError) as excinfo:
+        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
+
+    assert "Timed out" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_ensure_playwright_firefox_installed_skips_when_already_installed(
+    tmp_path,
+):
+    executable = tmp_path / "firefox"
+    executable.touch()
+    firefox = MagicMock(executable_path=str(executable))
+
+    with patch("asyncio.create_subprocess_exec") as create_subprocess_exec_mock:
+        await _ensure_playwright_firefox_installed(firefox)
+
+    create_subprocess_exec_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_playwright_firefox_installed_installs_when_missing(tmp_path):
+    executable = tmp_path / "firefox"
+    firefox = MagicMock(executable_path=str(executable))
+    proc_mock = AsyncMock()
+    proc_mock.wait.return_value = 0
+
+    with patch(
+        "asyncio.create_subprocess_exec", new_callable=AsyncMock
+    ) as create_subprocess_exec_mock:
+        create_subprocess_exec_mock.return_value = proc_mock
+        await _ensure_playwright_firefox_installed(firefox)
+
+    create_subprocess_exec_mock.assert_awaited_once_with(
+        sys.executable, "-m", "playwright", "install", "firefox"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ensure_playwright_firefox_installed_raises_when_install_fails(
+    tmp_path,
+):
+    executable = tmp_path / "firefox"
+    firefox = MagicMock(executable_path=str(executable))
+    proc_mock = AsyncMock()
+    proc_mock.wait.return_value = 1
+
+    with (
+        patch(
+            "asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=proc_mock,
+        ),
+        pytest.raises(RuntimeError) as excinfo,
+    ):
+        await _ensure_playwright_firefox_installed(firefox)
+
+    assert "exit code 1" in str(excinfo.value)
+
+
+def test_cookie_header_to_playwright_cookies():
+    cookies = _cookie_header_to_playwright_cookies("a=1; b=2")
+
+    assert cookies == [
+        {"name": "a", "value": "1", "domain": ".ynab.com", "path": "/"},
+        {"name": "b", "value": "2", "domain": ".ynab.com", "path": "/"},
+    ]
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload=None, *, status=200, text=""):
         self._payload = payload
+        self.status = status
+        self._text = text
 
     async def __aenter__(self):
         return self
@@ -564,29 +761,28 @@ class _FakeResponse:
     async def __aexit__(self, *exc_info):
         return False
 
-    def raise_for_status(self):
-        pass
-
     async def json(self):
         return self._payload
 
+    async def text(self):
+        return self._text
+
 
 @pytest.mark.asyncio
-async def test_delete_payee_sends_tombstone_delta():
+async def test_delete_payees_batch_api_sends_tombstone_delta():
     fake_session = MagicMock()
     fake_session.post = MagicMock(
         return_value=_FakeResponse({"error": None, "current_server_knowledge": 7020})
     )
 
-    result = await delete_payee(
+    result = await delete_payees_batch_api(
         fake_session,
         cookie="cookie-value",
         session_token="token-value",
         budget_version_id="plan-1",
-        payee_id="payee-1",
-        payee_name="Amazon Duplicate",
+        payees=[("payee-1", "Amazon Duplicate"), ("payee-2", "Employer")],
         starting_device_knowledge=5,
-        ending_device_knowledge=6,
+        ending_device_knowledge=7,
         device_knowledge_of_server=7019,
     )
 
@@ -597,35 +793,60 @@ async def test_delete_payee_sends_tombstone_delta():
     request_data = json.loads(kwargs["data"]["request_data"])
     assert request_data["budget_version_id"] == "plan-1"
     assert request_data["starting_device_knowledge"] == 5
-    assert request_data["ending_device_knowledge"] == 6
+    assert request_data["ending_device_knowledge"] == 7
     assert request_data["device_knowledge_of_server"] == 7019
     assert kwargs["headers"]["Cookie"] == "cookie-value"
     assert kwargs["headers"]["X-Session-Token"] == "token-value"
+    assert kwargs["headers"]["X-YNAB-Device-Id"]
 
-    payee_entity = request_data["changed_entities"]["be_payees"][0]
-    assert payee_entity["id"] == "payee-1"
-    assert payee_entity["is_tombstone"] is True
-    assert payee_entity["name"] == "Amazon Duplicate"
+    payee_entities = request_data["changed_entities"]["be_payees"]
+    assert payee_entities[0]["id"] == "payee-1"
+    assert payee_entities[0]["is_tombstone"] is True
+    assert payee_entities[0]["name"] == "Amazon Duplicate"
+    assert payee_entities[1]["id"] == "payee-2"
+    assert payee_entities[1]["name"] == "Employer"
 
 
 @pytest.mark.asyncio
-async def test_delete_payee_raises_on_error_response():
+async def test_delete_payees_batch_api_raises_on_error_response():
     fake_session = MagicMock()
     fake_session.post = MagicMock(
         return_value=_FakeResponse({"error": "not authorized"})
     )
 
     with pytest.raises(RuntimeError) as excinfo:
-        await delete_payee(
+        await delete_payees_batch_api(
             fake_session,
             cookie="cookie-value",
             session_token="token-value",
             budget_version_id="plan-1",
-            payee_id="payee-1",
-            payee_name="Amazon Duplicate",
+            payees=[("payee-1", "Amazon Duplicate")],
             starting_device_knowledge=0,
             ending_device_knowledge=1,
             device_knowledge_of_server=0,
         )
 
     assert "not authorized" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_delete_payees_batch_api_raises_with_body_on_http_error():
+    fake_session = MagicMock()
+    fake_session.post = MagicMock(
+        return_value=_FakeResponse(status=400, text="Bad Request details")
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await delete_payees_batch_api(
+            fake_session,
+            cookie="cookie-value",
+            session_token="token-value",
+            budget_version_id="plan-1",
+            payees=[("payee-1", "Amazon Duplicate")],
+            starting_device_knowledge=0,
+            ending_device_knowledge=1,
+            device_knowledge_of_server=0,
+        )
+
+    assert "400" in str(excinfo.value)
+    assert "Bad Request details" in str(excinfo.value)

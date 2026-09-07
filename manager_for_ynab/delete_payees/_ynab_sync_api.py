@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     import aiohttp
 
 _SYNC_URL = "https://app.ynab.com/api/v1/catalog"
@@ -46,12 +48,15 @@ async def _sync_budget_data(
             "X-Requested-With": "XMLHttpRequest",
             "X-YNAB-Client-Request-Id": str(uuid.uuid4()),
             "X-YNAB-Api-Version": _API_VERSION,
+            "X-YNAB-Device-Id": str(uuid.uuid4()),
             "X-YNAB-Device-OS": "web",
             "X-Session-Token": session_token,
             "Cookie": cookie,
         },
     ) as response:
-        response.raise_for_status()
+        if response.status >= 400:
+            body = await response.text()
+            raise RuntimeError(f"YNAB rejected sync request: {response.status} {body}")
         payload: dict[str, Any] = await response.json()
 
     if e := payload.get("error"):
@@ -78,14 +83,13 @@ def _build_payee_tombstone(payee_id: str, payee_name: str) -> dict[str, Any]:
     }
 
 
-async def delete_payee(
+async def delete_payees(
     session: aiohttp.ClientSession,
     *,
     cookie: str,
     session_token: str,
     budget_version_id: str,
-    payee_id: str,
-    payee_name: str,
+    payees: Sequence[tuple[str, str]],
     starting_device_knowledge: int,
     ending_device_knowledge: int,
     device_knowledge_of_server: int,
@@ -98,8 +102,13 @@ async def delete_payee(
         starting_device_knowledge=starting_device_knowledge,
         ending_device_knowledge=ending_device_knowledge,
         device_knowledge_of_server=device_knowledge_of_server,
-        changed_entities={"be_payees": [_build_payee_tombstone(payee_id, payee_name)]},
+        changed_entities={
+            "be_payees": [
+                _build_payee_tombstone(payee_id, payee_name)
+                for payee_id, payee_name in payees
+            ]
+        },
     )
 
 
-__all__ = ["delete_payee"]
+__all__ = ["delete_payees"]
