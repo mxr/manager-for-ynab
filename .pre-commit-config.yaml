@@ -1,3 +1,6 @@
+ci:
+  skip: [mypy, pyright, ty]  # venv is too big; runs with github action instead
+
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
