@@ -1,3 +1,8 @@
+default_language_version:
+  python: python3.14
+ci:
+  skip: [mypy, pyright, ty]  # venv is too big; runs with github action instead
+
 repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
@@ -46,7 +51,6 @@ repos:
     - rich>=10
     - sqlite-export-for-ynab~=2.9.6
     - types-setuptools
-    language_version: python3.14
 - repo: https://github.com/mxr/sync-typing-deps
   rev: 896a112838d434d8e607d4d636323c5914ab933f  # frozen: v0.7.0
   hooks:

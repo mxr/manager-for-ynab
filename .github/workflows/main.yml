@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       project_files: ${{ steps.filter.outputs.project_files }}
+      typing_linting_files: ${{ steps.filter.outputs.typing_linting_files }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -20,6 +21,9 @@ jobs:
       id: filter
       with:
         filters: |
+          typing_linting_files:
+            - '**/*.py'
+            - .pre-commit-config.yaml
           project_files:
             - .github/workflows/main.yml
             - '**/*.py'
@@ -28,6 +32,25 @@ jobs:
             - '**/*requirements*.txt'
             - '**/setup.cfg'
             - setup.py
+  pre-commit-typing-real:
+    needs: [changes]
+    if: needs.changes.outputs.typing_linting_files == 'true'
+    uses: mxr/workflows/.github/workflows/pre-commit-typing.yml@a762c9558b6ece45521c72b5c91c73fad62bd3e6 # v0.1.4
+  pre-commit-typing:
+    needs: [changes, pre-commit-typing-real]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - env:
+        TYPING_LINTING_FILES: ${{ needs.changes.outputs.typing_linting_files }}
+        PRE_COMMIT_TYPING_REAL_RESULT: ${{ needs.pre-commit-typing-real.result }}
+      run: |
+        if [ "$TYPING_LINTING_FILES" != "true" ]; then
+          exit 0
+        fi
+        if [ "$PRE_COMMIT_TYPING_REAL_RESULT" != "success" ]; then
+          exit 1
+        fi
   main-real:
     needs: [changes]
     if: needs.changes.outputs.project_files == 'true'
