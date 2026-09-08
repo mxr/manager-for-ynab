@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import sys
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -8,6 +9,9 @@ from unittest.mock import patch
 import aiohttp
 import aiosqlite
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from manager_for_ynab.delete_payees import _find_unused_payees
 from manager_for_ynab.delete_payees import _load_server_knowledge
@@ -23,6 +27,9 @@ from manager_for_ynab.delete_payees._browser_session import (
 )
 from manager_for_ynab.delete_payees._browser_session import _firefox_cookie_db_paths
 from manager_for_ynab.delete_payees._browser_session import _read_cookies_from_db
+from manager_for_ynab.delete_payees._browser_session import (
+    capture_session_token_via_browser,
+)
 from manager_for_ynab.delete_payees._browser_session import find_browser_cookie_header
 from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
 from manager_for_ynab.delete_payees._browser_session import resolve_session_token
@@ -735,6 +742,102 @@ def test_cookie_header_to_playwright_cookies():
         {"name": "a", "value": "1", "domain": ".ynab.com", "path": "/"},
         {"name": "b", "value": "2", "domain": ".ynab.com", "path": "/"},
     ]
+
+
+class _AsyncContextManager:
+    def __init__(self, value):
+        self._value = value
+
+    async def __aenter__(self):
+        return self._value
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
+@patch(
+    "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
+    new_callable=AsyncMock,
+)
+@patch("playwright.async_api.async_playwright")
+@pytest.mark.asyncio
+async def test_capture_session_token_via_browser_returns_captured_token(
+    async_playwright_mock, ensure_firefox_mock
+):
+    page_mock = MagicMock()
+    captured_handlers: dict[str, Callable[[MagicMock], None]] = {}
+    page_mock.on = MagicMock(
+        side_effect=lambda event, handler: captured_handlers.__setitem__(event, handler)
+    )
+
+    async def _goto(url):
+        no_token_request = MagicMock()
+        no_token_request.headers.get.return_value = None
+        captured_handlers["request"](no_token_request)
+
+        token_request = MagicMock()
+        token_request.headers.get.return_value = "captured-token"
+        captured_handlers["request"](token_request)
+
+        captured_handlers["request"](token_request)
+
+    page_mock.goto = AsyncMock(side_effect=_goto)
+
+    context_mock = MagicMock()
+    context_mock.add_cookies = AsyncMock()
+    context_mock.new_page = AsyncMock(return_value=page_mock)
+
+    browser_mock = MagicMock()
+    browser_mock.new_context = AsyncMock(return_value=context_mock)
+
+    playwright_mock = MagicMock()
+    playwright_mock.firefox.launch = AsyncMock(
+        return_value=_AsyncContextManager(browser_mock)
+    )
+
+    async_playwright_mock.return_value = _AsyncContextManager(playwright_mock)
+
+    result = await capture_session_token_via_browser(cookie="a=1; b=2")
+
+    assert result == "captured-token"
+    context_mock.add_cookies.assert_awaited_once_with(
+        [
+            {"name": "a", "value": "1", "domain": ".ynab.com", "path": "/"},
+            {"name": "b", "value": "2", "domain": ".ynab.com", "path": "/"},
+        ]
+    )
+    page_mock.goto.assert_awaited_once_with("https://app.ynab.com/")
+
+
+@patch(
+    "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
+    new_callable=AsyncMock,
+)
+@patch("playwright.async_api.async_playwright")
+@pytest.mark.asyncio
+async def test_capture_session_token_via_browser_raises_on_timeout(
+    async_playwright_mock, ensure_firefox_mock
+):
+    page_mock = MagicMock()
+    page_mock.on = MagicMock()
+    page_mock.goto = AsyncMock()
+
+    context_mock = MagicMock()
+    context_mock.add_cookies = AsyncMock()
+    context_mock.new_page = AsyncMock(return_value=page_mock)
+
+    browser_mock = MagicMock()
+    browser_mock.new_context = AsyncMock(return_value=context_mock)
+
+    playwright_mock = MagicMock()
+    playwright_mock.firefox.launch = AsyncMock(
+        return_value=_AsyncContextManager(browser_mock)
+    )
+
+    async_playwright_mock.return_value = _AsyncContextManager(playwright_mock)
+
+    with pytest.raises(TimeoutError):
+        await capture_session_token_via_browser(cookie="a=1", timeout=0)
 
 
 class _FakeResponse:
