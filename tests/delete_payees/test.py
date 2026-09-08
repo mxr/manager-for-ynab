@@ -914,7 +914,7 @@ async def test_delete_payees_batch_api_sends_tombstone_delta():
 )
 @pytest.mark.asyncio
 async def test_delete_payees_batch_api_raises_on_error(
-    fake_response, expected_substrings
+    fake_response, expected_substrings, subtests
 ):
     fake_session = MagicMock()
     fake_session.post = MagicMock(return_value=fake_response)
@@ -932,4 +932,5 @@ async def test_delete_payees_batch_api_raises_on_error(
         )
 
     for substring in expected_substrings:
-        assert substring in str(excinfo.value)
+        with subtests.test(substring=substring):
+            assert substring in str(excinfo.value)
