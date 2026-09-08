@@ -7,7 +7,12 @@ has no payee-delete endpoint. This command instead calls the same undocumented
 `syncBudgetData` sync endpoint (`POST https://app.ynab.com/api/v1/catalog`) that app.ynab.com's web UI uses, marking each payee entity as a tombstone. Because it's an undocumented browser endpoint, it needs your logged-in browser
 session to delete unused payees.
 
-With no args, it outputs the unused payees as a table (ID and name). Alternatively you can select specific payees with `--payee-ids`. If you pass `--for-real` it will delete the payees instead of just printing. Payees are deleted in batches of `--batch-size` (default 10) per request.
+With no args, it outputs the unused payees as a table (ID and name): payees not
+referenced by any transaction, subtransaction, scheduled transaction, or scheduled
+subtransaction, excluding transfer payees and balance-adjustment payees.
+Alternatively you can select specific payees with `--payee-ids`. If you pass
+`--for-real` it will delete the payees instead of just printing. Payees are deleted
+in batches of `--batch-size` (default 10) per request.
 
 ## Auth
 

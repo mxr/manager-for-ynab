@@ -53,7 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Payee ID to delete. Repeat for multiple payees. If omitted, finds all "
             "unused payee IDs in the plan: payees not referenced by any "
             "transaction, subtransaction, scheduled transaction, or scheduled "
-            "subtransaction."
+            "subtransaction, excluding transfer payees and balance-adjustment "
+            "payees."
         ),
     )
     parser.add_argument(
