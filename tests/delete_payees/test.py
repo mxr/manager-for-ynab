@@ -26,7 +26,7 @@ from manager_for_ynab.delete_payees._browser_session import (
     _ensure_playwright_firefox_installed,
 )
 from manager_for_ynab.delete_payees._browser_session import _firefox_cookie_db_paths
-from manager_for_ynab.delete_payees._browser_session import _read_cookies_from_db
+from manager_for_ynab.delete_payees._browser_session import _read_session_cookie_value
 from manager_for_ynab.delete_payees._browser_session import (
     capture_session_token_via_browser,
 )
@@ -517,26 +517,32 @@ def _create_cookie_db(path, cookies):
         )
 
 
+@pytest.mark.parametrize(
+    ("cookies", "expected"),
+    [
+        pytest.param(
+            [
+                ("app.ynab.com", "_ynab_api_session", "abc"),
+                (".app.ynab.com", "_ynab_api_session", "wrong-host"),
+                ("app.ynab.com", "g_state", "def"),
+                ("example.com", "_ynab_api_session", "wrong-host"),
+            ],
+            "abc",
+            id="matches_exact_host_and_name",
+        ),
+        pytest.param(
+            [("example.com", "_ynab_api_session", "abc")],
+            None,
+            id="no_match_returns_none",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_read_cookies_from_db_filters_by_host(tmp_path):
+async def test_read_session_cookie_value(tmp_path, cookies, expected):
     db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(
-        db_path,
-        [
-            (".app.ynab.com", "_ynab_api_session", "abc"),
-            ("app.ynab.com", "g_state", "def"),
-            (".ynab.com", "ys", "ghi"),
-            ("ynab.com", "other_apex", "jkl"),
-            ("example.com", "other", "mno"),
-        ],
-    )
+    _create_cookie_db(db_path, cookies)
 
-    assert await _read_cookies_from_db(db_path) == {
-        "_ynab_api_session": "abc",
-        "g_state": "def",
-        "ys": "ghi",
-        "other_apex": "jkl",
-    }
+    assert await _read_session_cookie_value(db_path) == expected
 
 
 @patch("manager_for_ynab.delete_payees._browser_session.Path.home")
@@ -579,14 +585,14 @@ async def test_find_browser_cookie_header_returns_none_without_profiles(
 
 @patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
 @pytest.mark.asyncio
-async def test_find_browser_cookie_header_joins_cookies(db_paths_mock, tmp_path):
+async def test_find_browser_cookie_header_returns_cookie_header(
+    db_paths_mock, tmp_path
+):
     db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(
-        db_path, [(".app.ynab.com", "a", "1"), (".app.ynab.com", "b", "2")]
-    )
+    _create_cookie_db(db_path, [("app.ynab.com", "_ynab_api_session", "1")])
     db_paths_mock.return_value = [db_path]
 
-    assert await find_browser_cookie_header() == "a=1; b=2"
+    assert await find_browser_cookie_header() == "_ynab_api_session=1"
 
 
 @patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
@@ -595,10 +601,10 @@ async def test_find_browser_cookie_header_skips_unreadable_db(db_paths_mock, tmp
     bad_db = tmp_path / "bad.sqlite"
     bad_db.write_text("not a sqlite file")
     good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [(".app.ynab.com", "a", "1")])
+    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "1")])
     db_paths_mock.return_value = [bad_db, good_db]
 
-    assert await find_browser_cookie_header() == "a=1"
+    assert await find_browser_cookie_header() == "_ynab_api_session=1"
 
 
 @patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
@@ -607,12 +613,12 @@ async def test_find_browser_cookie_header_skips_db_with_no_matching_cookies(
     db_paths_mock, tmp_path
 ):
     empty_db = tmp_path / "empty.sqlite"
-    _create_cookie_db(empty_db, [("example.com", "a", "1")])
+    _create_cookie_db(empty_db, [("example.com", "_ynab_api_session", "1")])
     good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [(".app.ynab.com", "b", "2")])
+    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "2")])
     db_paths_mock.return_value = [empty_db, good_db]
 
-    assert await find_browser_cookie_header() == "b=2"
+    assert await find_browser_cookie_header() == "_ynab_api_session=2"
 
 
 @patch(
@@ -695,44 +701,37 @@ async def test_ensure_playwright_firefox_installed_skips_when_already_installed(
     create_subprocess_exec_mock.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "expected_error"),
+    [
+        pytest.param(0, None, id="succeeds"),
+        pytest.param(1, "exit code 1", id="raises_on_nonzero_exit"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_ensure_playwright_firefox_installed_installs_when_missing(tmp_path):
-    executable = tmp_path / "firefox"
-    firefox = MagicMock(executable_path=str(executable))
-    proc_mock = AsyncMock()
-    proc_mock.wait.return_value = 0
-
-    with patch(
-        "asyncio.create_subprocess_exec", new_callable=AsyncMock
-    ) as create_subprocess_exec_mock:
-        create_subprocess_exec_mock.return_value = proc_mock
-        await _ensure_playwright_firefox_installed(firefox)
-
-    create_subprocess_exec_mock.assert_awaited_once_with(
-        sys.executable, "-m", "playwright", "install", "firefox"
-    )
-
-
-@pytest.mark.asyncio
-async def test_ensure_playwright_firefox_installed_raises_when_install_fails(
-    tmp_path,
+async def test_ensure_playwright_firefox_installed_when_missing(
+    tmp_path, exit_code, expected_error
 ):
     executable = tmp_path / "firefox"
     firefox = MagicMock(executable_path=str(executable))
     proc_mock = AsyncMock()
-    proc_mock.wait.return_value = 1
+    proc_mock.wait.return_value = exit_code
 
-    with (
-        patch(
-            "asyncio.create_subprocess_exec",
-            new_callable=AsyncMock,
-            return_value=proc_mock,
-        ),
-        pytest.raises(RuntimeError) as excinfo,
-    ):
-        await _ensure_playwright_firefox_installed(firefox)
+    with patch(
+        "asyncio.create_subprocess_exec",
+        new_callable=AsyncMock,
+        return_value=proc_mock,
+    ) as create_subprocess_exec_mock:
+        if expected_error is None:
+            await _ensure_playwright_firefox_installed(firefox)
+        else:
+            with pytest.raises(RuntimeError) as excinfo:
+                await _ensure_playwright_firefox_installed(firefox)
+            assert expected_error in str(excinfo.value)
 
-    assert "exit code 1" in str(excinfo.value)
+    create_subprocess_exec_mock.assert_awaited_once_with(
+        sys.executable, "-m", "playwright", "install", "firefox"
+    )
 
 
 def test_cookie_header_to_playwright_cookies():
@@ -898,12 +897,27 @@ async def test_delete_payees_batch_api_sends_tombstone_delta():
     assert payee_entities[1]["name"] == "Employer"
 
 
+@pytest.mark.parametrize(
+    ("fake_response", "expected_substrings"),
+    [
+        pytest.param(
+            _FakeResponse({"error": "not authorized"}),
+            ["not authorized"],
+            id="error_in_response_body",
+        ),
+        pytest.param(
+            _FakeResponse(status=400, text="Bad Request details"),
+            ["400", "Bad Request details"],
+            id="http_error_status",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_delete_payees_batch_api_raises_on_error_response():
+async def test_delete_payees_batch_api_raises_on_error(
+    fake_response, expected_substrings
+):
     fake_session = MagicMock()
-    fake_session.post = MagicMock(
-        return_value=_FakeResponse({"error": "not authorized"})
-    )
+    fake_session.post = MagicMock(return_value=fake_response)
 
     with pytest.raises(RuntimeError) as excinfo:
         await delete_payees_batch_api(
@@ -917,27 +931,5 @@ async def test_delete_payees_batch_api_raises_on_error_response():
             device_knowledge_of_server=0,
         )
 
-    assert "not authorized" in str(excinfo.value)
-
-
-@pytest.mark.asyncio
-async def test_delete_payees_batch_api_raises_with_body_on_http_error():
-    fake_session = MagicMock()
-    fake_session.post = MagicMock(
-        return_value=_FakeResponse(status=400, text="Bad Request details")
-    )
-
-    with pytest.raises(RuntimeError) as excinfo:
-        await delete_payees_batch_api(
-            fake_session,
-            cookie="cookie-value",
-            session_token="token-value",
-            budget_version_id="plan-1",
-            payees=[("payee-1", "Amazon Duplicate")],
-            starting_device_knowledge=0,
-            ending_device_knowledge=1,
-            device_knowledge_of_server=0,
-        )
-
-    assert "400" in str(excinfo.value)
-    assert "Bad Request details" in str(excinfo.value)
+    for substring in expected_substrings:
+        assert substring in str(excinfo.value)

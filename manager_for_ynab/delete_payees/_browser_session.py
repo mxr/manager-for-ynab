@@ -18,9 +18,6 @@ if TYPE_CHECKING:
     from playwright._impl._api_structures import SetCookieParam
     from playwright.async_api import BrowserType
 
-_COOKIE_DOMAIN = "app.ynab.com"
-# The actual session cookie ("ys") is set on the apex domain, not app.ynab.com, so
-# both must be read - app.ynab.com-only cookies are just analytics/tracking ones.
 _APEX_COOKIE_DOMAIN = "ynab.com"
 _SESSION_TOKEN_HEADER = "x-session-token"
 _BROWSER_CAPTURE_TIMEOUT_SECONDS = 300
@@ -47,32 +44,28 @@ def _firefox_cookie_db_paths() -> list[Path]:
     )
 
 
-async def _read_cookies_from_db(db_path: Path) -> dict[str, str]:
+async def _read_session_cookie_value(db_path: Path) -> str | None:
     # Firefox holds cookies.sqlite open while running, so copy it before reading.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_copy = Path(tmp) / "cookies.sqlite"
         shutil.copy2(db_path, tmp_copy)
         async with aiosqlite.connect(tmp_copy) as con:
             cur = await con.execute(
-                "SELECT name, value FROM moz_cookies WHERE host IN (?, ?, ?, ?)",
-                (
-                    _COOKIE_DOMAIN,
-                    f".{_COOKIE_DOMAIN}",
-                    _APEX_COOKIE_DOMAIN,
-                    f".{_APEX_COOKIE_DOMAIN}",
-                ),
+                "SELECT value FROM moz_cookies "
+                "WHERE host = 'app.ynab.com' AND name = '_ynab_api_session'"
             )
-            return {row[0]: row[1] for row in await cur.fetchall()}
+            row = await cur.fetchone()
+            return str(row[0]) if row else None
 
 
 async def find_browser_cookie_header() -> str | None:
     for db_path in _firefox_cookie_db_paths():
         try:
-            cookies = await _read_cookies_from_db(db_path)
+            value = await _read_session_cookie_value(db_path)
         except aiosqlite.Error:
             continue
-        if cookies:
-            return "; ".join(f"{name}={value}" for name, value in cookies.items())
+        if value:
+            return f"_ynab_api_session={value}"
     return None
 
 

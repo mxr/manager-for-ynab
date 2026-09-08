@@ -9,7 +9,7 @@ _PACKAGE = "manager-for-ynab"
 def default_session_token_db_path() -> Path:
     xdg_data_home = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
-    return base / _PACKAGE / "session_token.sqlite"
+    return base / _PACKAGE / "session-token.sqlite"
 
 
 async def load_session_token(db: Path) -> str | None:

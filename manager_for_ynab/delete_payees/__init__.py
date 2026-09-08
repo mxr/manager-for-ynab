@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import itertools
 import sys
 from importlib.resources import files
@@ -187,14 +188,18 @@ async def delete_payees(
         async with aiosqlite.connect(db) as con:
             con.row_factory = aiosqlite.Row
             resolved_plan_id = await _resolve_plan_id(con, plan_id)
-            if payee_ids:
-                resolved_payees = await _resolve_payees(
-                    con, resolved_plan_id, payee_ids
-                )
-            else:
-                resolved_payees = await _find_unused_payees(con, resolved_plan_id)
-            server_knowledge = (
-                await _load_server_knowledge(con, resolved_plan_id) if for_real else 0
+            payees_coro = (
+                _resolve_payees(con, resolved_plan_id, payee_ids)
+                if payee_ids
+                else _find_unused_payees(con, resolved_plan_id)
+            )
+            knowledge_coro = (
+                _load_server_knowledge(con, resolved_plan_id)
+                if for_real
+                else asyncio.sleep(0, result=0)
+            )
+            resolved_payees, server_knowledge = await asyncio.gather(
+                payees_coro, knowledge_coro
             )
     except RuntimeError as err:
         print(err)
