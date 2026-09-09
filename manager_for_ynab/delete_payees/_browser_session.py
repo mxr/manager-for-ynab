@@ -9,7 +9,8 @@ import aiosqlite
 
 # Playwright inspects event-handler signatures at runtime (even under Python 3.14's
 # lazy annotations), so Request must be a real import, not a TYPE_CHECKING-only one.
-from playwright.async_api import Request  # noqa: TC002
+from playwright.async_api import Request
+from playwright.async_api import async_playwright
 
 from manager_for_ynab.delete_payees._session_token_store import load_session_token
 from manager_for_ynab.delete_payees._session_token_store import save_session_token
@@ -103,14 +104,6 @@ def _cookie_header_to_playwright_cookies(cookie: str) -> list[SetCookieParam]:
 async def capture_session_token_via_browser(
     *, cookie: str, timeout: float = _BROWSER_CAPTURE_TIMEOUT_SECONDS
 ) -> str:
-    # X-Session-Token is minted by app.ynab.com's own JS after login and never shows
-    # up in a response body, so the only way to get it without a human copy-pasting
-    # it is to drive a real browser and read it off an outgoing request. Seeding the
-    # already-valid Firefox session cookie skips the login form entirely - actually
-    # logging in from Playwright's browser (different fingerprint, no history) is
-    # what trips YNAB's new-device/fraud check, not merely loading the app.
-    from playwright.async_api import async_playwright
-
     token_future = asyncio.Future[str]()
 
     def _on_request(request: Request) -> None:
