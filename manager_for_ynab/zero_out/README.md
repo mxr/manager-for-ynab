@@ -2,7 +2,8 @@
 
 ## What This Does
 
-`manager-for-ynab zero-out` zeroes a category's planned amount across a month range. It previews the affected months by default and only updates YNAB when you pass `--for-real`.
+`manager-for-ynab zero-out` zeroes a category's planned amount across a month range. It previews the affected months by
+default and only updates YNAB when you pass `--for-real`.
 
 Category group and category name lookups use case-insensitive regex search.
 

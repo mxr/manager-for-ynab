@@ -2,7 +2,8 @@
 
 ## What This Does
 
-`manager-for-ynab pending-income` finds uncleared positive transactions dated before today in the current month and moves them to today. By default it only previews the transactions it found.
+`manager-for-ynab pending-income` finds uncleared positive transactions dated before today in the current month and
+moves them to today. By default it only previews the transactions it found.
 
 ## Usage
 
@@ -30,4 +31,5 @@ Exclude already matched transactions (to avoid changing the date once YNAB picks
 $ manager-for-ynab pending-income --skip-matched
 ```
 
-By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to use the existing database contents without syncing.
+By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to
+use the existing database contents without syncing.
