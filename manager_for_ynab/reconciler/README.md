@@ -2,7 +2,10 @@
 
 ## What This Does
 
-When YNAB imports your transactions and balances stay in sync, reconciliation is straightforward. When they get out of sync, finding the right set of transactions to clear can be tedious. `manager-for-ynab reconciler` finds the unreconciled YNAB transactions that bring an account to a target balance, then either prints them or reconciles them through the YNAB API.
+When YNAB imports your transactions and balances stay in sync, reconciliation is straightforward. When they get out of
+sync, finding the right set of transactions to clear can be tedious. `manager-for-ynab reconciler` finds the
+unreconciled YNAB transactions that bring an account to a target balance, then either prints them or reconciles them
+through the YNAB API.
 
 Suppose you want to reconcile a credit card account containing `1234` to `$1,471.32`:
 
@@ -10,13 +13,15 @@ Suppose you want to reconcile a credit card account containing `1234` to `$1,471
 $ manager-for-ynab reconciler --account-like 1234 --target 1471.32 --for-real
 ```
 
-By default, bare account targeting strings are wrapped in `%...%`, so `1234` behaves like a substring match. If you want explicit SQL `LIKE` behavior, include `%` or `_` yourself.
+By default, bare account targeting strings are wrapped in `%...%`, so `1234` behaves like a substring match. If you want
+explicit SQL `LIKE` behavior, include `%` or `_` yourself.
 
 ## Usage
 
 ### Token
 
-Provision a [YNAB Personal Access Token](https://api.ynab.com/#personal-access-tokens) and save it as an environment variable.
+Provision a [YNAB Personal Access Token](https://api.ynab.com/#personal-access-tokens) and save it as an environment
+variable.
 
 ```console
 $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
@@ -42,14 +47,16 @@ Process multiple accounts in one run with *batch mode*:
 $ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking=500' 'Credit=290' --for-real
 ```
 
-Prompt for the targets interactively with *interactive batch mode* (good for storing the list of account targets in your history, without needing to delete the values when retrieving them):
+Prompt for the targets interactively with *interactive batch mode* (good for storing the list of account targets in your
+history, without needing to delete the values when retrieving them):
 
 ```console
 $ manager-for-ynab reconciler --mode interactive-batch --account-likes Checking "Credit Card" --for-real
 Target balances in matching order, separated by spaces: 500 290
 ```
 
-By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to use the existing database contents without syncing.
+By default, the command refreshes the local sqlite-export-for-ynab database before reading from it. Pass `--no-sync` to
+use the existing database contents without syncing.
 
 ### All Options
 
