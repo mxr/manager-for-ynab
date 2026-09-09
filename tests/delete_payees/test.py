@@ -758,7 +758,7 @@ class _AsyncContextManager:
     "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
     new_callable=AsyncMock,
 )
-@patch("playwright.async_api.async_playwright")
+@patch("manager_for_ynab.delete_payees._browser_session.async_playwright")
 @pytest.mark.asyncio
 async def test_capture_session_token_via_browser_returns_captured_token(
     async_playwright_mock, ensure_firefox_mock
@@ -812,7 +812,7 @@ async def test_capture_session_token_via_browser_returns_captured_token(
     "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
     new_callable=AsyncMock,
 )
-@patch("playwright.async_api.async_playwright")
+@patch("manager_for_ynab.delete_payees._browser_session.async_playwright")
 @pytest.mark.asyncio
 async def test_capture_session_token_via_browser_raises_on_timeout(
     async_playwright_mock, ensure_firefox_mock
