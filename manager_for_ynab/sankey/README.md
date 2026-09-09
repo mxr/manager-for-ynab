@@ -11,4 +11,5 @@ $ manager-for-ynab sankey --start 2026-01-01 --end 2026-01-31 --sort-by amount
 $ manager-for-ynab sankey --start 2026-01-01 --end 2026-01-31 --no-sync
 ```
 
-By default, the command syncs the local sqlite-export-for-ynab database, uses 1970-01-01 through today, sorts nodes alphabetically, and writes ECharts HTML to stdout.
+By default, the command syncs the local sqlite-export-for-ynab database, uses 1970-01-01 through today, sorts nodes
+alphabetically, and writes ECharts HTML to stdout.

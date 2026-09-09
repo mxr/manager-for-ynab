@@ -14,6 +14,7 @@ repos:
   rev: 2d496dbc18e31b83a1596685347ffe0b6041daf0  # frozen: 1.0.0
   hooks:
   - id: mdformat
+    args: [--number, --wrap, '120']
     additional_dependencies:
     - mdformat-gfm
 - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
