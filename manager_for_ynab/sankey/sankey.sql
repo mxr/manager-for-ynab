@@ -43,7 +43,7 @@ WITH filtered_transactions AS (
         , category_group_name
         , category_id
         , category_name
-        , category_name AS payee_name
+        , payee_name
         , SUM(amount) AS amount
         , MIN("date") AS "date"
     FROM filtered_transactions
@@ -53,6 +53,7 @@ WITH filtered_transactions AS (
         , category_group_name
         , category_id
         , category_name
+        , payee_name
     HAVING SUM(amount) != 0
 )
 

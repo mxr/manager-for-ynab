@@ -29,7 +29,10 @@ _PACKAGE = "manager-for-ynab sankey"
 _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _MIN_FIGURE_HEIGHT = 1000
+_PX_PER_NODE = 30
+_NODE_GAP = 24
 _MIN_LINK_VALUE_RATIO = 0.02
+_PADDED_KEY_PREFIXES = ("category_group:", "category:")
 # pyecharts treats ThemeType.DARK as a builtin and never emits a <script> tag for it,
 # so echarts.init() silently falls back to the default theme. Load it ourselves.
 # https://github.com/pyecharts/pyecharts/issues/2478
@@ -76,6 +79,7 @@ class SankeyData:
     targets: list[int]
     values: list[Decimal]
     category_count: int
+    max_stage_size: int
 
 
 @dataclass(frozen=True)
@@ -265,7 +269,11 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
     category_income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
     spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
+    spending_payee: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(
+        Decimal
+    )
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
+    payees_by_category: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
     def add_node(node: SankeyNode) -> None:
         indexes[node] = len(labels)
@@ -294,8 +302,11 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
             f"category_group:{row.category_group_id}", row.category_group_name
         )
         category = SankeyNode(f"category:{row.category_id}", row.category_name)
+        payee = SankeyNode(f"payee:{row.category_id}:{row.payee_name}", row.payee_name)
         spending[(category_group, category)] += row.amount
+        spending_payee[(category, payee)] += row.amount
         categories_by_group[category_group].add(category)
+        payees_by_category[category].add(payee)
 
     group_totals = {
         group: sum(
@@ -335,8 +346,24 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
             categories_by_group[group], key=lambda node: node.label.casefold()
         )
 
+    def sorted_payees(category: SankeyNode) -> list[SankeyNode]:
+        if sort_by == SortBy.AMOUNT:
+            return sorted(
+                payees_by_category[category],
+                key=lambda node: (
+                    -spending_payee[(category, node)],
+                    node.label.casefold(),
+                ),
+            )
+        return sorted(
+            payees_by_category[category], key=lambda node: node.label.casefold()
+        )
+
     category_nodes = [
         category for group in group_nodes for category in sorted_categories(group)
+    ]
+    payee_nodes = [
+        payee for category in category_nodes for payee in sorted_payees(category)
     ]
     for node in income_nodes:
         add_node(node)
@@ -350,6 +377,8 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     for node in group_nodes:
         add_node(node)
     for node in category_nodes:
+        add_node(node)
+    for node in payee_nodes:
         add_node(node)
 
     for node in income_nodes:
@@ -368,6 +397,8 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         links[(income_node, group)] += group_totals[group]
         for category in sorted_categories(group):
             links[(group, category)] += spending[(group, category)]
+            for payee in sorted_payees(category):
+                links[(category, payee)] += spending_payee[(category, payee)]
 
     sources: list[int] = []
     targets: list[int] = []
@@ -377,6 +408,18 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         targets.append(indexes[target])
         values.append(value)
 
+    def padded_count(count: int) -> int:
+        return 2 * count - 1 if count else 0
+
+    max_stage_size = max(
+        len(income_nodes),
+        len(category_income_nodes),
+        padded_count(len(group_nodes)),
+        padded_count(len(category_nodes)),
+        len(payee_nodes),
+        1,
+    )
+
     return SankeyData(
         keys=[node.key for node in indexes],
         labels=labels,
@@ -384,13 +427,76 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         targets=targets,
         values=values,
         category_count=len(category_nodes),
+        max_stage_size=max_stage_size,
     )
+
+
+def _node_depths(
+    num_nodes: int, sources: Sequence[int], targets: Sequence[int]
+) -> list[int]:
+    out_edges: list[list[int]] = [[] for _ in range(num_nodes)]
+    indegree = [0] * num_nodes
+    for source, target in zip(sources, targets, strict=True):
+        out_edges[source].append(target)
+        indegree[target] += 1
+
+    depths = [0] * num_nodes
+    remaining = indegree.copy()
+    frontier = [i for i in range(num_nodes) if indegree[i] == 0]
+    depth = 0
+    while frontier:
+        next_frontier: list[int] = []
+        for node in frontier:
+            depths[node] = depth
+            for target in out_edges[node]:
+                remaining[target] -= 1
+                if remaining[target] == 0:
+                    next_frontier.append(target)
+        frontier = next_frontier
+        depth += 1
+
+    return depths
+
+
+def _padded_nodes(
+    data: SankeyData, amounts: dict[int, Decimal]
+) -> list[dict[str, object]]:
+    depths = _node_depths(len(data.labels), data.sources, data.targets)
+    padded_indexes = {
+        prefix: [i for i, key in enumerate(data.keys) if key.startswith(prefix)]
+        for prefix in _PADDED_KEY_PREFIXES
+    }
+    last_padded_index = {
+        prefix: indexes[-1] for prefix, indexes in padded_indexes.items() if indexes
+    }
+    padded_prefix_by_index = {
+        i: prefix for prefix, indexes in padded_indexes.items() for i in indexes
+    }
+
+    nodes: list[dict[str, object]] = []
+    for i, (key, label) in enumerate(zip(data.keys, data.labels, strict=True)):
+        nodes.append({"name": key, "label": label, "amount": float(amounts[i])})
+        prefix = padded_prefix_by_index.get(i)
+        if prefix is not None and i != last_padded_index[prefix]:
+            nodes.append(
+                {
+                    "name": f"__spacer_{prefix}{i}__",
+                    "label": "",
+                    "value": 0,
+                    "depth": depths[i],
+                    "itemStyle": {"opacity": 0},
+                    "tooltip": {"show": False},
+                }
+            )
+
+    return nodes
 
 
 def build_echarts_html(
     data: SankeyData, *, start: date, end: date, theme: Theme
 ) -> str:
     min_link_value = max(float(value) for value in data.values) * _MIN_LINK_VALUE_RATIO
+    figure_height = max(_MIN_FIGURE_HEIGHT, data.max_stage_size * _PX_PER_NODE)
 
     amounts: dict[int, Decimal] = defaultdict(Decimal)
     for source, target, value in zip(
@@ -405,7 +511,7 @@ def build_echarts_html(
         charts.Sankey(
             init_opts=options.InitOpts(
                 width="100%",
-                height=f"{_MIN_FIGURE_HEIGHT}px",
+                height=f"{figure_height}px",
                 **(
                     {
                         "theme": ThemeType.DARK,
@@ -419,12 +525,7 @@ def build_echarts_html(
         )
         .add(
             "",
-            nodes=[
-                {"name": key, "label": label, "amount": float(amounts[i])}
-                for i, (key, label) in enumerate(
-                    zip(data.keys, data.labels, strict=True)
-                )
-            ],
+            nodes=_padded_nodes(data, amounts),
             links=[
                 {
                     "source": data.keys[source],
@@ -443,8 +544,9 @@ def build_echarts_html(
                 formatter=utils.JsCode(_TOOLTIP_FORMATTER)
             ),
             layout_iterations=0,
-            node_gap=10,
+            node_gap=_NODE_GAP,
             pos_top="80px",
+            pos_bottom="40px",
         )
         .set_global_opts(
             title_opts=options.TitleOpts(

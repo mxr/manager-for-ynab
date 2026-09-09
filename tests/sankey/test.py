@@ -46,16 +46,19 @@ async def test_fetch_sankey_filters_and_converts_amounts(db):
         )
 
     assert rows == [
-        SankeyRow("Rent", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
+        SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
         SankeyRow(
-            "Groceries",
+            "Market",
             "food-group",
             "Food",
             "groceries",
             "Groceries",
             Decimal("45.5"),
         ),
-        SankeyRow("Gifts", "gifts-group", "Gifts", "gifts", "Gifts", Decimal(-60)),
+        SankeyRow("Gift Shop", "gifts-group", "Gifts", "gifts", "Gifts", Decimal(40)),
+        SankeyRow(
+            "Maria Oculam", "gifts-group", "Gifts", "gifts", "Gifts", Decimal(-100)
+        ),
         SankeyRow(
             "Employer",
             "internal-group",
@@ -100,14 +103,18 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         "Food",
         "Rent",
         "Groceries",
+        "Landlord",
+        "Market",
     ]
-    assert data.sources == [0, 1, 2, 3, 2, 4]
-    assert data.targets == [1, 2, 3, 5, 4, 6]
+    assert data.sources == [0, 1, 2, 3, 5, 2, 4, 6]
+    assert data.targets == [1, 2, 3, 5, 7, 4, 6, 8]
     assert data.values == [
         Decimal(500),
         Decimal(500),
         Decimal(120),
         Decimal(120),
+        Decimal(120),
+        Decimal("45.5"),
         Decimal("45.5"),
         Decimal("45.5"),
     ]
@@ -142,10 +149,10 @@ def test_build_sankey_data_uses_sql_netted_category_outflows():
         sort_by=SortBy.ALPHABETICAL,
     )
 
-    assert data.labels == ["Income", "Gifts", "Gifts"]
-    assert data.sources == [0, 1]
-    assert data.targets == [1, 2]
-    assert data.values == [Decimal(50), Decimal(50)]
+    assert data.labels == ["Income", "Gifts", "Gifts", "Gifts"]
+    assert data.sources == [0, 1, 2]
+    assert data.targets == [1, 2, 3]
+    assert data.values == [Decimal(50), Decimal(50), Decimal(50)]
 
 
 def test_build_sankey_data_treats_sql_netted_category_income_by_category():
@@ -229,12 +236,20 @@ def test_build_sankey_data_groups_links_over_whole_range():
         sort_by=SortBy.ALPHABETICAL,
     )
 
-    assert data.labels == ["Employer", "Ready to Assign", "Income", "Bills", "Rent"]
-    assert data.sources == [0, 1, 2, 3]
-    assert data.targets == [1, 2, 3, 4]
+    assert data.labels == [
+        "Employer",
+        "Ready to Assign",
+        "Income",
+        "Bills",
+        "Rent",
+        "Landlord",
+    ]
+    assert data.sources == [0, 1, 2, 3, 4]
+    assert data.targets == [1, 2, 3, 4, 5]
     assert data.values == [
         Decimal(800),
         Decimal(800),
+        Decimal(200),
         Decimal(200),
         Decimal(200),
     ]
@@ -275,6 +290,10 @@ def test_build_sankey_data_sorts_categories_within_groups_on_right_side():
         "Amazon",
         "Groceries",
         "Snacks",
+        "Gym",
+        "Broker",
+        "Market",
+        "Market",
         "Gym",
     ]
     assert data.category_count == 4
@@ -325,6 +344,9 @@ def test_build_sankey_data_sorts_by_amount_with_label_tiebreaks():
         "Gym",
         "Snacks",
         "Groceries",
+        "Gym",
+        "Market",
+        "Market",
     ]
 
 
@@ -351,12 +373,20 @@ def test_build_sankey_data_keeps_same_named_nodes_separate_by_stage():
         sort_by=SortBy.ALPHABETICAL,
     )
 
-    assert data.labels == ["Employer", "Ready to Assign", "Income", "Taxes", "Taxes"]
-    assert data.sources == [0, 1, 2, 3]
-    assert data.targets == [1, 2, 3, 4]
+    assert data.labels == [
+        "Employer",
+        "Ready to Assign",
+        "Income",
+        "Taxes",
+        "Taxes",
+        "State",
+    ]
+    assert data.sources == [0, 1, 2, 3, 4]
+    assert data.targets == [1, 2, 3, 4, 5]
     assert data.values == [
         Decimal(500),
         Decimal(500),
+        Decimal(120),
         Decimal(120),
         Decimal(120),
     ]
