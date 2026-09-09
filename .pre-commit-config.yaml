@@ -34,6 +34,7 @@ repos:
     - aiosqlite
     - asyncio-for-ynab~=1.86.0
     - coverage
+    - playwright
     - prompt-toolkit
     - pyecharts
     - pytest
@@ -51,6 +52,7 @@ repos:
     - aiosqlite
     - asyncio-for-ynab~=1.86.0
     - coverage
+    - playwright
     - prompt-toolkit
     - pyecharts
     - pytest
@@ -73,6 +75,7 @@ repos:
     - aiosqlite
     - asyncio-for-ynab~=1.86.0
     - coverage
+    - playwright
     - prompt-toolkit
     - pyecharts
     - pytest

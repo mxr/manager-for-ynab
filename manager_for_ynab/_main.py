@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from manager_for_ynab._version import get_version
 from manager_for_ynab.add_transaction import run as run_add_transaction
 from manager_for_ynab.auto_approve import run as run_auto_approve
+from manager_for_ynab.delete_payees import run as run_delete_payees
 from manager_for_ynab.pending_income import run as run_pending_income
 from manager_for_ynab.reconciler import run as run_reconciler
 from manager_for_ynab.sankey import run as run_sankey
@@ -19,6 +20,9 @@ _RECONCILER_HELP = "Find and automatically reconciles unreconciled transactions.
 _AUTO_APPROVE_HELP = "Approve matched transactions automatically."
 _ADD_TRANSACTION_HELP = "Create a transaction and optionally fund a category."
 _SANKEY_HELP = "Draw a Sankey diagram for reconciled spending."
+_DELETE_PAYEES_HELP = (
+    "Delete one or more payees using YNAB's undocumented internal sync API."
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Set a category's budgeted amount to zero across a month range.",
     )
     zero_out_parser.set_defaults(func=run_zero_out)
+
+    delete_payees_parser = subparsers.add_parser(
+        "delete-payees",
+        help=_DELETE_PAYEES_HELP,
+        description=_DELETE_PAYEES_HELP,
+    )
+    delete_payees_parser.set_defaults(func=run_delete_payees)
     return parser
 
 
@@ -91,6 +102,8 @@ async def async_main(argv: Sequence[str] = ()) -> int:
             return await run_sankey(argv[1:])
         case "zero-out":
             return await run_zero_out(argv[1:])
+        case "delete-payees":
+            return await run_delete_payees(argv[1:])
 
     parser = build_parser()
     parser.parse_args(argv)

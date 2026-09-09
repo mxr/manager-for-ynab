@@ -14,6 +14,7 @@ This repo is a single CLI for YNAB-focused tools.
 - `pending-income`: move pending income transactions to today
 - `sankey`: draw a Sankey diagram for reconciled spending
 - `zero-out`: set a category's planned amount to zero across a month range
+- `delete-payees`: delete one or more payees using YNAB's undocumented internal sync API
 
 Tool-specific docs:
 
@@ -23,6 +24,7 @@ Tool-specific docs:
 - [Pending Income](manager_for_ynab/pending_income/README.md)
 - [Sankey](manager_for_ynab/sankey/README.md)
 - [Zero Out](manager_for_ynab/zero_out/README.md)
+- [Delete Payees](manager_for_ynab/delete_payees/README.md)
 
 ## Installation
 
@@ -40,4 +42,5 @@ $ manager-for-ynab add-transaction --help
 $ manager-for-ynab pending-income --help
 $ manager-for-ynab sankey --help
 $ manager-for-ynab zero-out --help
+$ manager-for-ynab delete-payees --help
 ```

@@ -35,6 +35,7 @@ def test_main_without_args_prints_help(capsys):
     assert "pending-income" in out
     assert "sankey" in out
     assert "zero-out" in out
+    assert "delete-payees" in out
 
 
 @patch.object(sys, "argv", ["manager-for-ynab", "--version"])
@@ -96,6 +97,17 @@ def test_main_zero_out_help(capsys):
     assert "--for-real" in out
 
 
+def test_main_delete_payees_help(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(("delete-payees", "--help"))
+
+    assert excinfo.value.code == 0
+    out, _ = capsys.readouterr()
+    assert "manager-for-ynab delete-payees" in out
+    assert "--for-real" in out
+    assert "--payee-ids" in out
+
+
 def test_main_sankey_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
         main(("sankey", "--help"))
@@ -121,6 +133,7 @@ def test_build_parser_registers_expected_subcommands():
         "reconciler",
         "sankey",
         "zero-out",
+        "delete-payees",
     }
 
 
