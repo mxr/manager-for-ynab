@@ -99,7 +99,7 @@ INSERT INTO transactions (
 , (
     'split'
     , :test_plan_id_1
-    , NULL
+    , :checking_account_id
     , 'Checking'
     , DATE('now', 'localtime', 'start of month')
     , 40000
@@ -140,8 +140,39 @@ INSERT INTO transactions (
 )
 ;
 
-INSERT INTO subtransactions (id, transaction_id, deleted)
-VALUES ('subtxn-split', 'split', 0)
+INSERT INTO subtransactions (
+    id
+    , transaction_id
+    , amount
+    , amount_formatted
+    , category_id
+    , payee_id
+    , payee_name
+    , memo
+    , deleted
+) VALUES
+(
+    'subtxn-split-1'
+    , 'split'
+    , 25000
+    , '$25.00'
+    , :dining_out_category_id
+    , :employer_payee_id
+    , 'Employer'
+    , 'half'
+    , 0
+)
+, (
+    'subtxn-split-2'
+    , 'split'
+    , 15000
+    , '$15.00'
+    , NULL
+    , NULL
+    , NULL
+    , 'other half'
+    , 0
+)
 ;
 
 INSERT INTO subtransactions (
