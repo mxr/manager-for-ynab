@@ -414,6 +414,24 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(
     assert "Run with --sync first." in out
 
 
+@patch("manager_for_ynab.delete_payees.find_spec", return_value=None)
+@pytest.mark.asyncio
+async def test_delete_payees_for_real_raises_when_playwright_missing(
+    find_spec_mock, db_path, session_token_db_path
+):
+    with pytest.raises(ImportError, match="manager-for-ynab\\[delete-payees\\]"):
+        await delete_payees(
+            plan_id=None,
+            payee_ids=[EMPLOYER_PAYEE_ID],
+            for_real=True,
+            db=db_path,
+            full_refresh=False,
+            should_sync=False,
+            token_override="token",
+            session_token_db=session_token_db_path,
+        )
+
+
 @patch(
     "manager_for_ynab.delete_payees.resolve_session_cookie",
     side_effect=ValueError("no cookie"),
