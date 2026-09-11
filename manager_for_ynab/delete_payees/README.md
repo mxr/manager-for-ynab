@@ -35,6 +35,12 @@ interacting with the undocumented API:
 Session data is only read when `--for-real` is passed. If the cached session token goes stale then delete the
 `--session-token-db` file to force recapture.
 
+Playwright is an optional dependency (the `delete-payees` extra) since it's only needed for `--for-real`. Install with:
+
+```console
+$ pip install manager-for-ynab[delete-payees]
+```
+
 ## Usage
 
 Preview all unused payees in the plan:
