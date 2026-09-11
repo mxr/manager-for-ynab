@@ -3,6 +3,7 @@ import asyncio
 import itertools
 import sys
 from importlib.resources import files
+from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -220,6 +221,12 @@ async def delete_payees(
     if not for_real:
         print("Use --for-real to actually delete the payees.")
         return 0
+
+    if find_spec("playwright") is None:
+        raise ImportError(
+            "playwright isn't installed. Install manager-for-ynab[delete-payees] "
+            "to use --for-real."
+        )
 
     try:
         cookie = await resolve_session_cookie()

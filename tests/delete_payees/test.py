@@ -414,6 +414,24 @@ async def test_delete_payees_for_real_returns_one_when_never_synced(
     assert "Run with --sync first." in out
 
 
+@patch("manager_for_ynab.delete_payees.find_spec", return_value=None)
+@pytest.mark.asyncio
+async def test_delete_payees_for_real_raises_when_playwright_missing(
+    find_spec_mock, db_path, session_token_db_path
+):
+    with pytest.raises(ImportError, match="manager-for-ynab\\[delete-payees\\]"):
+        await delete_payees(
+            plan_id=None,
+            payee_ids=[EMPLOYER_PAYEE_ID],
+            for_real=True,
+            db=db_path,
+            full_refresh=False,
+            should_sync=False,
+            token_override="token",
+            session_token_db=session_token_db_path,
+        )
+
+
 @patch(
     "manager_for_ynab.delete_payees.resolve_session_cookie",
     side_effect=ValueError("no cookie"),
@@ -758,7 +776,7 @@ class _AsyncContextManager:
     "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
     new_callable=AsyncMock,
 )
-@patch("manager_for_ynab.delete_payees._browser_session.async_playwright")
+@patch("playwright.async_api.async_playwright")
 @pytest.mark.asyncio
 async def test_capture_session_token_via_browser_returns_captured_token(
     async_playwright_mock, ensure_firefox_mock
@@ -812,7 +830,7 @@ async def test_capture_session_token_via_browser_returns_captured_token(
     "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
     new_callable=AsyncMock,
 )
-@patch("manager_for_ynab.delete_payees._browser_session.async_playwright")
+@patch("playwright.async_api.async_playwright")
 @pytest.mark.asyncio
 async def test_capture_session_token_via_browser_raises_on_timeout(
     async_playwright_mock, ensure_firefox_mock

@@ -7,11 +7,6 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-# Playwright inspects event-handler signatures at runtime (even under Python 3.14's
-# lazy annotations), so Request must be a real import, not a TYPE_CHECKING-only one.
-from playwright.async_api import Request
-from playwright.async_api import async_playwright
-
 from manager_for_ynab.delete_payees._session_token_store import load_session_token
 from manager_for_ynab.delete_payees._session_token_store import save_session_token
 
@@ -104,6 +99,13 @@ def _cookie_header_to_playwright_cookies(cookie: str) -> list[SetCookieParam]:
 async def capture_session_token_via_browser(
     *, cookie: str, timeout: float = _BROWSER_CAPTURE_TIMEOUT_SECONDS
 ) -> str:
+    # Playwright inspects event-handler signatures at runtime (even under Python
+    # 3.14's lazy annotations), so Request must be a real import, not a
+    # TYPE_CHECKING-only one. Importing playwright lazily here (instead of at
+    # module level) keeps it an optional dependency (the "delete-payees" extra).
+    from playwright.async_api import Request
+    from playwright.async_api import async_playwright
+
     token_future = asyncio.Future[str]()
 
     def _on_request(request: Request) -> None:
