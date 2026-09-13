@@ -818,12 +818,12 @@ async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
     resolve_transaction_mock.assert_awaited_once()
 
 
-@patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction._load_plans", new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_resolve_transaction_errors_when_no_plans(load_name_to_id_mock, tmp_path):
+async def test_resolve_transaction_errors_when_no_plans(load_plans_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    load_name_to_id_mock.return_value = {}
+    load_plans_mock.return_value = {}
 
     with pytest.raises(RuntimeError, match="No plans found in this YNAB account."):
         await _resolve_transaction(
@@ -883,10 +883,10 @@ async def test_resolve_transaction_prompts_for_missing_values(
 @patch("manager_for_ynab.add_transaction._load_account_by_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._resolve_account_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._choice_prompt", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction._load_plans", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
-    load_name_to_id_mock,
+    load_plans_mock,
     choice_prompt_mock,
     resolve_account_id_mock,
     load_account_by_id_mock,
@@ -896,7 +896,7 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    load_name_to_id_mock.return_value = {"Plan A": "plan-a", "Plan B": "plan-b"}
+    load_plans_mock.return_value = {"Plan A": "plan-a", "Plan B": "plan-b"}
     choice_prompt_mock.return_value = "Plan B"
     resolve_account_id_mock.return_value = "account-id"
     load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
@@ -923,10 +923,10 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
 @patch("manager_for_ynab.add_transaction._resolve_payee", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._load_account_by_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.add_transaction._resolve_account_id", new_callable=AsyncMock)
-@patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction._load_plans", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_resolve_transaction_allows_transfer_without_category(
-    load_name_to_id_mock,
+    load_plans_mock,
     resolve_account_id_mock,
     load_account_by_id_mock,
     resolve_payee_mock,
@@ -934,7 +934,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    load_name_to_id_mock.return_value = {"My Plan": "plan-id"}
+    load_plans_mock.return_value = {"My Plan": "plan-id"}
     resolve_account_id_mock.return_value = "account-id"
     load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
         id="account-id", name="Checking", type="checking", cleared_balance=430000
@@ -1388,7 +1388,9 @@ async def test_matching_entry_raises_when_no_rows(tmp_path):
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         with pytest.raises(ValueError, match="No entries found in payees"):
-            await add_transaction_module._matching_entry(con, "payees", "Alpha")
+            await add_transaction_module._matching_entry(
+                con, "payees", "Alpha", plan_id=PLAN_ID
+            )
 
 
 @pytest.mark.asyncio
@@ -1400,7 +1402,9 @@ async def test_matching_entry_rejects_distant_match(tmp_path):
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         with pytest.raises(ValueError, match="No close match for 'zzz' in 'accounts'."):
-            await add_transaction_module._matching_entry(con, "accounts", "zzz")
+            await add_transaction_module._matching_entry(
+                con, "accounts", "zzz", plan_id=PLAN_ID
+            )
 
 
 @pytest.mark.asyncio
@@ -1422,6 +1426,49 @@ async def test_matching_entry_rejects_ambiguous_match(tmp_path):
             await add_transaction_module._matching_entry(
                 con, "categories", "Credit Card", plan_id=PLAN_ID
             )
+
+
+@pytest.mark.asyncio
+async def test_matching_plan_raises_when_no_rows(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.execute("DELETE FROM plans")
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(ValueError, match="No entries found in 'plans'"):
+            await add_transaction_module._matching_plan(con, "Alpha")
+
+
+@pytest.mark.asyncio
+async def test_matching_plan_rejects_distant_match(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(ValueError, match="No close match for 'zzz' in 'plans'."):
+            await add_transaction_module._matching_plan(con, "zzz")
+
+
+@pytest.mark.asyncio
+async def test_matching_plan_rejects_ambiguous_match(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            "INSERT INTO plans (id, name, currency_format_currency_symbol, "
+            "currency_format_iso_code) VALUES ('other-plan-id', 'My Plan', '$', 'USD')"
+        )
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(ValueError, match="'My Plan' matches 2 entries in 'plans'."):
+            await add_transaction_module._matching_plan(con, "My Plan")
 
 
 @pytest.mark.asyncio
