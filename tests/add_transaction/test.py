@@ -42,6 +42,7 @@ from manager_for_ynab.add_transaction import parse_date
 from manager_for_ynab.add_transaction import run
 from manager_for_ynab.add_transaction import sync_and_resolve_transaction
 from testing.fixtures import CHECKING_ACCOUNT_ID
+from testing.fixtures import DINING_OUT_CATEGORY_ID
 from testing.fixtures import DUPLICATE_CREDIT_CARD_CATEGORY_ID
 from testing.fixtures import EMPLOYER_PAYEE_ID
 from testing.fixtures import PLAN_ID
@@ -144,6 +145,14 @@ def test_build_parser_extends_repeated_account_name_flags():
         ("--account-name", "Checking", "--account-name", "Credit Card")
     )
     assert args.account_name == ["Checking", "Credit Card"]
+
+
+def test_build_parser_parses_category_group():
+    args = build_parser().parse_args(
+        ("--category-group", "Travel", "--category-name", "Car")
+    )
+    assert args.category_group == "Travel"
+    assert args.category_name == "Car"
 
 
 @pytest.mark.parametrize(
@@ -369,6 +378,7 @@ async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, cap
         plan_name=None,
         account_names=["Checking"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
         cleared=None,
@@ -404,6 +414,7 @@ async def test_add_transaction_returns_one_when_resolution_fails(
         plan_name=None,
         account_names=["Checking"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
         cleared=None,
@@ -659,6 +670,7 @@ async def test_sync_and_resolve_transaction_raises_when_transaction_resolution_f
             plan_name=None,
             account_names=["Checking"],
             payee_name="Employer",
+            category_group_name=None,
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
             cleared=None,
@@ -685,6 +697,7 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
         plan_name="My Plan",
         account_names=["Checking"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Inflow: Ready to Assign",
         date=date(2026, 4, 26),
         cleared=None,
@@ -804,6 +817,7 @@ async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
             plan_name=None,
             account_names=["Checking"],
             payee_name="Employer",
+            category_group_name=None,
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
             cleared=None,
@@ -831,6 +845,7 @@ async def test_resolve_transaction_errors_when_no_plans(load_plans_mock, tmp_pat
             plan_name=None,
             account_names=["Checking"],
             payee_name="Employer",
+            category_group_name=None,
             category_name="Inflow: Ready to Assign",
             date=date(2026, 4, 26),
             cleared=None,
@@ -863,6 +878,7 @@ async def test_resolve_transaction_prompts_for_missing_values(
         plan_name=None,
         account_names=None,
         payee_name=None,
+        category_group_name=None,
         category_name=None,
         date=None,
         cleared=None,
@@ -910,6 +926,7 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
         plan_name=None,
         account_names=["Checking"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Dining Out",
         date=date(2026, 4, 26),
         cleared=None,
@@ -946,6 +963,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
         plan_name=None,
         account_names=["Checking"],
         payee_name="Transfer",
+        category_group_name=None,
         category_name=None,
         date=date(2026, 4, 26),
         cleared=None,
@@ -999,6 +1017,7 @@ async def test_resolve_transaction_rejects_zero_amount(tmp_path):
             plan_name=None,
             account_names=["Checking"],
             payee_name="Employer",
+            category_group_name=None,
             category_name="Dining Out",
             date=date(2026, 4, 26),
             cleared=None,
@@ -1018,6 +1037,7 @@ async def test_resolve_transaction_splits_amount_and_drops_unused_credit_card(
         plan_name=None,
         account_names=["Checking", "Credit Card"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Dining Out",
         date=date(2026, 4, 26),
         cleared=None,
@@ -1040,6 +1060,7 @@ async def test_resolve_transaction_skips_credit_card_leg_when_cash_covers_amount
         plan_name=None,
         account_names=["Checking", "Credit Card"],
         payee_name="Employer",
+        category_group_name=None,
         category_name="Dining Out",
         date=date(2026, 4, 26),
         cleared=None,
@@ -1149,6 +1170,7 @@ async def test_resolve_transaction_rejects_category_for_transfer(
             plan_name=None,
             account_names=["Checking"],
             payee_name="Transfer",
+            category_group_name=None,
             category_name="Dining Out",
             date=date(2026, 4, 26),
             cleared=None,
@@ -1217,25 +1239,27 @@ async def test_resolve_category_prompts_when_missing(choice_prompt_mock, tmp_pat
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
-        category_id, category_name = await _resolve_category(con, PLAN_ID, None)
+        category_id, category_name = await _resolve_category(
+            con, PLAN_ID, category_name=None
+        )
 
     assert category_id == READY_TO_ASSIGN_CATEGORY_ID
     assert category_name == "Inflow: Ready to Assign"
 
 
-@patch("manager_for_ynab.add_transaction._load_name_to_id", new_callable=AsyncMock)
+@patch("manager_for_ynab.add_transaction._load_categories", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_resolve_category_errors_without_categories(
-    load_name_to_id_mock, tmp_path
+    load_categories_mock, tmp_path
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    load_name_to_id_mock.return_value = {}
+    load_categories_mock.return_value = {}
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError, match="No categories found in this plan."):
-            await _resolve_category(con, "plan-id", None)
+            await _resolve_category(con, "plan-id", category_name=None)
 
 
 @patch("manager_for_ynab.add_transaction._choice_prompt", new_callable=AsyncMock)
@@ -1469,6 +1493,66 @@ async def test_matching_plan_rejects_ambiguous_match(tmp_path):
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         with pytest.raises(ValueError, match="'My Plan' matches 2 entries in 'plans'."):
             await add_transaction_module._matching_plan(con, "My Plan")
+
+
+@pytest.mark.asyncio
+async def test_matching_category_raises_when_no_rows(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.execute("DELETE FROM categories")
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(ValueError, match="No entries found in categories"):
+            await add_transaction_module._matching_category(
+                con, "Alpha", plan_id=PLAN_ID
+            )
+
+
+@pytest.mark.asyncio
+async def test_matching_category_rejects_distant_match(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(
+            ValueError, match="No close match for 'zzz' in 'categories'."
+        ):
+            await add_transaction_module._matching_category(con, "zzz", plan_id=PLAN_ID)
+
+
+@pytest.mark.asyncio
+async def test_matching_category_disambiguates_with_category_group(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            "INSERT INTO categories (id, plan_id, deleted, category_group_name, name) "
+            "VALUES (?, ?, 0, ?, ?)",
+            ("other-group-category-id", PLAN_ID, "Other Group", "Dining Out"),
+        )
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+
+        with pytest.raises(
+            ValueError, match="'Dining Out' matches 2 entries in 'categories'."
+        ):
+            await add_transaction_module._matching_category(
+                con, "Dining Out", plan_id=PLAN_ID
+            )
+
+        category_id, category_name = await add_transaction_module._matching_category(
+            con, "Dining Out", plan_id=PLAN_ID, category_group_name="Dining"
+        )
+
+    assert category_id == DINING_OUT_CATEGORY_ID
+    assert category_name == "Dining Out"
 
 
 @pytest.mark.asyncio
