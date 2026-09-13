@@ -397,14 +397,12 @@ async def _resolve_transaction(
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
 
-        plans = await _load_name_to_id(con, "plans", deleted=False)
+        plans = await _load_plans(con)
         if not plans:
             raise RuntimeError("No plans found in this YNAB account.")
 
         if plan_name:
-            plan_id, plan_name = await _matching_entry(
-                con, "plans", plan_name, deleted=False
-            )
+            plan_id, plan_name = await _matching_plan(con, plan_name)
         elif len(plans) == 1:
             plan_name, plan_id = next(iter(plans.items()))
         else:
@@ -673,25 +671,18 @@ async def _resolve_credit_card_payment_category(
     return str(row["id"]), str(row["name"])
 
 
-async def _load_name_to_id(
-    con: aiosqlite.Connection,
-    table: str,
-    *,
-    plan_id: str | None = None,
-    deleted: bool = True,
-) -> dict[str, str]:
-    clauses: list[str] = []
-    params: list[str] = []
-    if plan_id is not None:
-        clauses.append("plan_id = ?")
-        params.append(plan_id)
-    if deleted:
-        clauses.append("NOT deleted")
+async def _load_plans(con: aiosqlite.Connection) -> dict[str, str]:
+    async with con.execute("SELECT name, id FROM plans ORDER BY LOWER(name)") as cur:
+        rows = await cur.fetchall()
+    return {row["name"]: row["id"] for row in rows}
 
-    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+
+async def _load_name_to_id(
+    con: aiosqlite.Connection, table: str, *, plan_id: str
+) -> dict[str, str]:
     async with con.execute(
-        f"SELECT name, id FROM {table}{where} ORDER BY LOWER(name)",
-        params,
+        f"SELECT name, id FROM {table} WHERE plan_id = ? AND NOT deleted ORDER BY LOWER(name)",
+        (plan_id,),
     ) as cur:
         rows = await cur.fetchall()
     return {row["name"]: row["id"] for row in rows}
@@ -713,24 +704,77 @@ async def _load_payees(
     return [(row["name"], row["id"], row["transfer_account_id"]) for row in rows]
 
 
+async def _matching_plan(con: aiosqlite.Connection, input_name: str) -> tuple[str, str]:
+    matched = await _closest_plan_match(con, input_name)
+    if matched is None:
+        raise ValueError("No entries found in 'plans'")
+
+    matched_id, matched_name, is_substring_match, edit_distance = matched
+    normalized_edit_pct = edit_distance / max(len(input_name), len(matched_name))
+    if not is_substring_match and normalized_edit_pct > 0.2:
+        raise ValueError(
+            f"No close match for {input_name!r} in 'plans'. "
+            f"Closest match was {matched_name!r}, which is too different."
+        )
+
+    async with con.execute(
+        "SELECT COUNT(*) FROM plans WHERE LOWER(name) = LOWER(?)",
+        (matched_name,),
+    ) as cur:
+        count_row = await cur.fetchone()
+    duplicate_count = count_row[0] if count_row is not None else 0
+    if duplicate_count > 1:
+        raise ValueError(
+            f"{matched_name!r} matches {duplicate_count} entries in 'plans'. "
+            "Use a more specific name."
+        )
+
+    return matched_id, matched_name
+
+
+async def _closest_plan_match(
+    con: aiosqlite.Connection, input_name: str
+) -> tuple[str, str, bool, int] | None:
+    async with con.execute(
+        """
+        SELECT
+            id
+            , name
+            , LOWER(name) LIKE '%' || LOWER(?) || '%' AS is_substring_match
+            , EDITDISTANCE(LOWER(name), LOWER(?)) AS edit_distance
+        FROM plans
+        ORDER BY
+            CASE
+                WHEN is_substring_match THEN 0
+                ELSE edit_distance END,
+            LENGTH(name)
+        LIMIT 1
+        """,
+        (input_name, input_name),
+    ) as cur:
+        row = await cur.fetchone()
+
+    if row is None:
+        return None
+    return (
+        str(row[0]),
+        str(row[1]),
+        bool(row[2]),
+        int(row[3]),
+    )
+
+
 async def _matching_entry(
     con: aiosqlite.Connection,
     table: str,
     input_name: str,
     *,
-    plan_id: str | None = None,
+    plan_id: str,
     key_id: str = "id",
     key_name: str = "name",
-    deleted: bool = True,
 ) -> tuple[str, str]:
     matched = await _closest_match(
-        con,
-        table,
-        input_name,
-        plan_id=plan_id,
-        key_id=key_id,
-        key_name=key_name,
-        deleted=deleted,
+        con, table, input_name, plan_id=plan_id, key_id=key_id, key_name=key_name
     )
     if matched is None:
         raise ValueError(f"No entries found in {table}")
@@ -743,15 +787,12 @@ async def _matching_entry(
             f"Closest match was {matched_name!r}, which is too different."
         )
 
-    deleted_clause = " AND NOT deleted" if deleted else ""
-    plan_clause = " AND plan_id = ?" if plan_id is not None else ""
-    count_params = (matched_name, plan_id) if plan_id is not None else (matched_name,)
     async with con.execute(
         f"""
         SELECT COUNT(*) FROM {table}
-        WHERE LOWER({key_name}) = LOWER(?){deleted_clause}{plan_clause}
+        WHERE LOWER({key_name}) = LOWER(?) AND plan_id = ? AND NOT deleted
         """,
-        count_params,
+        (matched_name, plan_id),
     ) as cur:
         count_row = await cur.fetchone()
     duplicate_count = count_row[0] if count_row is not None else 0
@@ -769,18 +810,10 @@ async def _closest_match(
     table: str,
     input_name: str,
     *,
-    plan_id: str | None = None,
+    plan_id: str,
     key_id: str = "id",
     key_name: str = "name",
-    deleted: bool = True,
 ) -> tuple[str, str, bool, int] | None:
-    deleted_clause = " AND NOT deleted" if deleted else ""
-    plan_clause = " AND plan_id = ?" if plan_id is not None else ""
-    params = (
-        (input_name, input_name, plan_id)
-        if plan_id is not None
-        else (input_name, input_name)
-    )
     async with con.execute(
         f"""
         SELECT
@@ -789,7 +822,7 @@ async def _closest_match(
             , LOWER({key_name}) LIKE '%' || LOWER(?) || '%' AS is_substring_match
             , EDITDISTANCE(LOWER({key_name}), LOWER(?)) AS edit_distance
         FROM {table}
-        WHERE 1 = 1{deleted_clause}{plan_clause}
+        WHERE plan_id = ? AND NOT deleted
         ORDER BY
             CASE
                 WHEN is_substring_match THEN 0
@@ -797,7 +830,7 @@ async def _closest_match(
             LENGTH({key_name})
         LIMIT 1
         """,
-        params,
+        (input_name, input_name, plan_id),
     ) as cur:
         row = await cur.fetchone()
 
