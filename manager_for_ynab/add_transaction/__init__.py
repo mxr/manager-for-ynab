@@ -515,7 +515,7 @@ async def _resolve_account_id(
     con: aiosqlite.Connection, plan_id: str, account_name: str | None
 ) -> str:
     if account_name:
-        return await _matching_entry(con, "accounts", account_name)
+        return await _matching_entry(con, "accounts", account_name, plan_id=plan_id)
 
     accounts = await _load_name_to_id(con, "accounts", plan_id=plan_id)
     if not accounts:
@@ -532,7 +532,9 @@ async def _resolve_category(
         raise RuntimeError("No categories found in this plan.")
 
     if category_name:
-        category_id = await _matching_entry(con, "categories", category_name)
+        category_id = await _matching_entry(
+            con, "categories", category_name, plan_id=plan_id
+        )
         resolved_category_name = next(
             name
             for name, matched_category_id in categories.items()
@@ -562,9 +564,11 @@ async def _resolve_payee(
             return payee_id, payee_name, transfer_account_id
 
         try:
-            payee_id = await _matching_entry(con, "payees", payee_name)
+            payee_id = await _matching_entry(con, "payees", payee_name, plan_id=plan_id)
         except ValueError as err:
-            closest_payee = await _closest_match(con, "payees", payee_name)
+            closest_payee = await _closest_match(
+                con, "payees", payee_name, plan_id=plan_id
+            )
             prompt = f"Create new payee {payee_name!r}?"
             if closest_payee is not None:
                 prompt = f"{prompt} Closest existing payee: {closest_payee[1]!r}."
@@ -720,6 +724,7 @@ async def _matching_entry(
     table: str,
     input_name: str,
     *,
+    plan_id: str | None = None,
     key_id: str = "id",
     key_name: str = "name",
     deleted: bool = True,
@@ -728,6 +733,7 @@ async def _matching_entry(
         con,
         table,
         input_name,
+        plan_id=plan_id,
         key_id=key_id,
         key_name=key_name,
         deleted=deleted,
@@ -750,11 +756,18 @@ async def _closest_match(
     table: str,
     input_name: str,
     *,
+    plan_id: str | None = None,
     key_id: str = "id",
     key_name: str = "name",
     deleted: bool = True,
 ) -> tuple[str, str, bool, int] | None:
     deleted_clause = " AND NOT deleted" if deleted else ""
+    plan_clause = " AND plan_id = ?" if plan_id is not None else ""
+    params = (
+        (input_name, input_name, plan_id)
+        if plan_id is not None
+        else (input_name, input_name)
+    )
     async with con.execute(
         f"""
         SELECT
@@ -763,7 +776,7 @@ async def _closest_match(
             , LOWER({key_name}) LIKE '%' || LOWER(?) || '%' AS is_substring_match
             , EDITDISTANCE(LOWER({key_name}), LOWER(?)) AS edit_distance
         FROM {table}
-        WHERE 1 = 1{deleted_clause}
+        WHERE 1 = 1{deleted_clause}{plan_clause}
         ORDER BY
             CASE
                 WHEN is_substring_match THEN 0
@@ -771,7 +784,7 @@ async def _closest_match(
             LENGTH({key_name})
         LIMIT 1
         """,
-        (input_name, input_name),
+        params,
     ) as cur:
         row = await cur.fetchone()
 
