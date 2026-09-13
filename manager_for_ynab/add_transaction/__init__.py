@@ -402,11 +402,8 @@ async def _resolve_transaction(
             raise RuntimeError("No plans found in this YNAB account.")
 
         if plan_name:
-            plan_id = await _matching_entry(con, "plans", plan_name, deleted=False)
-            plan_name = next(
-                name
-                for name, matched_plan_id in plans.items()
-                if matched_plan_id == plan_id
+            plan_id, plan_name = await _matching_entry(
+                con, "plans", plan_name, deleted=False
             )
         elif len(plans) == 1:
             plan_name, plan_id = next(iter(plans.items()))
@@ -515,7 +512,10 @@ async def _resolve_account_id(
     con: aiosqlite.Connection, plan_id: str, account_name: str | None
 ) -> str:
     if account_name:
-        return await _matching_entry(con, "accounts", account_name, plan_id=plan_id)
+        account_id, _ = await _matching_entry(
+            con, "accounts", account_name, plan_id=plan_id
+        )
+        return account_id
 
     accounts = await _load_name_to_id(con, "accounts", plan_id=plan_id)
     if not accounts:
@@ -532,15 +532,7 @@ async def _resolve_category(
         raise RuntimeError("No categories found in this plan.")
 
     if category_name:
-        category_id = await _matching_entry(
-            con, "categories", category_name, plan_id=plan_id
-        )
-        resolved_category_name = next(
-            name
-            for name, matched_category_id in categories.items()
-            if matched_category_id == category_id
-        )
-        return category_id, resolved_category_name
+        return await _matching_entry(con, "categories", category_name, plan_id=plan_id)
 
     selected_category_name = await _choice_prompt("Category: ", categories)
     return categories[selected_category_name], selected_category_name
@@ -564,7 +556,9 @@ async def _resolve_payee(
             return payee_id, payee_name, transfer_account_id
 
         try:
-            payee_id = await _matching_entry(con, "payees", payee_name, plan_id=plan_id)
+            payee_id, resolved_payee_name = await _matching_entry(
+                con, "payees", payee_name, plan_id=plan_id
+            )
         except ValueError as err:
             closest_payee = await _closest_match(
                 con, "payees", payee_name, plan_id=plan_id
@@ -576,9 +570,9 @@ async def _resolve_payee(
                 raise ValueError(f"Payee {payee_name!r} was not created") from err
             return None, payee_name, None
 
-        resolved_payee_name, transfer_account_id = next(
-            (name, transfer_account_id)
-            for name, current_payee_id, transfer_account_id in payees
+        transfer_account_id = next(
+            transfer_account_id
+            for _, current_payee_id, transfer_account_id in payees
             if current_payee_id == payee_id
         )
         return payee_id, resolved_payee_name, transfer_account_id
@@ -728,7 +722,7 @@ async def _matching_entry(
     key_id: str = "id",
     key_name: str = "name",
     deleted: bool = True,
-) -> str:
+) -> tuple[str, str]:
     matched = await _closest_match(
         con,
         table,
@@ -748,7 +742,26 @@ async def _matching_entry(
             f"No close match for {input_name!r} in {table!r}. "
             f"Closest match was {matched_name!r}, which is too different."
         )
-    return matched_id
+
+    deleted_clause = " AND NOT deleted" if deleted else ""
+    plan_clause = " AND plan_id = ?" if plan_id is not None else ""
+    count_params = (matched_name, plan_id) if plan_id is not None else (matched_name,)
+    async with con.execute(
+        f"""
+        SELECT COUNT(*) FROM {table}
+        WHERE LOWER({key_name}) = LOWER(?){deleted_clause}{plan_clause}
+        """,
+        count_params,
+    ) as cur:
+        count_row = await cur.fetchone()
+    duplicate_count = count_row[0] if count_row is not None else 0
+    if duplicate_count > 1:
+        raise ValueError(
+            f"{matched_name!r} matches {duplicate_count} entries in {table!r}. "
+            "Use a more specific name."
+        )
+
+    return matched_id, matched_name
 
 
 async def _closest_match(
