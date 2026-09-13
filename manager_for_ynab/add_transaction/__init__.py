@@ -99,6 +99,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--payee-name", help="Payee name. If omitted, prompts.")
     parser.add_argument(
+        "--category-group",
+        help=(
+            "Category group name, to disambiguate when --category-name matches "
+            "more than one category."
+        ),
+    )
+    parser.add_argument(
         "--category-name",
         help="Category name. If omitted, prompts. Not needed for transfer transactions.",
     )
@@ -172,6 +179,7 @@ async def run(
         plan_name=args.plan_name,
         account_names=args.account_name,
         payee_name=args.payee_name,
+        category_group_name=args.category_group,
         category_name=args.category_name,
         date=args.date,
         cleared=args.cleared,
@@ -191,6 +199,7 @@ async def add_transaction(
     plan_name: str | None,
     account_names: Sequence[str] | None,
     payee_name: str | None,
+    category_group_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
@@ -209,6 +218,7 @@ async def add_transaction(
             plan_name=plan_name,
             account_names=account_names,
             payee_name=payee_name,
+            category_group_name=category_group_name,
             category_name=category_name,
             date=date,
             cleared=cleared,
@@ -237,6 +247,7 @@ async def sync_and_resolve_transaction(
     plan_name: str | None,
     account_names: Sequence[str] | None,
     payee_name: str | None,
+    category_group_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
@@ -257,6 +268,7 @@ async def sync_and_resolve_transaction(
         plan_name=plan_name,
         account_names=account_names,
         payee_name=payee_name,
+        category_group_name=category_group_name,
         category_name=category_name,
         date=date,
         cleared=cleared,
@@ -388,6 +400,7 @@ async def _resolve_transaction(
     plan_name: str | None,
     account_names: Sequence[str] | None,
     payee_name: str | None,
+    category_group_name: str | None,
     category_name: str | None,
     date: datetime.date | None,
     cleared: TransactionClearedStatus | None,
@@ -421,7 +434,10 @@ async def _resolve_transaction(
                 raise ValueError("Category not allowed for transfer transactions")
         else:
             resolved_category_id, resolved_category_name = await _resolve_category(
-                con, plan_id, category_name
+                con,
+                plan_id,
+                category_group_name=category_group_name,
+                category_name=category_name,
             )
             resolved_category = ResolvedCategory(
                 id=resolved_category_id, name=resolved_category_name
@@ -523,14 +539,23 @@ async def _resolve_account_id(
 
 
 async def _resolve_category(
-    con: aiosqlite.Connection, plan_id: str, category_name: str | None
+    con: aiosqlite.Connection,
+    plan_id: str,
+    *,
+    category_group_name: str | None = None,
+    category_name: str | None,
 ) -> tuple[str, str]:
-    categories = await _load_name_to_id(con, "categories", plan_id=plan_id)
+    categories = await _load_categories(con, plan_id, category_group_name)
     if not categories:
         raise RuntimeError("No categories found in this plan.")
 
     if category_name:
-        return await _matching_entry(con, "categories", category_name, plan_id=plan_id)
+        return await _matching_category(
+            con,
+            category_name,
+            plan_id=plan_id,
+            category_group_name=category_group_name,
+        )
 
     selected_category_name = await _choice_prompt("Category: ", categories)
     return categories[selected_category_name], selected_category_name
@@ -751,6 +776,127 @@ async def _closest_plan_match(
         LIMIT 1
         """,
         (input_name, input_name),
+    ) as cur:
+        row = await cur.fetchone()
+
+    if row is None:
+        return None
+    return (
+        str(row[0]),
+        str(row[1]),
+        bool(row[2]),
+        int(row[3]),
+    )
+
+
+async def _load_categories(
+    con: aiosqlite.Connection, plan_id: str, category_group_name: str | None = None
+) -> dict[str, str]:
+    group_clause = (
+        " AND LOWER(category_group_name) = LOWER(?)"
+        if category_group_name is not None
+        else ""
+    )
+    params = (
+        (plan_id, category_group_name)
+        if category_group_name is not None
+        else (plan_id,)
+    )
+    async with con.execute(
+        f"""
+        SELECT name, id FROM categories
+        WHERE plan_id = ? AND NOT deleted{group_clause}
+        ORDER BY LOWER(name)
+        """,
+        params,
+    ) as cur:
+        rows = await cur.fetchall()
+    return {row["name"]: row["id"] for row in rows}
+
+
+async def _matching_category(
+    con: aiosqlite.Connection,
+    input_name: str,
+    *,
+    plan_id: str,
+    category_group_name: str | None = None,
+) -> tuple[str, str]:
+    matched = await _closest_category_match(
+        con, input_name, plan_id=plan_id, category_group_name=category_group_name
+    )
+    if matched is None:
+        raise ValueError("No entries found in categories")
+
+    matched_id, matched_name, is_substring_match, edit_distance = matched
+    normalized_edit_pct = edit_distance / max(len(input_name), len(matched_name))
+    if not is_substring_match and normalized_edit_pct > 0.2:
+        raise ValueError(
+            f"No close match for {input_name!r} in 'categories'. "
+            f"Closest match was {matched_name!r}, which is too different."
+        )
+
+    group_clause = (
+        " AND LOWER(category_group_name) = LOWER(?)"
+        if category_group_name is not None
+        else ""
+    )
+    count_params = (
+        (matched_name, plan_id, category_group_name)
+        if category_group_name is not None
+        else (matched_name, plan_id)
+    )
+    async with con.execute(
+        f"""
+        SELECT COUNT(*) FROM categories
+        WHERE LOWER(name) = LOWER(?) AND plan_id = ? AND NOT deleted{group_clause}
+        """,
+        count_params,
+    ) as cur:
+        count_row = await cur.fetchone()
+    duplicate_count = count_row[0] if count_row is not None else 0
+    if duplicate_count > 1:
+        raise ValueError(
+            f"{matched_name!r} matches {duplicate_count} entries in 'categories'. "
+            "Use --category-group to disambiguate."
+        )
+
+    return matched_id, matched_name
+
+
+async def _closest_category_match(
+    con: aiosqlite.Connection,
+    input_name: str,
+    *,
+    plan_id: str,
+    category_group_name: str | None = None,
+) -> tuple[str, str, bool, int] | None:
+    group_clause = (
+        " AND LOWER(category_group_name) = LOWER(?)"
+        if category_group_name is not None
+        else ""
+    )
+    params = (
+        (input_name, input_name, plan_id, category_group_name)
+        if category_group_name is not None
+        else (input_name, input_name, plan_id)
+    )
+    async with con.execute(
+        f"""
+        SELECT
+            id
+            , name
+            , LOWER(name) LIKE '%' || LOWER(?) || '%' AS is_substring_match
+            , EDITDISTANCE(LOWER(name), LOWER(?)) AS edit_distance
+        FROM categories
+        WHERE plan_id = ? AND NOT deleted{group_clause}
+        ORDER BY
+            CASE
+                WHEN is_substring_match THEN 0
+                ELSE edit_distance END,
+            LENGTH(name)
+        LIMIT 1
+        """,
+        params,
     ) as cur:
         row = await cur.fetchone()
 
