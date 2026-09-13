@@ -1138,7 +1138,7 @@ async def test_resolve_transaction_rejects_category_for_transfer(
 ):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    matching_entry_mock.return_value = CHECKING_ACCOUNT_ID
+    matching_entry_mock.return_value = (CHECKING_ACCOUNT_ID, "Checking")
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
     with pytest.raises(
@@ -1401,6 +1401,27 @@ async def test_matching_entry_rejects_distant_match(tmp_path):
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         with pytest.raises(ValueError, match="No close match for 'zzz' in 'accounts'."):
             await add_transaction_module._matching_entry(con, "accounts", "zzz")
+
+
+@pytest.mark.asyncio
+async def test_matching_entry_rejects_ambiguous_match(tmp_path):
+    db_path = tmp_path / "add-transaction.sqlite"
+    _create_add_transaction_db(db_path)
+    with sqlite3.connect(db_path) as con:
+        con.execute(
+            "UPDATE categories SET deleted = 0 WHERE id = ?",
+            (DUPLICATE_CREDIT_CARD_CATEGORY_ID,),
+        )
+
+    async with aiosqlite.connect(db_path) as con:
+        con.row_factory = aiosqlite.Row
+        await con.create_function("EDITDISTANCE", 2, edit_distance)
+        with pytest.raises(
+            ValueError, match="'Credit Card' matches 2 entries in 'categories'."
+        ):
+            await add_transaction_module._matching_entry(
+                con, "categories", "Credit Card", plan_id=PLAN_ID
+            )
 
 
 @pytest.mark.asyncio
