@@ -2,3 +2,5 @@ stack: [python, sql]
 opt:
   python:
     min-version: '3.14'
+    packaging: wheel
+    run-type-checks-in-github-actions: true
