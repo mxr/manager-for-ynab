@@ -33,7 +33,7 @@ jobs:
     if: needs.changes.outputs.project_files == 'true'
     uses: asottile/workflows/.github/workflows/tox.yml@75fa946a6d3d763b75b3a6669c18dc4d1822e939 # v1.11.1
     with:
-      env: '["py314", "py315"]'
+      env: '["py311", "py312", "py313", "py314", "py315", "pypy3"]'
   main:
     needs: [changes, main-real]
     if: always()
@@ -55,8 +55,8 @@ jobs:
     if: needs.changes.outputs.project_files == 'true'
     uses: asottile/workflows/.github/workflows/tox.yml@75fa946a6d3d763b75b3a6669c18dc4d1822e939 # v1.11.1
     with:
-      env: '["py314"]'
-      os: windows-latest
+      env: '["py311"]'
+      os: windows-2025
   main-win:
     needs: [changes, main-win-real]
     if: always()

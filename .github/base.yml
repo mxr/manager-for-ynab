@@ -1,6 +1,6 @@
 stack: [python, sql]
 opt:
   python:
-    min-version: '3.14'
+    min-version: '3.11'
     packaging: wheel
     run-type-checks-in-github-actions: true
