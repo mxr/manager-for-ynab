@@ -18,7 +18,6 @@ from manager_for_ynab.zero_out import month_range
 from manager_for_ynab.zero_out import parse_year_month
 from manager_for_ynab.zero_out import run
 
-REAL_DATE = datetime.date
 pytest_plugins = ("tests.zero_out.fixtures",)
 
 
@@ -444,7 +443,7 @@ async def test_run_returns_error_when_plan_lookup_fails(
 
 
 @pytest.mark.parametrize(
-    ("argv", "today", "expected"),
+    ("argv", "now", "expected"),
     [
         pytest.param(
             ("--category-name", "Rent", "--start", "2025-03", "--end", "2025-02"),
@@ -454,18 +453,18 @@ async def test_run_returns_error_when_plan_lookup_fails(
         ),
         pytest.param(
             ("--category-name", "Rent", "--start", "2025-04"),
-            datetime.date(2025, 4, 14),
-            "Months to update: 2025-04",
+            datetime.datetime(2025, 4, 14, 12, tzinfo=datetime.UTC),
+            "Months to update: 2025-04\n",
             id="default-end-month",
         ),
     ],
 )
 @patch("manager_for_ynab.zero_out._get_category_id", new_callable=AsyncMock)
 @patch("manager_for_ynab.zero_out._get_plan", new_callable=AsyncMock)
-@patch("manager_for_ynab.zero_out.datetime.date")
+@patch("manager_for_ynab.zero_out.datetime", wraps=datetime)
 @pytest.mark.asyncio
 async def test_run_month_selection(
-    date_cls,
+    datetime_mod,
     get_plan,
     get_category_id,
     capsys,
@@ -474,11 +473,10 @@ async def test_run_month_selection(
     ynab_plans_api,
     ynab_categories_api,
     argv,
-    today,
+    now,
     expected,
 ):
-    date_cls.side_effect = REAL_DATE
-    date_cls.today.return_value = today
+    datetime_mod.datetime.now.return_value = now
     get_plan.return_value = ("plan-1", "Test Plan")
     get_category_id.return_value = ("cat-1", "Rent", "Fixed")
     ret = await run(argv)
