@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import sys
@@ -89,21 +91,17 @@ async def async_main(argv: Sequence[str] = ()) -> int:
     if not argv:
         build_parser().print_help()
         return 0
-    match argv[0]:
-        case "reconciler":
-            return await run_reconciler(argv[1:])
-        case "pending-income":
-            return await run_pending_income(argv[1:])
-        case "auto-approve":
-            return await run_auto_approve(argv[1:])
-        case "add-transaction":
-            return await run_add_transaction(argv[1:])
-        case "sankey":
-            return await run_sankey(argv[1:])
-        case "zero-out":
-            return await run_zero_out(argv[1:])
-        case "delete-payees":
-            return await run_delete_payees(argv[1:])
+    commands = {
+        "reconciler": run_reconciler,
+        "pending-income": run_pending_income,
+        "auto-approve": run_auto_approve,
+        "add-transaction": run_add_transaction,
+        "sankey": run_sankey,
+        "zero-out": run_zero_out,
+        "delete-payees": run_delete_payees,
+    }
+    if command := commands.get(argv[0]):
+        return await command(argv[1:])
 
     parser = build_parser()
     parser.parse_args(argv)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import itertools
@@ -25,7 +27,21 @@ from manager_for_ynab.delete_payees._ynab_sync_api import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from collections.abc import Iterator
     from collections.abc import Sequence
+
+if sys.version_info >= (3, 12):  # pragma: >=3.12 cover
+    from itertools import batched
+else:  # pragma: <3.12 cover
+    from typing import TypeVar
+
+    T = TypeVar("T")
+
+    def batched(iterable: Iterable[T], n: int) -> Iterator[tuple[T, ...]]:
+        it = iter(iterable)
+        while batch := tuple(itertools.islice(it, n)):
+            yield batch
 
 
 _PACKAGE = "manager-for-ynab delete-payees"
@@ -236,7 +252,7 @@ async def delete_payees(
         return 1
 
     device_knowledge = 0
-    batches = itertools.batched(resolved_payees, batch_size, strict=False)
+    batches = batched(resolved_payees, batch_size)
     async with aiohttp.ClientSession() as session:
         for batch in batches:
             try:

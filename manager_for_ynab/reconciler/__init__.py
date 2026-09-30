@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import itertools
@@ -10,7 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import override
+from typing import TypeVar
 
 import aiosqlite
 from asyncio_for_ynab import ApiClient
@@ -30,6 +32,11 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
 from manager_for_ynab._auth import resolve_token
+
+if sys.version_info >= (3, 12):  # pragma: >=3.12 cover
+    from typing import override
+else:  # pragma: <3.12 cover
+    from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -556,9 +563,10 @@ async def do_reconcile(
         progress.update(task_id, advance=len(to_reconcile))
 
 
-def partition[T](
-    items: Iterable[T], func: Callable[[T], bool]
-) -> tuple[list[T], list[T]]:
+T = TypeVar("T")
+
+
+def partition(items: Iterable[T], func: Callable[[T], bool]) -> tuple[list[T], list[T]]:
     parts: defaultdict[bool, list[T]] = defaultdict(list)
     for i in items:
         parts[func(i)].append(i)
