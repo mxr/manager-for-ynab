@@ -47,7 +47,7 @@ repos:
     - Babel
     - aiohttp
     - aiosqlite
-    - asyncio-for-ynab~=1.86.0
+    - asyncio-for-ynab~=1.87.0
     - coverage
     - playwright
     - prompt-toolkit
@@ -55,7 +55,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.7
+    - sqlite-export-for-ynab~=2.9.8
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/mxr/pyright-pre-commit
@@ -66,7 +66,7 @@ repos:
     - Babel
     - aiohttp
     - aiosqlite
-    - asyncio-for-ynab~=1.86.0
+    - asyncio-for-ynab~=1.87.0
     - coverage
     - playwright
     - prompt-toolkit
@@ -74,7 +74,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.7
+    - sqlite-export-for-ynab~=2.9.8
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/mxr/sync-typing-deps
@@ -89,7 +89,7 @@ repos:
     - Babel
     - aiohttp
     - aiosqlite
-    - asyncio-for-ynab~=1.86.0
+    - asyncio-for-ynab~=1.87.0
     - coverage
     - playwright
     - prompt-toolkit
@@ -97,7 +97,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.7
+    - sqlite-export-for-ynab~=2.9.8
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/pre-commit/pre-commit-hooks
