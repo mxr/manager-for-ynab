@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -18,6 +19,8 @@ from asyncio_for_ynab import ApiException
 from asyncio_for_ynab import Category
 from asyncio_for_ynab import CategoryResponse
 from asyncio_for_ynab import CategoryResponseData
+from asyncio_for_ynab import PatchMonthCategoryWrapper
+from asyncio_for_ynab import SaveMonthCategory
 from asyncio_for_ynab import TransactionClearedStatus
 
 import manager_for_ynab.add_transaction as add_transaction_module
@@ -211,7 +214,9 @@ async def test_move_funds_skips_funding_for_inflow_ready_to_assign(
     )
 
     assert ret == 0
-    transactions_api.create_transaction.assert_called_once()
+    transactions_api.create_transaction.assert_called_once_with(
+        resolved_ready_to_assign_checking_transaction.plan.id, ANY
+    )
     categories_api_cls.assert_not_called()
 
     created_wrapper = transactions_api.create_transaction.call_args.args[1]
@@ -272,16 +277,17 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     )
 
     assert ret == 0
-    transactions_api.create_transaction.assert_called_once()
+    transactions_api.create_transaction.assert_called_once_with(PLAN_ID, ANY)
     categories_api.get_month_category_by_id.assert_called_once()
-    categories_api.update_month_category.assert_called_once()
+    categories_api.update_month_category.assert_called_once_with(
+        plan_id=PLAN_ID,
+        month=ANY,
+        category_id=ANY,
+        data=PatchMonthCategoryWrapper(category=SaveMonthCategory(budgeted=17660)),
+    )
 
     created_wrapper = transactions_api.create_transaction.call_args.args[1]
     assert created_wrapper.transactions[0].amount == -12340
-    assert (
-        categories_api.update_month_category.call_args.kwargs["data"].category.budgeted
-        == 17660
-    )
 
 
 @patch("manager_for_ynab.add_transaction.add_transaction", new_callable=AsyncMock)
@@ -1144,7 +1150,9 @@ async def test_move_funds_creates_all_legs_together_and_funds_once(
     )
 
     assert ret == 0
-    transactions_api_cls.return_value.create_transaction.assert_called_once()
+    transactions_api_cls.return_value.create_transaction.assert_called_once_with(
+        resolved_dining_transaction.plan.id, ANY
+    )
     created_wrapper = (
         transactions_api_cls.return_value.create_transaction.call_args.args[1]
     )

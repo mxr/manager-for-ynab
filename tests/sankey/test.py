@@ -5,6 +5,7 @@ from datetime import date
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import ANY
 from unittest.mock import patch
 
 import aiosqlite
@@ -535,8 +536,9 @@ async def test_run_defaults_start_to_first_txn_and_end_to_today(
     assert ret == 0
     sync.assert_not_called()
     today.assert_called_once_with()
-    assert build_echarts_html_mock.call_args.kwargs["start"] == date(2026, 4, 1)
-    assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
+    build_echarts_html_mock.assert_called_once_with(
+        ANY, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=ANY
+    )
 
 
 @patch("manager_for_ynab.sankey._today", return_value=date(2026, 4, 30))
@@ -559,8 +561,9 @@ async def test_run_accepts_today_for_end(sync, build_echarts_html_mock, today, d
     assert ret == 0
     sync.assert_not_called()
     today.assert_called_once_with()
-    assert build_echarts_html_mock.call_args.kwargs["start"] == date(2026, 4, 1)
-    assert build_echarts_html_mock.call_args.kwargs["end"] == date(2026, 4, 30)
+    build_echarts_html_mock.assert_called_once_with(
+        ANY, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=ANY
+    )
 
 
 @patch("manager_for_ynab.sankey.build_echarts_html", return_value="<echarts></echarts>")

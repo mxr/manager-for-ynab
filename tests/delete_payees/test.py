@@ -4,8 +4,10 @@ import json
 import sqlite3
 import sys
 from typing import TYPE_CHECKING
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
+from unittest.mock import call
 from unittest.mock import patch
 
 import aiohttp
@@ -310,16 +312,16 @@ async def test_delete_payees_for_real_batches_payees_in_one_request(
     assert ret == 0
     assert "Deleted payee 'Employer'." in out
     assert "Deleted payee 'Transfer'." in out
-    delete_payees_batch_mock.assert_awaited_once()
-
-    _, kwargs = delete_payees_batch_mock.call_args
-    assert kwargs["payees"] == (
-        (EMPLOYER_PAYEE_ID, "Employer"),
-        (TRANSFER_PAYEE_ID, "Transfer"),
+    delete_payees_batch_mock.assert_awaited_once_with(
+        ANY,
+        cookie=ANY,
+        session_token=ANY,
+        budget_version_id=ANY,
+        payees=((EMPLOYER_PAYEE_ID, "Employer"), (TRANSFER_PAYEE_ID, "Transfer")),
+        starting_device_knowledge=0,
+        ending_device_knowledge=2,
+        device_knowledge_of_server=7019,
     )
-    assert kwargs["starting_device_knowledge"] == 0
-    assert kwargs["ending_device_knowledge"] == 2
-    assert kwargs["device_knowledge_of_server"] == 7019
 
 
 @patch(
@@ -360,18 +362,28 @@ async def test_delete_payees_for_real_splits_into_configured_batch_size(
     assert ret == 0
     assert "Deleted payee 'Employer'." in out
     assert "Deleted payee 'Transfer'." in out
-    assert delete_payees_batch_mock.await_count == 2
-
-    first_call, second_call = delete_payees_batch_mock.call_args_list
-    assert first_call.kwargs["payees"] == ((EMPLOYER_PAYEE_ID, "Employer"),)
-    assert first_call.kwargs["starting_device_knowledge"] == 0
-    assert first_call.kwargs["ending_device_knowledge"] == 1
-    assert first_call.kwargs["device_knowledge_of_server"] == 7019
-
-    assert second_call.kwargs["payees"] == ((TRANSFER_PAYEE_ID, "Transfer"),)
-    assert second_call.kwargs["starting_device_knowledge"] == 1
-    assert second_call.kwargs["ending_device_knowledge"] == 2
-    assert second_call.kwargs["device_knowledge_of_server"] == 7020
+    assert delete_payees_batch_mock.await_args_list == [
+        call(
+            ANY,
+            cookie=ANY,
+            session_token=ANY,
+            budget_version_id=ANY,
+            payees=((EMPLOYER_PAYEE_ID, "Employer"),),
+            starting_device_knowledge=0,
+            ending_device_knowledge=1,
+            device_knowledge_of_server=7019,
+        ),
+        call(
+            ANY,
+            cookie=ANY,
+            session_token=ANY,
+            budget_version_id=ANY,
+            payees=((TRANSFER_PAYEE_ID, "Transfer"),),
+            starting_device_knowledge=1,
+            ending_device_knowledge=2,
+            device_knowledge_of_server=7020,
+        ),
+    ]
 
 
 @pytest.mark.seed("seed-other-plan.sql")
@@ -499,13 +511,17 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
     )
 
     assert ret == 0
-    delete_payees_mock.assert_awaited_once()
-    _, kwargs = delete_payees_mock.call_args
-    assert kwargs["plan_id"] == "plan-1"
-    assert kwargs["payee_ids"] == [EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID]
-    assert kwargs["for_real"] is True
-    assert kwargs["should_sync"] is False
-    assert kwargs["token_override"] == "override-token"
+    delete_payees_mock.assert_awaited_once_with(
+        plan_id="plan-1",
+        payee_ids=[EMPLOYER_PAYEE_ID, TRANSFER_PAYEE_ID],
+        for_real=True,
+        db=ANY,
+        full_refresh=ANY,
+        should_sync=False,
+        token_override="override-token",
+        session_token_db=ANY,
+        batch_size=ANY,
+    )
 
 
 def _create_cookie_db(path, cookies):
@@ -876,7 +892,21 @@ async def test_delete_payees_batch_api_sends_tombstone_delta():
     )
 
     assert result == {"error": None, "current_server_knowledge": 7020}
-    fake_session.post.assert_called_once()
+    fake_session.post.assert_called_once_with(
+        "https://app.ynab.com/api/v1/catalog",
+        data={"operation_name": "syncBudgetData", "request_data": ANY},
+        headers={
+            "Accept": ANY,
+            "Content-Type": ANY,
+            "X-Requested-With": ANY,
+            "X-YNAB-Client-Request-Id": ANY,
+            "X-YNAB-Api-Version": ANY,
+            "X-YNAB-Device-Id": ANY,
+            "X-YNAB-Device-OS": ANY,
+            "X-Session-Token": "token-value",
+            "Cookie": "cookie-value",
+        },
+    )
 
     _, kwargs = fake_session.post.call_args
     request_data = json.loads(kwargs["data"]["request_data"])
@@ -884,9 +914,6 @@ async def test_delete_payees_batch_api_sends_tombstone_delta():
     assert request_data["starting_device_knowledge"] == 5
     assert request_data["ending_device_knowledge"] == 7
     assert request_data["device_knowledge_of_server"] == 7019
-    assert kwargs["headers"]["Cookie"] == "cookie-value"
-    assert kwargs["headers"]["X-Session-Token"] == "token-value"
-    assert kwargs["headers"]["X-YNAB-Device-Id"]
 
     payee_entities = request_data["changed_entities"]["be_payees"]
     assert payee_entities[0]["id"] == "payee-1"
