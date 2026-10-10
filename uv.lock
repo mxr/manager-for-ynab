@@ -668,7 +668,7 @@ requires-dist = [
     { name = "prompt-toolkit" },
     { name = "pyecharts" },
     { name = "rich", specifier = ">=12" },
-    { name = "sqlite-export-for-ynab", specifier = "~=2.9.8" },
+    { name = "sqlite-export-for-ynab", specifier = "~=2.9.9" },
 ]
 provides-extras = ["delete-payees"]
 
@@ -1346,7 +1346,7 @@ wheels = [
 
 [[package]]
 name = "sqlite-export-for-ynab"
-version = "2.9.8"
+version = "2.9.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1356,11 +1356,10 @@ dependencies = [
     { name = "fasteners" },
     { name = "rich" },
     { name = "tenacity" },
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/bb/93d36be2d8efb8a6d199c56439f78282d4ed0c6943f03e894e6bddf5fae8/sqlite_export_for_ynab-2.9.8.tar.gz", hash = "sha256:660e6dc87e3f334c40f25cf8d758c59b5ca98cb2a48d4a9fd9a8ca7d8082c488", size = 28307, upload-time = "2026-10-06T00:16:28.902Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/f8/ec13e70425f662812397261912b586592417ed12bc91e4f324bffe82ac6e/sqlite_export_for_ynab-2.9.9.tar.gz", hash = "sha256:5974a30cf9bb9da210585673706e19f26887f8ce311c3fbaa4496fe009428440", size = 27973, upload-time = "2026-10-10T20:11:39.826Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/39/f12b308b29bee026a8a3ff85c065a73e97442fda8abd9f644a742308d8c9/sqlite_export_for_ynab-2.9.8-py3-none-any.whl", hash = "sha256:3c7a42df8ca60d2307569f643a5b219d73ac87f18626a1853158dbd9b1a0b46a", size = 25013, upload-time = "2026-10-06T00:16:27.475Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/9e/08f42d0072fb30d73d1aade4e215232e74ea050a023f0eac91d975406106/sqlite_export_for_ynab-2.9.9-py3-none-any.whl", hash = "sha256:4c5d11bbe547162ccf171e178a40f92307a963e0db8c309f0c6bf228c59e40fb", size = 24705, upload-time = "2026-10-10T20:11:38.386Z" },
 ]
 
 [[package]]
