@@ -37,9 +37,11 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-_PACKAGE = "manager-for-ynab pending-income"
-_PENDING_INCOME_SQL = (
-    files("manager_for_ynab.pending_income").joinpath("pending_income.sql").read_text()
+_PACKAGE = "manager-for-ynab pending-transaction"
+_PENDING_TRANSACTION_SQL = (
+    files("manager_for_ynab.pending_transaction")
+    .joinpath("pending_transaction.sql")
+    .read_text()
 )
 
 
@@ -76,7 +78,7 @@ class Transaction:
 
 
 @dataclass(frozen=True)
-class PendingIncomeResult:
+class PendingTransactionResult:
     transactions: list[Transaction]
     updated_count: int
 
@@ -102,7 +104,7 @@ async def run(
     skip_matched = cast("bool", args.skip_matched)
     quiet = cast("bool", args.quiet)
 
-    result = await pending_income(
+    result = await pending_transaction(
         db=db,
         full_refresh=full_refresh,
         should_sync=should_sync,
@@ -119,7 +121,7 @@ async def run(
     return 0
 
 
-async def pending_income(
+async def pending_transaction(
     *,
     db: Path,
     full_refresh: bool,
@@ -128,7 +130,7 @@ async def pending_income(
     skip_matched: bool,
     token_override: str | None,
     quiet: bool,
-) -> PendingIncomeResult:
+) -> PendingTransactionResult:
     token = resolve_token(token_override)
 
     if should_sync:
@@ -138,12 +140,12 @@ async def pending_income(
 
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
-        txns_by_plan = await fetch_pending_income(con, skip_matched=skip_matched)
+        txns_by_plan = await fetch_pending_transaction(con, skip_matched=skip_matched)
 
     found_txns = [txn for txns in txns_by_plan.values() for txn in txns]
     total_txns = len(found_txns)
 
-    _print(f"Found {total_txns} income transaction(s) to update.", quiet=quiet)
+    _print(f"Found {total_txns} pending transaction(s) to update.", quiet=quiet)
     if found_txns:
         print_found_txns(found_txns, quiet=quiet)
 
@@ -180,7 +182,7 @@ async def pending_income(
                         progress.update(task_id, advance=1)
             _print("Done", quiet=quiet)
 
-    return PendingIncomeResult(
+    return PendingTransactionResult(
         transactions=found_txns,
         updated_count=total_txns if for_real else 0,
     )
@@ -250,11 +252,11 @@ def build_split_recreations(
     return grouped
 
 
-async def fetch_pending_income(
+async def fetch_pending_transaction(
     con: aiosqlite.Connection, *, skip_matched: bool = False
 ) -> dict[str, list[Transaction]]:
     async with con.execute(
-        _PENDING_INCOME_SQL, {"skip_matched": int(skip_matched)}
+        _PENDING_TRANSACTION_SQL, {"skip_matched": int(skip_matched)}
     ) as cur:
         rows = await cur.fetchall()
 
@@ -308,7 +310,7 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     if quiet:
         return
 
-    table = Table(title="Pending Income Transactions")
+    table = Table(title="Pending Transactions")
     table.add_column("Date")
     table.add_column("Account")
     table.add_column("Payee")
@@ -322,4 +324,4 @@ def print_found_txns(found_txns: list[Transaction], *, quiet: bool) -> None:
     rich.print(table)
 
 
-__all__ = ["PendingIncomeResult", "pending_income", "run"]
+__all__ = ["PendingTransactionResult", "pending_transaction", "run"]

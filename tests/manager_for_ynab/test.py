@@ -34,7 +34,7 @@ def test_main_without_args_prints_help(capsys):
     assert "usage: manager-for-ynab" in out
     assert "auto-approve" in out
     assert "reconciler" in out
-    assert "pending-income" in out
+    assert "pending-transaction" in out
     assert "sankey" in out
     assert "zero-out" in out
     assert "delete-payees" in out
@@ -59,13 +59,13 @@ def test_main_reconciler_help(capsys):
     assert "--for-real" in out
 
 
-def test_main_pending_income_help(capsys):
+def test_main_pending_transaction_help(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        main(("pending-income", "--help"))
+        main(("pending-transaction", "--help"))
 
     assert excinfo.value.code == 0
     out, _ = capsys.readouterr()
-    assert "manager-for-ynab pending-income" in out
+    assert "manager-for-ynab pending-transaction" in out
     assert "--for-real" in out
 
 
@@ -131,7 +131,7 @@ def test_build_parser_registers_expected_subcommands():
     assert set(actions[0].choices) == {
         "auto-approve",
         "add-transaction",
-        "pending-income",
+        "pending-transaction",
         "reconciler",
         "sankey",
         "zero-out",
