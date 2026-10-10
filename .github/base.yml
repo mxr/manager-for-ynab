@@ -4,3 +4,4 @@ opt:
     min-version: '3.11'
     packaging: wheel
     run-type-checks-in-github-actions: true
+    console-script: true
