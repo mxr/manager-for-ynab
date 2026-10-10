@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -290,10 +291,12 @@ async def test_update_month_category(categories_api, update_error, expected):
     assert month_str == expected[0]
     if expected[1] is None:
         assert error is None
-        categories_api.update_month_category.assert_called_once()
-        _, kwargs = categories_api.update_month_category.call_args
-        assert kwargs["plan_id"] == "plan-1"
-        assert kwargs["category_id"] == "cat-1"
+        categories_api.update_month_category.assert_called_once_with(
+            plan_id="plan-1",
+            month=datetime.date(2025, 2, 1),
+            category_id="cat-1",
+            data=ANY,
+        )
     else:
         assert error is not None
 
