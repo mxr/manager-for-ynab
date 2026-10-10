@@ -1,3 +1,41 @@
+INSERT INTO accounts (
+    id
+    , plan_id
+    , name
+    , type
+    , direct_import_linked
+    , closed
+    , deleted
+) VALUES
+(
+    'linked-account'
+    , :test_plan_id_1
+    , 'Linked Checking'
+    , 'checking'
+    , 1
+    , 0
+    , 0
+)
+, (
+    'wallet-account'
+    , :test_plan_id_1
+    , 'Wallet'
+    , 'checking'
+    , 0
+    , 0
+    , 0
+)
+, (
+    'unlinked-card-account'
+    , :test_plan_id_1
+    , 'Unlinked Card'
+    , 'creditCard'
+    , 0
+    , 0
+    , 0
+)
+;
+
 INSERT INTO transactions (
     id
     , plan_id
@@ -57,8 +95,8 @@ INSERT INTO transactions (
 , (
     'negative'
     , :test_plan_id_1
-    , NULL
-    , 'Checking'
+    , 'linked-account'
+    , 'Linked Checking'
     , DATE('now', 'localtime', 'start of month')
     , -20000
     , '-$20.00'
@@ -135,6 +173,34 @@ INSERT INTO transactions (
     , 'Transfer : Savings'
     , 'uncleared'
     , 1
+    , NULL
+    , 0
+)
+, (
+    'cash-outflow'
+    , :test_plan_id_1
+    , 'wallet-account'
+    , 'Wallet'
+    , DATE('now', 'localtime', 'start of month')
+    , -5000
+    , '-$5.00'
+    , 'Coffee'
+    , 'uncleared'
+    , 0
+    , NULL
+    , 0
+)
+, (
+    'unlinked-card-outflow'
+    , :test_plan_id_1
+    , 'unlinked-card-account'
+    , 'Unlinked Card'
+    , DATE('now', 'localtime', 'start of month')
+    , -7000
+    , '-$7.00'
+    , 'Store'
+    , 'uncleared'
+    , 0
     , NULL
     , 0
 )

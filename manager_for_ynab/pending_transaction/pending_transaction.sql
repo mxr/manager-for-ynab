@@ -24,11 +24,19 @@ LEFT JOIN subtransactions
     ON
         transactions.id = subtransactions.transaction_id
         AND NOT subtransactions.deleted
+LEFT JOIN accounts
+    ON transactions.account_id = accounts.id
 WHERE
     TRUE
     AND transactions.cleared = 'uncleared'
     AND transactions."date" < DATE('now', 'localtime')
-    AND transactions.amount > 0
+    AND (
+        transactions.amount > 0
+        OR (
+            NOT accounts.direct_import_linked
+            AND accounts.type = 'checking'
+        )
+    )
     AND NOT transactions.deleted
     AND transactions.id NOT IN (
         SELECT transfer_legs.transfer_transaction_id

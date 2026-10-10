@@ -23,13 +23,13 @@ def db(request, tmp_path):
 
 @pytest.fixture
 def ynab_configuration():
-    with patch("manager_for_ynab.pending_income.Configuration") as configuration:
+    with patch("manager_for_ynab.pending_transaction.Configuration") as configuration:
         yield configuration
 
 
 @pytest.fixture
 def ynab_api_client():
-    with patch("manager_for_ynab.pending_income.ApiClient") as api_client:
+    with patch("manager_for_ynab.pending_transaction.ApiClient") as api_client:
         api_client.return_value = AsyncMock()
         yield api_client
 
@@ -37,7 +37,7 @@ def ynab_api_client():
 @pytest.fixture
 def transactions_api():
     with patch(
-        "manager_for_ynab.pending_income.TransactionsApi"
+        "manager_for_ynab.pending_transaction.TransactionsApi"
     ) as transactions_api_cls:
         transactions_api_cls.return_value = AsyncMock()
         yield transactions_api_cls.return_value

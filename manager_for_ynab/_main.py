@@ -9,7 +9,7 @@ from manager_for_ynab._version import get_version
 from manager_for_ynab.add_transaction import run as run_add_transaction
 from manager_for_ynab.auto_approve import run as run_auto_approve
 from manager_for_ynab.delete_payees import run as run_delete_payees
-from manager_for_ynab.pending_income import run as run_pending_income
+from manager_for_ynab.pending_transaction import run as run_pending_transaction
 from manager_for_ynab.reconciler import run as run_reconciler
 from manager_for_ynab.sankey import run as run_sankey
 from manager_for_ynab.zero_out import run as run_zero_out
@@ -41,10 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reconciler_parser.set_defaults(func=run_reconciler)
 
-    pending_income_parser = subparsers.add_parser(
-        "pending-income", help="Move pending income transactions to today."
+    pending_transaction_parser = subparsers.add_parser(
+        "pending-transaction", help="Move pending transactions to today."
     )
-    pending_income_parser.set_defaults(func=run_pending_income)
+    pending_transaction_parser.set_defaults(func=run_pending_transaction)
 
     auto_approve_parser = subparsers.add_parser(
         "auto-approve",
@@ -93,7 +93,7 @@ async def async_main(argv: Sequence[str] = ()) -> int:
         return 0
     commands = {
         "reconciler": run_reconciler,
-        "pending-income": run_pending_income,
+        "pending-transaction": run_pending_transaction,
         "auto-approve": run_auto_approve,
         "add-transaction": run_add_transaction,
         "sankey": run_sankey,
