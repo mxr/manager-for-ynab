@@ -45,20 +45,14 @@ from testing.fixtures import PLAN_ID
 from testing.fixtures import TRANSFER_PAYEE_ID
 from testing.fixtures import apply_ddl
 from testing.fixtures import execute_seed
-
-
-def _create_db(path):
-    with sqlite3.connect(path) as con:
-        execute_seed(con)
-        con.execute(
-            "UPDATE plans SET last_knowledge_of_server = 7019 WHERE id = ?", (PLAN_ID,)
-        )
+from testing.fixtures import seed_paths
 
 
 @pytest.fixture
-def db_path(tmp_path):
+def db_path(request, tmp_path):
     path = tmp_path / "delete-payees.sqlite"
-    _create_db(path)
+    with sqlite3.connect(path) as con:
+        execute_seed(con, *seed_paths(request))
     return path
 
 
@@ -105,11 +99,9 @@ async def test_resolve_plan_id_raises_for_unknown_id(db_path):
     assert "No plan found with id 'unknown-plan'." in str(excinfo.value)
 
 
+@pytest.mark.seed("seed-other-plan.sql")
 @pytest.mark.asyncio
 async def test_resolve_plan_id_raises_when_ambiguous(db_path):
-    with sqlite3.connect(db_path) as con:
-        con.execute("INSERT INTO plans (id, name) VALUES ('other-plan', 'Other Plan')")
-
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError) as excinfo:
@@ -126,16 +118,13 @@ async def test_load_server_knowledge_reads_last_knowledge_of_server(db_path):
         assert await _load_server_knowledge(con, PLAN_ID) == 7019
 
 
+@pytest.mark.seed("seed-other-plan.sql")
 @pytest.mark.asyncio
-async def test_load_server_knowledge_raises_when_never_synced(tmp_path):
-    path = tmp_path / "never-synced.sqlite"
-    with sqlite3.connect(path) as con:
-        execute_seed(con)
-
-    async with aiosqlite.connect(path) as con:
+async def test_load_server_knowledge_raises_when_never_synced(db_path):
+    async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError) as excinfo:
-            await _load_server_knowledge(con, PLAN_ID)
+            await _load_server_knowledge(con, "other-plan")
 
     assert "Run with --sync first." in str(excinfo.value)
 
@@ -240,20 +229,13 @@ async def test_delete_payees_returns_one_when_resolution_fails(
     assert ret == 1
 
 
+@pytest.mark.seed("seed-other-plan.sql")
 @pytest.mark.asyncio
 async def test_delete_payees_reports_when_no_unused_payees_found(
     db_path, session_token_db_path, capsys
 ):
-    async with aiosqlite.connect(db_path) as con:
-        await con.execute(
-            "INSERT INTO transactions (id, plan_id, payee_id, approved, deleted) "
-            "VALUES ('txn-1', ?, ?, 1, 0)",
-            (PLAN_ID, EMPLOYER_PAYEE_ID),
-        )
-        await con.commit()
-
     ret = await delete_payees(
-        plan_id=None,
+        plan_id="other-plan",
         payee_ids=None,
         for_real=False,
         db=db_path,
@@ -265,7 +247,7 @@ async def test_delete_payees_reports_when_no_unused_payees_found(
 
     out, _ = capsys.readouterr()
     assert ret == 0
-    assert f"No unused payees found in plan {PLAN_ID}." in out
+    assert "No unused payees found in plan other-plan." in out
 
 
 @patch("manager_for_ynab.delete_payees.sync", new_callable=AsyncMock)
@@ -392,19 +374,16 @@ async def test_delete_payees_for_real_splits_into_configured_batch_size(
     assert second_call.kwargs["device_knowledge_of_server"] == 7020
 
 
+@pytest.mark.seed("seed-other-plan.sql")
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_returns_one_when_never_synced(
-    tmp_path, session_token_db_path, capsys
+    db_path, session_token_db_path, capsys
 ):
-    path = tmp_path / "never-synced.sqlite"
-    with sqlite3.connect(path) as con:
-        execute_seed(con)
-
     ret = await delete_payees(
-        plan_id=None,
-        payee_ids=[EMPLOYER_PAYEE_ID],
+        plan_id="other-plan",
+        payee_ids=["other-plan-payee"],
         for_real=True,
-        db=path,
+        db=db_path,
         full_refresh=False,
         should_sync=False,
         token_override="token",

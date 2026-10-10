@@ -192,4 +192,34 @@ INSERT INTO transactions (
     , 'deleted-1'
     , 0
 )
+, (
+    'pair-c-1'
+    , 'plan-3'
+    , NULL
+    , 'Card'
+    , '2026-04-22'
+    , -8000
+    , '-$8.00'
+    , 'Snack'
+    , '{"payee_name": "Snack"}'
+    , 'uncleared'
+    , 0
+    , 'pair-c-2'
+    , 0
+)
+, (
+    'pair-c-2'
+    , 'plan-3'
+    , NULL
+    , 'Card'
+    , '2026-04-22'
+    , -8000
+    , '-$8.00'
+    , 'Snack'
+    , '{"payee_name": "Snack"}'
+    , 'uncleared'
+    , 0
+    , 'pair-c-1'
+    , 0
+)
 ;

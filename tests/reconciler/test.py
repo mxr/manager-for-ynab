@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
@@ -16,8 +15,6 @@ from manager_for_ynab.reconciler import do_reconcile
 from manager_for_ynab.reconciler import fetch_plan_accts
 from manager_for_ynab.reconciler import fetch_transactions
 from manager_for_ynab.reconciler import run
-from testing.fixtures import CHECKING_ACCOUNT_ID
-from testing.fixtures import CREDIT_CARD_ACCOUNT_ID
 from testing.fixtures import PLAN_ID
 from testing.fixtures import TOKEN_OVERRIDE
 from testing.fixtures import db
@@ -76,15 +73,10 @@ async def test_run(sync, db, capsys, target, expected, substr):
 @patch("manager_for_ynab.reconciler.sync")
 @pytest.mark.asyncio
 async def test_run_nothing_to_do(sync, db):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            "UPDATE transactions SET cleared = 'uncleared' where cleared = 'cleared'"
-        )
-
     ret = await run(
         (
             "--account-like",
-            "Checking",
+            "Joint",
             "--target",
             "430",
             "--sqlite-export-for-ynab-db",
@@ -271,22 +263,12 @@ async def test_run_mode_interactive_batch_requires_matching_target_count(_):
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
 async def test_run_mode_batch(sync, db):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            """
-            UPDATE transactions
-            SET cleared = 'reconciled'
-            WHERE account_id = ?
-            """,
-            (CHECKING_ACCOUNT_ID,),
-        )
-
     ret = await run(
         (
             "--mode",
             "batch",
             "--account-target-pairs",
-            "Checking=430",
+            "Savings=430",
             "Credit=290",
             "--sqlite-export-for-ynab-db",
             db,
@@ -301,24 +283,13 @@ async def test_run_mode_batch(sync, db):
 @pytest.mark.usefixtures(db.__name__)
 @pytest.mark.asyncio
 async def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            """
-            UPDATE transactions
-            SET cleared = 'uncleared'
-            WHERE account_id IN (?, ?)
-            AND cleared != 'reconciled'
-            """,
-            (CHECKING_ACCOUNT_ID, CREDIT_CARD_ACCOUNT_ID),
-        )
-
     ret = await run(
         (
             "--mode",
             "batch",
             "--account-target-pairs",
-            "Credit=200",
-            "Checking=430",
+            "Store Card=200",
+            "Joint=430",
             "--sqlite-export-for-ynab-db",
             db,
         )
@@ -327,8 +298,8 @@ async def test_run_mode_batch_preserves_pair_order(sync, db, capsys):
     out, _ = capsys.readouterr()
     sync.assert_called()
     assert ret == 0
-    assert "[Checking] Balance already reconciled to target" in out
-    assert "[Credit Card] Balance already reconciled to target" in out
+    assert "[Joint] Balance already reconciled to target" in out
+    assert "[Store Card] Balance already reconciled to target" in out
 
 
 @patch("manager_for_ynab.reconciler.sync")
@@ -368,15 +339,6 @@ def test_parse_account_targets_wraps_non_wildcard_patterns():
 @pytest.mark.asyncio
 @pytest.mark.usefixtures(db.__name__)
 async def test_fetch_transactions_filters_unapproved(db):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            """
-            UPDATE transactions
-            SET approved = 0
-            WHERE id = 'c479c335-b54f-48b9-8b74-49a907f1b3f2'
-            """
-        )
-
     async with aiosqlite.connect(db) as con:
         con.row_factory = aiosqlite.Row
         transactions = (
@@ -385,6 +347,7 @@ async def test_fetch_transactions_filters_unapproved(db):
 
     assert {txn.id for txn in transactions} == {
         "9a97f337-28db-4c2d-990f-d9ec0e9bc765",
+        "c479c335-b54f-48b9-8b74-49a907f1b3f2",
         "96817e5f-d272-4012-9790-38f8a8e2be90",
         "eeef0922-b226-4f8a-bf00-66d4d98e348c",
     }

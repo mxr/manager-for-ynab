@@ -64,6 +64,8 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         "pair-b-1",
         "pair-b-2",
         "unmatched",
+        "pair-c-1",
+        "pair-c-2",
     ]
     assert [txn.should_delete for txn in found] == [
         False,
@@ -71,6 +73,8 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         True,
         False,
         False,
+        True,
+        True,
     ]
     assert [txn.cleared for txn in found] == [
         "cleared",
@@ -78,6 +82,8 @@ async def test_fetch_auto_approve_transactions_filters_expected_rows(db):
         "uncleared",
         "uncleared",
         "cleared",
+        "uncleared",
+        "uncleared",
     ]
 
 
@@ -157,6 +163,26 @@ def _expected_auto_approve_result(
                 date="2026-04-21",
                 cleared="cleared",
             ),
+            Transaction(
+                id="pair-c-1",
+                plan_id="plan-3",
+                account_name="Card",
+                payee_name="Snack",
+                amount_formatted="-$8.00",
+                date="2026-04-22",
+                cleared="uncleared",
+                should_delete=True,
+            ),
+            Transaction(
+                id="pair-c-2",
+                plan_id="plan-3",
+                account_name="Card",
+                payee_name="Snack",
+                amount_formatted="-$8.00",
+                date="2026-04-22",
+                cleared="uncleared",
+                should_delete=True,
+            ),
         ],
         updated_count=updated_count,
         cleared=cleared,
@@ -227,42 +253,10 @@ async def test_auto_approve_for_real_returns_updated_count(
     assert transactions_api.delete_transaction.call_args_list == [
         call("plan-1", "pair-a-2"),
         call("plan-2", "pair-b-1"),
+        call("plan-3", "pair-c-1"),
+        call("plan-3", "pair-c-2"),
     ]
-    assert result == _expected_auto_approve_result(updated_count=5, cleared=2)
-
-
-@patch("manager_for_ynab.auto_approve.sync")
-@pytest.mark.asyncio
-async def test_auto_approve_for_real_skips_update_when_plan_only_deletes(
-    sync, transactions_api, db
-):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            "UPDATE transactions SET import_payee_name = '{\"payee_name\": \"Lunch\"}' WHERE id = 'pair-b-2'"
-        )
-
-    updates: list[tuple[str, Any]] = []
-    transactions_api.update_transactions.side_effect = lambda plan_id, wrapper: (
-        updates.append((plan_id, wrapper))
-    )
-
-    result = await auto_approve(
-        db=db,
-        full_refresh=False,
-        for_real=True,
-        token_override=None,
-        quiet=True,
-    )
-
-    sync.assert_called_once_with("token", db, False, quiet=True)
-    assert [plan_id for plan_id, _ in updates] == ["plan-1"]
-    assert transactions_api.delete_transaction.call_args_list == [
-        call("plan-1", "pair-a-2"),
-        call("plan-2", "pair-b-1"),
-        call("plan-2", "pair-b-2"),
-    ]
-    assert result.updated_count == 5
-    assert result.cleared == 2
+    assert result == _expected_auto_approve_result(updated_count=7, cleared=2)
 
 
 @patch("manager_for_ynab.auto_approve.TransactionsApi", unexpected_transactions_api)
@@ -276,7 +270,7 @@ async def test_run_dry_run_does_not_update_transactions(sync, db, capsys):
     sync.assert_called_once_with("token", db, False, quiet=False)
     assert "** Refreshing SQLite DB **" in out
     assert "** Done **" in out
-    assert "Found 5 transaction(s) to update." in out
+    assert "Found 7 transaction(s) to update." in out
     assert "Transactions To Update" in out
     assert "Delete" in out
     assert "Update" in out
@@ -305,17 +299,13 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
     assert ret == 0
     sync.assert_not_called()
     assert "** Refreshing SQLite DB **" not in out
-    assert "Found 5 transaction(s) to update." in out
+    assert "Found 7 transaction(s) to update." in out
 
 
 @patch("manager_for_ynab.auto_approve.sync")
+@pytest.mark.seed("seed-approved-transactions.sql")
 @pytest.mark.asyncio
 async def test_run_no_matching_transactions(sync, db, capsys):
-    with sqlite3.connect(db) as con:
-        con.execute(
-            "UPDATE transactions SET approved = 1 WHERE matched_transaction_id IS NOT NULL OR id = 'unmatched'"
-        )
-
     ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()
@@ -351,4 +341,6 @@ async def test_run_for_real_updates_transactions_grouped_by_plan(
     assert transactions_api.delete_transaction.call_args_list == [
         call("plan-1", "pair-a-2"),
         call("plan-2", "pair-b-1"),
+        call("plan-3", "pair-c-1"),
+        call("plan-3", "pair-c-2"),
     ]
