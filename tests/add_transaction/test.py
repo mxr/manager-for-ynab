@@ -44,17 +44,24 @@ from manager_for_ynab.add_transaction import parse_date
 from manager_for_ynab.add_transaction import run
 from manager_for_ynab.add_transaction import sync_and_resolve_transaction
 from testing.fixtures import CHECKING_ACCOUNT_ID
-from testing.fixtures import DINING_OUT_CATEGORY_ID
-from testing.fixtures import DUPLICATE_CREDIT_CARD_CATEGORY_ID
 from testing.fixtures import EMPLOYER_PAYEE_ID
 from testing.fixtures import PLAN_ID
 from testing.fixtures import READY_TO_ASSIGN_CATEGORY_ID
+from testing.fixtures import apply_ddl
 from testing.fixtures import execute_seed
 
+_SEED_SQL = Path(__file__).with_name("seed.sql")
+_SEED_SHARED_PLANS_SQL = Path(__file__).with_name("seed-shared-plans.sql")
 
-def _create_add_transaction_db(path: Path) -> None:
+
+def _create_add_transaction_db(path: Path, *extra_paths: Path) -> None:
     with sqlite3.connect(path) as con:
-        execute_seed(con)
+        execute_seed(con, _SEED_SQL, *extra_paths)
+
+
+def _create_empty_db(path: Path) -> None:
+    with sqlite3.connect(path) as con:
+        apply_ddl(con)
 
 
 @pytest.fixture
@@ -1393,9 +1400,7 @@ async def test_resolve_payee_returns_existing_transfer_payee(tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_payee_errors_when_no_payees(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute("DELETE FROM payees")
+    _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1406,9 +1411,7 @@ async def test_resolve_payee_errors_when_no_payees(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_entry_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute("DELETE FROM payees")
+    _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1437,29 +1440,22 @@ async def test_matching_entry_rejects_distant_match(tmp_path):
 async def test_matching_entry_rejects_ambiguous_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "UPDATE categories SET deleted = 0 WHERE id = ?",
-            (DUPLICATE_CREDIT_CARD_CATEGORY_ID,),
-        )
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
         with pytest.raises(
-            ValueError, match="'Credit Card' matches 2 entries in 'categories'."
+            ValueError, match="'Groceries' matches 2 entries in 'categories'."
         ):
             await add_transaction_module._matching_entry(
-                con, "categories", "Credit Card", plan_id=PLAN_ID
+                con, "categories", "Groceries", plan_id=PLAN_ID
             )
 
 
 @pytest.mark.asyncio
 async def test_matching_plan_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute("DELETE FROM plans")
+    _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1483,26 +1479,21 @@ async def test_matching_plan_rejects_distant_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_plan_rejects_ambiguous_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "INSERT INTO plans (id, name, currency_format_currency_symbol, "
-            "currency_format_iso_code) VALUES ('other-plan-id', 'My Plan', '$', 'USD')"
-        )
+    _create_add_transaction_db(db_path, _SEED_SHARED_PLANS_SQL)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
-        with pytest.raises(ValueError, match="'My Plan' matches 2 entries in 'plans'."):
-            await add_transaction_module._matching_plan(con, "My Plan")
+        with pytest.raises(
+            ValueError, match="'Shared Plan' matches 2 entries in 'plans'."
+        ):
+            await add_transaction_module._matching_plan(con, "Shared Plan")
 
 
 @pytest.mark.asyncio
 async def test_matching_category_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute("DELETE FROM categories")
+    _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1531,30 +1522,24 @@ async def test_matching_category_rejects_distant_match(tmp_path):
 async def test_matching_category_disambiguates_with_category_group(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
     _create_add_transaction_db(db_path)
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "INSERT INTO categories (id, plan_id, deleted, category_group_name, name) "
-            "VALUES (?, ?, 0, ?, ?)",
-            ("other-group-category-id", PLAN_ID, "Other Group", "Dining Out"),
-        )
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
         await con.create_function("EDITDISTANCE", 2, edit_distance)
 
         with pytest.raises(
-            ValueError, match="'Dining Out' matches 2 entries in 'categories'."
+            ValueError, match="'Groceries' matches 2 entries in 'categories'."
         ):
             await add_transaction_module._matching_category(
-                con, "Dining Out", plan_id=PLAN_ID
+                con, "Groceries", plan_id=PLAN_ID
             )
 
         category_id, category_name = await add_transaction_module._matching_category(
-            con, "Dining Out", plan_id=PLAN_ID, category_group_name="Dining"
+            con, "Groceries", plan_id=PLAN_ID, category_group_name="Food"
         )
 
-    assert category_id == DINING_OUT_CATEGORY_ID
-    assert category_name == "Dining Out"
+    assert category_id == "groceries-food-category"
+    assert category_name == "Groceries"
 
 
 @pytest.mark.asyncio
@@ -1582,20 +1567,11 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
             match="No credit card payment category found for account 'missing'.",
         ):
             await _resolve_credit_card_payment_category(con, PLAN_ID, "missing")
-
-    with sqlite3.connect(db_path) as con:
-        con.execute(
-            "UPDATE categories SET deleted = 0 WHERE id = ?",
-            (DUPLICATE_CREDIT_CARD_CATEGORY_ID,),
-        )
-
-    async with aiosqlite.connect(db_path) as con:
-        con.row_factory = aiosqlite.Row
         with pytest.raises(
             RuntimeError,
-            match="Found 2 credit card payment categories for account 'Credit Card'.",
+            match="Found 2 credit card payment categories for account 'Store Card'.",
         ):
-            await _resolve_credit_card_payment_category(con, PLAN_ID, "Credit Card")
+            await _resolve_credit_card_payment_category(con, PLAN_ID, "Store Card")
 
 
 @pytest.mark.asyncio

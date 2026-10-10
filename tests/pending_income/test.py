@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Any
@@ -300,11 +299,9 @@ async def test_run_no_sync_uses_existing_db(sync, db, capsys):
 
 
 @patch("manager_for_ynab.pending_income.sync")
+@pytest.mark.seed("seed-cleared-transactions.sql")
 @pytest.mark.asyncio
 async def test_run_no_matching_transactions(sync, db, capsys):
-    with sqlite3.connect(db) as con:
-        con.execute("UPDATE transactions SET cleared = 'cleared'")
-
     ret = await run(("--sqlite-export-for-ynab-db", str(db)))
 
     out, _ = capsys.readouterr()

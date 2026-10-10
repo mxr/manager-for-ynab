@@ -58,12 +58,23 @@ def execute_seed(con: sqlite3.Connection, *extra_paths: Path) -> None:
             con.execute(statement, SEED_IDS)
 
 
+def seed_paths(request: pytest.FixtureRequest, *default: Path) -> tuple[Path, ...]:
+    marker = request.node.get_closest_marker("seed")
+    if marker is None:
+        return default
+    return tuple(request.path.with_name(name) for name in marker.args)
+
+
 @pytest.fixture()
-def db(tmpdir):
+def db(request, tmpdir):
     path = tmpdir / "db.sqlite"
     with sqlite3.connect(path) as con:
         execute_seed(
-            con, _TESTING.parent / "tests" / "reconciler" / "seed-transactions.sql"
+            con,
+            *seed_paths(
+                request,
+                _TESTING.parent / "tests" / "reconciler" / "seed-transactions.sql",
+            ),
         )
     yield str(path)
 

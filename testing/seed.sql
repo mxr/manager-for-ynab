@@ -3,11 +3,13 @@ INSERT INTO plans (
     , name
     , currency_format_currency_symbol
     , currency_format_iso_code
+    , last_knowledge_of_server
 ) VALUES (
     :plan_id
     , 'My Plan'
     , '$'
     , 'USD'
+    , 7019
 )
 ;
 
