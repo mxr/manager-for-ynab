@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from datetime import datetime
+from decimal import ROUND_HALF_UP
 from decimal import Decimal
 from enum import Enum
 from importlib.resources import files
@@ -33,6 +34,7 @@ _READY_TO_ASSIGN = "Inflow: Ready to Assign"
 _SANKEY_SQL = files("manager_for_ynab.sankey").joinpath("sankey.sql").read_text()
 _MIN_FIGURE_HEIGHT = 1000
 _MIN_LINK_VALUE_RATIO = 0.02
+_MIN_LABEL_AMOUNT = Decimal(100)
 # pyecharts treats ThemeType.DARK as a builtin and never emits a <script> tag for it,
 # so echarts.init() silently falls back to the default theme. Load it ourselves.
 # https://github.com/pyecharts/pyecharts/issues/2478
@@ -107,7 +109,7 @@ _DARK_PALETTE = (
     "#fc96bf",  # carnation pink
     "#fcb92d",  # marigold
 )
-_LABEL_FORMATTER = "function(params) { return params.data.label; }"
+_LABEL_FORMATTER = "function(params) { return `${params.data.label} - ${params.data.rounded_amount}`; }"
 _TOOLTIP_FORMATTER = """
 function(params) {
     const amount = Number(params.data.amount).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -469,6 +471,14 @@ def _group_color(group_key: str, theme: Theme) -> str:
     return palette[int.from_bytes(digest[:8]) % len(palette)]
 
 
+def _round_amount(amount: Decimal) -> str:
+    thousands = max(amount, _MIN_LABEL_AMOUNT) / 1000
+    rounded = thousands.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    if rounded >= 1:
+        rounded = thousands.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    return f"${rounded}k"
+
+
 def build_echarts_html(
     data: SankeyData, *, start: date, end: date, theme: Theme
 ) -> str:
@@ -511,6 +521,7 @@ def build_echarts_html(
                         if group_key is not None
                         else {}
                     ),
+                    "rounded_amount": _round_amount(amounts[i]),
                 }
                 for i, (key, label, group_key) in enumerate(
                     zip(data.keys, data.labels, data.group_keys, strict=True)
