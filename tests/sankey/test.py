@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date
 from datetime import datetime
@@ -415,7 +416,7 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "params.data.amount" in html
     assert "currency: 'USD'" in html
     assert (
-        '"name": "income:Employer",\n                    "label": "Employer",\n                    "amount": 500.0'
+        '"name": "payee:Employer",\n                    "label": "Employer",\n                    "amount": 500.0'
         in html
     )
     assert (
@@ -728,3 +729,110 @@ async def test_sankey_quiet_suppresses_empty_output(sync, db, capsys):
     assert ret == 0
     sync.assert_not_called()
     assert out == ""
+
+
+@pytest.mark.parametrize(
+    ("output_format", "parse", "expected"),
+    (
+        pytest.param(
+            "csv",
+            str,
+            "input_type,input_name,output_type,output_name,amount_millis\n"
+            "payee,Employer,ready_to_assign,Ready to Assign,500000\n"
+            "ready_to_assign,Ready to Assign,income,Income,500000\n"
+            "income_category,Gifts,net_category_income,Net Category Income,60000\n"
+            "net_category_income,Net Category Income,income,Income,60000\n"
+            "income,Income,category_group,Bills,120000\n"
+            "category_group,Bills,category,Rent,120000\n"
+            "income,Income,category_group,Food,45500\n"
+            "category_group,Food,category,Groceries,45500\n",
+            id="csv",
+        ),
+        pytest.param(
+            "json",
+            json.loads,
+            [
+                {
+                    "input_type": "payee",
+                    "input_name": "Employer",
+                    "output_type": "ready_to_assign",
+                    "output_name": "Ready to Assign",
+                    "amount_millis": 500000,
+                },
+                {
+                    "input_type": "ready_to_assign",
+                    "input_name": "Ready to Assign",
+                    "output_type": "income",
+                    "output_name": "Income",
+                    "amount_millis": 500000,
+                },
+                {
+                    "input_type": "income_category",
+                    "input_name": "Gifts",
+                    "output_type": "net_category_income",
+                    "output_name": "Net Category Income",
+                    "amount_millis": 60000,
+                },
+                {
+                    "input_type": "net_category_income",
+                    "input_name": "Net Category Income",
+                    "output_type": "income",
+                    "output_name": "Income",
+                    "amount_millis": 60000,
+                },
+                {
+                    "input_type": "income",
+                    "input_name": "Income",
+                    "output_type": "category_group",
+                    "output_name": "Bills",
+                    "amount_millis": 120000,
+                },
+                {
+                    "input_type": "category_group",
+                    "input_name": "Bills",
+                    "output_type": "category",
+                    "output_name": "Rent",
+                    "amount_millis": 120000,
+                },
+                {
+                    "input_type": "income",
+                    "input_name": "Income",
+                    "output_type": "category_group",
+                    "output_name": "Food",
+                    "amount_millis": 45500,
+                },
+                {
+                    "input_type": "category_group",
+                    "input_name": "Food",
+                    "output_type": "category",
+                    "output_name": "Groceries",
+                    "amount_millis": 45500,
+                },
+            ],
+            id="json",
+        ),
+    ),
+)
+@patch("manager_for_ynab.sankey.sync")
+@pytest.mark.asyncio
+async def test_run_writes_links_in_format(
+    sync, db, capsys, output_format, parse, expected
+):
+    ret = await run(
+        (
+            "--sqlite-export-for-ynab-db",
+            str(db),
+            "--start",
+            "2026-04-01",
+            "--end",
+            "2026-04-30",
+            "--no-sync",
+            "-f",
+            output_format,
+        )
+    )
+
+    out, _ = capsys.readouterr()
+    assert ret == 0
+    sync.assert_not_called()
+    assert parse(out) == expected

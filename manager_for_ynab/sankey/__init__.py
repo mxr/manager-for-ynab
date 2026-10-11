@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
+import json
 import sys
 from collections import defaultdict
+from dataclasses import asdict
 from dataclasses import dataclass
+from dataclasses import fields
 from datetime import date
 from datetime import datetime
 from decimal import ROUND_HALF_UP
@@ -157,6 +162,21 @@ class SankeyNode:
     label: str
 
 
+@dataclass(frozen=True, slots=True)
+class SankeyLink:
+    input_type: str
+    input_name: str
+    output_type: str
+    output_name: str
+    amount_millis: int
+
+
+class OutputFormat(Enum):
+    HTML = "html"
+    CSV = "csv"
+    JSON = "json"
+
+
 class SortBy(Enum):
     ALPHABETICAL = "alphabetical"
     AMOUNT = "amount"
@@ -185,7 +205,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out",
         type=Path,
-        help="Path to write the ECharts HTML file. Defaults to stdout.",
+        help="Path to write the output file. Defaults to stdout.",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        type=OutputFormat,
+        choices=list(OutputFormat),
+        default=OutputFormat.HTML,
+        help="Output format: ECharts HTML, or CSV/JSON links with input_type, input_name, output_type, output_name, and amount_millis.",
     )
     parser.add_argument(
         "--sort-by",
@@ -242,6 +270,7 @@ async def run(
         raw_start=raw_start,
         end=end,
         out=args.out,
+        output_format=args.format,
         sort_by=args.sort_by,
         quiet=args.quiet,
         theme=args.theme,
@@ -257,6 +286,7 @@ async def sankey(
     raw_start: date | None,
     end: date,
     out: Path | None,
+    output_format: OutputFormat = OutputFormat.HTML,
     sort_by: SortBy,
     quiet: bool,
     theme: Theme,
@@ -278,11 +308,16 @@ async def sankey(
         _print("No Sankey data found.", quiet=quiet)
         return 0
 
-    html = build_echarts_html(data, start=start, end=end, theme=theme)
-    if out is None:
-        sys.stdout.write(html)
+    if output_format == OutputFormat.CSV:
+        content = build_csv(data)
+    elif output_format == OutputFormat.JSON:
+        content = build_json(data)
     else:
-        out.write_text(html)
+        content = build_echarts_html(data, start=start, end=end, theme=theme)
+    if out is None:
+        sys.stdout.write(content)
+    else:
+        out.write_text(content)
 
     return 0
 
@@ -353,7 +388,7 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     for row in rows:
         if row.amount < 0:
             if row.category_name == _READY_TO_ASSIGN:
-                node = SankeyNode(f"income:{row.payee_name}", row.payee_name)
+                node = SankeyNode(f"payee:{row.payee_name}", row.payee_name)
                 income[node] += -row.amount
             else:
                 node = SankeyNode(
@@ -465,6 +500,41 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     )
 
 
+def build_links(data: SankeyData) -> list[SankeyLink]:
+    return [
+        SankeyLink(
+            input_type=_node_type(data.keys[source]),
+            input_name=data.labels[source],
+            output_type=_node_type(data.keys[target]),
+            output_name=data.labels[target],
+            amount_millis=int(value * 1000),
+        )
+        for source, target, value in zip(
+            data.sources, data.targets, data.values, strict=True
+        )
+    ]
+
+
+def _node_type(key: str) -> str:
+    return key.partition(":")[0]
+
+
+def build_csv(data: SankeyData) -> str:
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=[field.name for field in fields(SankeyLink)],
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(asdict(link) for link in build_links(data))
+    return buf.getvalue()
+
+
+def build_json(data: SankeyData) -> str:
+    return f"{json.dumps([asdict(link) for link in build_links(data)], indent=2)}\n"
+
+
 def _group_color(group_key: str, theme: Theme) -> str:
     palette = _DARK_PALETTE if theme == Theme.DARK else _LIGHT_PALETTE
     digest = hashlib.sha256(group_key.encode()).digest()
@@ -563,10 +633,15 @@ def build_echarts_html(
 
 
 __all__ = [
+    "OutputFormat",
     "SankeyData",
+    "SankeyLink",
     "SankeyNode",
     "SankeyRow",
+    "build_csv",
     "build_echarts_html",
+    "build_json",
+    "build_links",
     "build_sankey_data",
     "fetch_sankey",
     "run",
