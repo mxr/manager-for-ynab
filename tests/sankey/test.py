@@ -15,6 +15,7 @@ import pytest_asyncio
 from manager_for_ynab.sankey import SankeyRow
 from manager_for_ynab.sankey import SortBy
 from manager_for_ynab.sankey import Theme
+from manager_for_ynab.sankey import _round_amount
 from manager_for_ynab.sankey import _today
 from manager_for_ynab.sankey import build_echarts_html
 from manager_for_ynab.sankey import build_sankey_data
@@ -404,7 +405,9 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     assert "Spending Sankey: 2026-04-01 to 2026-04-30" in html
     assert "category_group:taxes-group" in html
     assert "category:taxes-category" in html
-    assert "function(params) { return params.data.label; }" in html
+    assert "`${params.data.label} - ${params.data.rounded_amount}`" in html
+    assert '"rounded_amount": "$0.5k"' in html
+    assert '"rounded_amount": "$0.1k"' in html
     assert "source_label" in html
     assert "target_label" in html
     assert "params.data.source_label" in html
@@ -433,6 +436,22 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     )
     assert "height:1000px" in html
     assert "layoutIterations" in html
+
+
+@pytest.mark.parametrize(
+    ("amount", "expected"),
+    (
+        pytest.param(Decimal("0.5"), "$0.1k", id="clamps_to_100_floor"),
+        pytest.param(Decimal(149), "$0.1k", id="under_1k_rounds_down"),
+        pytest.param(Decimal(150), "$0.2k", id="under_1k_rounds_half_up"),
+        pytest.param(Decimal(960), "$1k", id="rounds_up_to_1k"),
+        pytest.param(Decimal("1499.99"), "$1k", id="over_1k_rounds_down"),
+        pytest.param(Decimal(1500), "$2k", id="over_1k_rounds_half_up"),
+        pytest.param(Decimal(123456), "$123k", id="large"),
+    ),
+)
+def test_round_amount(amount, expected):
+    assert _round_amount(amount) == expected
 
 
 @pytest.mark.parametrize(
