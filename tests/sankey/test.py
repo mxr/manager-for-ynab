@@ -115,6 +115,15 @@ def test_build_sankey_data_links_income_to_groups_to_categories():
         Decimal("45.5"),
     ]
     assert data.category_count == 2
+    assert data.group_keys == [
+        None,
+        None,
+        None,
+        "category_group:bills-group",
+        "category_group:food-group",
+        "category_group:bills-group",
+        "category_group:food-group",
+    ]
 
 
 def test_build_sankey_data_skips_zero_rows():
@@ -424,6 +433,48 @@ def test_build_echarts_html_uses_node_keys_and_labels():
     )
     assert "height:1000px" in html
     assert "layoutIterations" in html
+
+
+@pytest.mark.parametrize(
+    ("theme", "first", "second"),
+    (
+        pytest.param(Theme.LIGHT, "#4270bd", "#951d52", id="light"),
+        pytest.param(Theme.DARK, "#7d8df9", "#c78b28", id="dark"),
+    ),
+)
+def test_build_echarts_html_colors_categories_like_their_group(
+    theme, first, second, subtests
+):
+    data = build_sankey_data(
+        [
+            SankeyRow("Landlord", "bills-group", "Bills", "rent", "Rent", Decimal(120)),
+            SankeyRow(
+                "Power Co", "bills-group", "Bills", "power", "Power", Decimal(60)
+            ),
+            SankeyRow(
+                "Mall", "shopping-group", "Shopping", "clothes", "Clothes", Decimal(45)
+            ),
+        ],
+        sort_by=SortBy.ALPHABETICAL,
+    )
+
+    html = build_echarts_html(
+        data, start=date(2026, 4, 1), end=date(2026, 4, 30), theme=theme
+    )
+
+    for key, label, amount, color in (
+        ("category_group:bills-group", "Bills", "180.0", first),
+        ("category:power", "Power", "60.0", first),
+        ("category:rent", "Rent", "120.0", first),
+        ("category_group:shopping-group", "Shopping", "45.0", second),
+        ("category:clothes", "Clothes", "45.0", second),
+    ):
+        with subtests.test(key=key):
+            assert (
+                f'"name": "{key}",\n                    "label": "{label}",\n                    "amount": {amount},\n                    "itemStyle": {{\n                        "color": "{color}"\n                    }}'
+                in html
+            )
+    assert html.count('"itemStyle"') == 5
 
 
 def test_build_echarts_html_dark_theme_loads_theme_js():
