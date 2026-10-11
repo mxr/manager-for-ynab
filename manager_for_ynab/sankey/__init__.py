@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -38,6 +39,73 @@ _MIN_LINK_VALUE_RATIO = 0.02
 _DARK_THEME_SCRIPT = (
     '<script type="text/javascript" '
     'src="https://assets.pyecharts.org/assets/v6/themes/dark.js"></script>'
+)
+# 30 colors per theme, picked to be far apart in OKLab with lightness suited to the
+# background. Each category group and its categories share one color, picked by hashing
+# the group id so it stays the same run over run.
+_LIGHT_PALETTE = (
+    "#14938d",  # teal
+    "#156165",  # dark teal
+    "#15c2e1",  # cyan
+    "#17559b",  # cobalt blue
+    "#227702",  # forest green
+    "#2ea957",  # emerald green
+    "#4270bd",  # royal blue
+    "#5138b7",  # indigo
+    "#6b4768",  # plum
+    "#6e6bed",  # slate blue
+    "#706332",  # olive brown
+    "#7f99ef",  # cornflower blue
+    "#851a8d",  # purple
+    "#85c425",  # lime green
+    "#8c4ac8",  # violet
+    "#8e3510",  # rust
+    "#93ba93",  # sage
+    "#951d52",  # burgundy
+    "#9e6ba1",  # mauve
+    "#a3575f",  # rosewood
+    "#a38c5d",  # khaki
+    "#c22d6d",  # raspberry
+    "#c277f5",  # lavender
+    "#c4757b",  # old rose
+    "#cb5a1a",  # burnt orange
+    "#cf9db8",  # pink lilac
+    "#d757b3",  # orchid
+    "#f29520",  # tangerine
+    "#fe626c",  # coral
+    "#fe75c9",  # hot pink
+)
+_DARK_PALETTE = (
+    "#00bda7",  # turquoise
+    "#16aefc",  # sky blue
+    "#1ce7b6",  # aquamarine
+    "#34cf6a",  # emerald
+    "#4beafa",  # aqua
+    "#67a2b9",  # steel blue
+    "#7d8df9",  # periwinkle
+    "#82a37a",  # sage green
+    "#82a821",  # olive green
+    "#83fe8b",  # light green
+    "#87c6da",  # powder blue
+    "#97f4d4",  # mint
+    "#9fc988",  # pistachio
+    "#9fce22",  # lime
+    "#b5a5d5",  # wisteria
+    "#bc70ee",  # amethyst
+    "#bf80b1",  # mauve
+    "#c78b28",  # ochre
+    "#c7ab7c",  # tan
+    "#dce4af",  # pale khaki
+    "#e65fb3",  # magenta pink
+    "#e7e824",  # yellow
+    "#ea8081",  # salmon
+    "#f0b7a8",  # peach
+    "#f0d1ff",  # pale lavender
+    "#f3680f",  # vivid orange
+    "#f7932f",  # light orange
+    "#fc88f4",  # light magenta
+    "#fc96bf",  # carnation pink
+    "#fcb92d",  # marigold
 )
 _LABEL_FORMATTER = "function(params) { return params.data.label; }"
 _TOOLTIP_FORMATTER = """
@@ -78,6 +146,7 @@ class SankeyData:
     targets: list[int]
     values: list[Decimal]
     category_count: int
+    group_keys: list[str | None]
 
 
 @dataclass(frozen=True)
@@ -262,6 +331,7 @@ async def fetch_sankey(
 
 def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyData:
     labels: list[str] = []
+    group_keys: list[str | None] = []
     indexes: dict[SankeyNode, int] = {}
     links: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     income: defaultdict[SankeyNode, Decimal] = defaultdict(Decimal)
@@ -269,9 +339,10 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
     spending: defaultdict[tuple[SankeyNode, SankeyNode], Decimal] = defaultdict(Decimal)
     categories_by_group: defaultdict[SankeyNode, set[SankeyNode]] = defaultdict(set)
 
-    def add_node(node: SankeyNode) -> None:
+    def add_node(node: SankeyNode, group: SankeyNode | None = None) -> None:
         indexes[node] = len(labels)
         labels.append(node.label)
+        group_keys.append(group.key if group else None)
 
     ready_to_assign = SankeyNode("ready_to_assign", "Ready to Assign")
     net_category_income = SankeyNode("net_category_income", "Net Category Income")
@@ -338,7 +409,9 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         )
 
     category_nodes = [
-        category for group in group_nodes for category in sorted_categories(group)
+        (group, category)
+        for group in group_nodes
+        for category in sorted_categories(group)
     ]
     for node in income_nodes:
         add_node(node)
@@ -350,9 +423,9 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         add_node(net_category_income)
     add_node(income_node)
     for node in group_nodes:
-        add_node(node)
-    for node in category_nodes:
-        add_node(node)
+        add_node(node, node)
+    for group, node in category_nodes:
+        add_node(node, group)
 
     for node in income_nodes:
         links[(node, ready_to_assign)] += income[node]
@@ -386,7 +459,14 @@ def build_sankey_data(rows: Sequence[SankeyRow], *, sort_by: SortBy) -> SankeyDa
         targets=targets,
         values=values,
         category_count=len(category_nodes),
+        group_keys=group_keys,
     )
+
+
+def _group_color(group_key: str, theme: Theme) -> str:
+    palette = _DARK_PALETTE if theme == Theme.DARK else _LIGHT_PALETTE
+    digest = hashlib.sha256(group_key.encode()).digest()
+    return palette[int.from_bytes(digest[:8]) % len(palette)]
 
 
 def build_echarts_html(
@@ -422,9 +502,18 @@ def build_echarts_html(
         .add(
             "",
             nodes=[
-                {"name": key, "label": label, "amount": float(amounts[i])}
-                for i, (key, label) in enumerate(
-                    zip(data.keys, data.labels, strict=True)
+                {
+                    "name": key,
+                    "label": label,
+                    "amount": float(amounts[i]),
+                    **(
+                        {"itemStyle": {"color": _group_color(group_key, theme)}}
+                        if group_key is not None
+                        else {}
+                    ),
+                }
+                for i, (key, label, group_key) in enumerate(
+                    zip(data.keys, data.labels, data.group_keys, strict=True)
                 )
             ],
             links=[
