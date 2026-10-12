@@ -642,6 +642,7 @@ dependencies = [
     { name = "pyecharts" },
     { name = "rich" },
     { name = "sqlite-export-for-ynab" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
 ]
 
 [package.optional-dependencies]
@@ -667,8 +668,9 @@ requires-dist = [
     { name = "playwright", marker = "extra == 'delete-payees'" },
     { name = "prompt-toolkit" },
     { name = "pyecharts" },
-    { name = "rich", specifier = ">=12" },
+    { name = "rich", specifier = ">=10" },
     { name = "sqlite-export-for-ynab", specifier = "~=2.9.8" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
 ]
 provides-extras = ["delete-payees"]
 
