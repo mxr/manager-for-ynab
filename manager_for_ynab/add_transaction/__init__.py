@@ -416,7 +416,7 @@ async def _resolve_transaction(
         if not plans:
             raise RuntimeError("No plans found in this YNAB account.")
 
-        if plan_name:
+        if plan_name is not None:
             plan_id, plan_name = await _matching_plan(con, plan_name)
         elif len(plans) == 1:
             plan_name, plan_id = next(iter(plans.items()))
@@ -432,7 +432,7 @@ async def _resolve_transaction(
 
         resolved_category: ResolvedCategory | None = None
         if transfer_account_id is not None:
-            if category_name:
+            if category_name is not None:
                 raise ValueError("Category not allowed for transfer transactions")
         else:
             resolved_category_id, resolved_category_name = await _resolve_category(
@@ -472,7 +472,7 @@ async def _resolve_transaction(
 async def _resolve_accounts(
     con: aiosqlite.Connection, plan_id: str, account_names: Sequence[str] | None
 ) -> list[ResolvedAccount]:
-    if not account_names:
+    if account_names is None:
         account_id = await _resolve_account_id(con, plan_id, None)
         return [await _load_account_by_id(con, account_id)]
 
@@ -527,7 +527,7 @@ def _build_transaction(resolved: ResolvedTransaction) -> NewTransaction:
 async def _resolve_account_id(
     con: aiosqlite.Connection, plan_id: str, account_name: str | None
 ) -> str:
-    if account_name:
+    if account_name is not None:
         account_id, _ = await _matching_entry(
             con, "accounts", account_name, plan_id=plan_id
         )
@@ -551,7 +551,7 @@ async def _resolve_category(
     if not categories:
         raise RuntimeError("No categories found in this plan.")
 
-    if category_name:
+    if category_name is not None:
         return await _matching_category(
             con,
             category_name,
@@ -575,7 +575,7 @@ async def _resolve_payee(
         for name, payee_id, transfer_account_id in payees
     }
 
-    if payee_name:
+    if payee_name is not None:
         if payee_name in payee_name_to_entry:
             payee_id, transfer_account_id = payee_name_to_entry[payee_name]
             return payee_id, payee_name, transfer_account_id

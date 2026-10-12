@@ -565,18 +565,16 @@ def build_echarts_html(
     return cast(
         "str",
         charts.Sankey(
-            init_opts=options.InitOpts(
-                width="100%",
-                height=f"{_MIN_FIGURE_HEIGHT}px",
-                **(
-                    {
-                        "theme": ThemeType.DARK,
-                        "bg_color": "#100c2a",
-                        "is_fill_bg_color": True,
-                    }
-                    if theme == Theme.DARK
-                    else {}
-                ),
+            init_opts=(
+                options.InitOpts(
+                    width="100%",
+                    height=f"{_MIN_FIGURE_HEIGHT}px",
+                    theme=ThemeType.DARK,
+                    bg_color="#100c2a",
+                    is_fill_bg_color=True,
+                )
+                if theme == Theme.DARK
+                else options.InitOpts(width="100%", height=f"{_MIN_FIGURE_HEIGHT}px")
             )
         )
         .add(
