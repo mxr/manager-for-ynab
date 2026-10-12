@@ -25,6 +25,7 @@ from babel.numbers import format_currency
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich.progress import BarColumn
+from rich.progress import MofNCompleteColumn
 from rich.progress import Progress
 from rich.progress import TextColumn
 from rich.progress import TimeElapsedColumn
@@ -33,44 +34,10 @@ from sqlite_export_for_ynab import sync
 
 from manager_for_ynab._auth import resolve_token
 
-if sys.version_info >= (3, 12):  # pragma: >=3.12 cover
-    from typing import override
-else:  # pragma: <3.12 cover
-    from typing_extensions import override
-
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Iterable
     from collections.abc import Sequence
-
-try:
-    from rich.progress import (
-        MofNCompleteColumn,  # pyright: ignore[reportAssignmentType]
-    )
-# https://github.com/benleb/surepy/issues/240
-except ImportError:  # pragma: no cover
-    from rich.progress import ProgressColumn
-    from rich.progress import Task
-    from rich.text import Text
-
-    if TYPE_CHECKING:
-        from rich.table import Column
-
-    class MofNCompleteColumn(ProgressColumn):  # type:ignore[no-redef]
-        def __init__(self, separator: str = "/", table_column: Column | None = None):
-            self.separator = separator
-            super().__init__(table_column=table_column)
-
-        @override
-        def render(self, task: Task) -> Text:
-            """Show completed/total."""
-            completed = int(task.completed)
-            total = int(task.total) if task.total is not None else "?"
-            total_width = len(str(total))
-            return Text(
-                f"{completed:{total_width}d}{self.separator}{total}",
-                style="progress.download",
-            )
 
 
 _PACKAGE = "manager-for-ynab reconciler"
