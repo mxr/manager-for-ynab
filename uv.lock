@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 
 [[package]]
@@ -631,7 +631,7 @@ wheels = [
 
 [[package]]
 name = "manager-for-ynab"
-version = "2.1.2"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
