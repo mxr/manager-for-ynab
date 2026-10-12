@@ -238,7 +238,7 @@ async def test_delete_payees_reports_when_no_unused_payees_found(
 ):
     ret = await delete_payees(
         plan_id="other-plan",
-        payee_ids=None,
+        payee_ids=[],
         for_real=False,
         db=db_path,
         full_refresh=False,
@@ -259,7 +259,7 @@ async def test_delete_payees_finds_unused_payees_when_ids_omitted(
 ):
     ret = await delete_payees(
         plan_id=None,
-        payee_ids=None,
+        payee_ids=[],
         for_real=False,
         db=db_path,
         full_refresh=False,

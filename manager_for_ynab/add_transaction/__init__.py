@@ -30,6 +30,7 @@ from prompt_toolkit.validation import Validator
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
+from manager_for_ynab._args import nonempty
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
@@ -85,11 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
         prog=_PACKAGE,
         description="Create a transaction in YNAB and try to fund a category from Ready to Assign.",
     )
-    parser.add_argument("--plan-name", help="YNAB plan name. If omitted, prompts.")
+    parser.add_argument(
+        "--plan-name", type=nonempty, help="YNAB plan name. If omitted, prompts."
+    )
     parser.add_argument(
         "--account-name",
         nargs="+",
         action="extend",
+        type=nonempty,
+        default=[],
         help=(
             "Account name(s). If omitted, prompts for a single account. "
             "If multiple are given, the amount is split across them in order: "
@@ -99,9 +104,12 @@ def build_parser() -> argparse.ArgumentParser:
             "after the other accounts are drained."
         ),
     )
-    parser.add_argument("--payee-name", help="Payee name. If omitted, prompts.")
+    parser.add_argument(
+        "--payee-name", type=nonempty, help="Payee name. If omitted, prompts."
+    )
     parser.add_argument(
         "--category-group",
+        type=nonempty,
         help=(
             "Category group name, to disambiguate when --category-name matches "
             "more than one category."
@@ -109,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--category-name",
+        type=nonempty,
         help="Category name. If omitted, prompts. Not needed for transfer transactions.",
     )
     parser.add_argument(
@@ -199,7 +208,7 @@ async def run(
 async def add_transaction(
     *,
     plan_name: str | None,
-    account_names: Sequence[str] | None,
+    account_names: Sequence[str],
     payee_name: str | None,
     category_group_name: str | None,
     category_name: str | None,
@@ -247,7 +256,7 @@ async def add_transaction(
 async def sync_and_resolve_transaction(
     *,
     plan_name: str | None,
-    account_names: Sequence[str] | None,
+    account_names: Sequence[str],
     payee_name: str | None,
     category_group_name: str | None,
     category_name: str | None,
@@ -400,7 +409,7 @@ async def _resolve_transaction(
     *,
     db: Path,
     plan_name: str | None,
-    account_names: Sequence[str] | None,
+    account_names: Sequence[str],
     payee_name: str | None,
     category_group_name: str | None,
     category_name: str | None,
@@ -470,9 +479,9 @@ async def _resolve_transaction(
 
 
 async def _resolve_accounts(
-    con: aiosqlite.Connection, plan_id: str, account_names: Sequence[str] | None
+    con: aiosqlite.Connection, plan_id: str, account_names: Sequence[str]
 ) -> list[ResolvedAccount]:
-    if account_names is None:
+    if not account_names:
         account_id = await _resolve_account_id(con, plan_id, None)
         return [await _load_account_by_id(con, account_id)]
 

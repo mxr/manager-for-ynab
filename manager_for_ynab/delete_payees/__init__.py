@@ -16,6 +16,7 @@ from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
+from manager_for_ynab._args import nonempty
 from manager_for_ynab._auth import resolve_token
 from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
 from manager_for_ynab.delete_payees._browser_session import resolve_session_token
@@ -61,12 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--plan-id", help="YNAB plan ID. Required if you have more than one plan."
+        "--plan-id",
+        type=nonempty,
+        help="YNAB plan ID. Required if you have more than one plan.",
     )
     parser.add_argument(
         "--payee-ids",
         dest="payee_ids",
         action="append",
+        type=nonempty,
+        default=[],
         help=(
             "Payee ID to delete. Repeat for multiple payees. If omitted, finds all "
             "unused payee IDs in the plan: payees not referenced by any "
@@ -185,7 +190,7 @@ async def _find_unused_payees(
 async def delete_payees(
     *,
     plan_id: str | None,
-    payee_ids: Sequence[str] | None,
+    payee_ids: Sequence[str],
     for_real: bool,
     db: Path,
     full_refresh: bool,
@@ -207,7 +212,7 @@ async def delete_payees(
             resolved_plan_id = await _resolve_plan_id(con, plan_id)
             payees_coro = (
                 _resolve_payees(con, resolved_plan_id, payee_ids)
-                if payee_ids is not None
+                if payee_ids
                 else _find_unused_payees(con, resolved_plan_id)
             )
             knowledge_coro = (

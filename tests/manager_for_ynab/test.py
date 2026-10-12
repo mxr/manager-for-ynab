@@ -123,6 +123,41 @@ def test_main_sankey_help(capsys):
     assert "--sort-by" in out
 
 
+@pytest.mark.parametrize(
+    ("command", "flag"),
+    [
+        pytest.param("add-transaction", "--plan-name", id="add-transaction-plan-name"),
+        pytest.param(
+            "add-transaction", "--account-name", id="add-transaction-account-name"
+        ),
+        pytest.param(
+            "add-transaction", "--payee-name", id="add-transaction-payee-name"
+        ),
+        pytest.param(
+            "add-transaction", "--category-group", id="add-transaction-category-group"
+        ),
+        pytest.param(
+            "add-transaction", "--category-name", id="add-transaction-category-name"
+        ),
+        pytest.param("zero-out", "--plan-id", id="zero-out-plan-id"),
+        pytest.param("zero-out", "--category-group", id="zero-out-category-group"),
+        pytest.param("zero-out", "--category-name", id="zero-out-category-name"),
+        pytest.param("delete-payees", "--plan-id", id="delete-payees-plan-id"),
+        pytest.param("delete-payees", "--payee-ids", id="delete-payees-payee-ids"),
+    ],
+)
+@pytest.mark.parametrize(
+    "value", [pytest.param("", id="empty"), pytest.param("  ", id="whitespace")]
+)
+def test_main_rejects_empty_string_args(capsys, command, flag, value):
+    with pytest.raises(SystemExit) as excinfo:
+        main((command, flag, value))
+
+    assert excinfo.value.code == 2
+    _, err = capsys.readouterr()
+    assert f"argument {flag}: must not be empty" in err
+
+
 def test_build_parser_registers_expected_subcommands():
     parser = build_parser()
     actions = [action for action in parser._actions if action.dest == "command"]
