@@ -59,7 +59,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.8
+    - sqlite-export-for-ynab~=2.9.10
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/mxr/pyright-pre-commit
@@ -78,7 +78,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.8
+    - sqlite-export-for-ynab~=2.9.10
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/mxr/sync-typing-deps
@@ -101,7 +101,7 @@ repos:
     - pytest
     - pytest-asyncio
     - rich>=10
-    - sqlite-export-for-ynab~=2.9.8
+    - sqlite-export-for-ynab~=2.9.10
     - types-setuptools
     - typing-extensions; python_version < '3.12'
 - repo: https://github.com/pre-commit/pre-commit-hooks

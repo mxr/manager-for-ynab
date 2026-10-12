@@ -22,7 +22,7 @@ dependencies = [
   "prompt-toolkit",
   "pyecharts",
   "rich>=10",
-  "sqlite-export-for-ynab~=2.9.8",
+  "sqlite-export-for-ynab~=2.9.10",
   "typing-extensions; python_version < '3.12'",
 ]
 
