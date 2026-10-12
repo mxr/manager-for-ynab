@@ -122,7 +122,7 @@ async def _resolve_plan_id(con: aiosqlite.Connection, plan_id: str | None) -> st
     if not plans:
         raise RuntimeError("No plans found in this YNAB account.")
 
-    if plan_id:
+    if plan_id is not None:
         if plan_id not in plans:
             raise RuntimeError(f"No plan found with id '{plan_id}'.")
         return plan_id
@@ -207,7 +207,7 @@ async def delete_payees(
             resolved_plan_id = await _resolve_plan_id(con, plan_id)
             payees_coro = (
                 _resolve_payees(con, resolved_plan_id, payee_ids)
-                if payee_ids
+                if payee_ids is not None
                 else _find_unused_payees(con, resolved_plan_id)
             )
             knowledge_coro = (

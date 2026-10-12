@@ -119,7 +119,7 @@ async def _get_plan(plans_api: PlansApi, plan_id: str | None) -> tuple[str, str]
     if not plans:
         raise RuntimeError("No plans found in this YNAB account.")
 
-    if plan_id:
+    if plan_id is not None:
         for plan in plans:
             if str(plan.id) == plan_id:
                 return plan_id, plan.name
@@ -153,7 +153,7 @@ async def _get_category_id(
         and _regex_search(category.name, category_name)
     ]
     if len(matching) == 0:
-        if category_group:
+        if category_group is not None:
             raise RuntimeError(
                 f"No category matching regex '{category_name}' found in group matching regex '{category_group}'."
             )
@@ -164,7 +164,7 @@ async def _get_category_id(
         names = ", ".join(
             f"{group.name} / {category.name}" for group, category in matching
         )
-        if category_group:
+        if category_group is not None:
             raise RuntimeError(
                 f"Found {len(matching)} categories matching regex '{category_name}' in group matching regex '{category_group}' - {names}."
             )

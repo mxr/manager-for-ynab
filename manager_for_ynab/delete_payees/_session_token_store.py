@@ -9,7 +9,7 @@ _PACKAGE = "manager-for-ynab"
 
 
 def default_session_token_db_path() -> Path:
-    xdg_data_home = os.environ.get("XDG_DATA_HOME")
+    xdg_data_home = os.environ.get("XDG_DATA_HOME", "")
     base = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
     return base / _PACKAGE / "session-token.sqlite"
 
@@ -21,7 +21,7 @@ async def load_session_token(db: Path) -> str | None:
     async with aiosqlite.connect(db) as con:
         cur = await con.execute("SELECT value FROM session_token WHERE id = 1")
         row = await cur.fetchone()
-        return str(row[0]) if row else None
+        return str(row[0]) if row is not None else None
 
 
 async def save_session_token(db: Path, token: str) -> None:

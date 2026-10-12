@@ -53,7 +53,7 @@ async def _read_session_cookie_value(db_path: Path) -> str | None:
                 "WHERE host = 'app.ynab.com' AND name = '_ynab_api_session'"
             )
             row = await cur.fetchone()
-            return str(row[0]) if row else None
+            return str(row[0]) if row is not None else None
 
 
 async def find_browser_cookie_header() -> str | None:
@@ -62,14 +62,14 @@ async def find_browser_cookie_header() -> str | None:
             value = await _read_session_cookie_value(db_path)
         except aiosqlite.Error:
             continue
-        if value:
+        if value is not None:
             return f"_ynab_api_session={value}"
     return None
 
 
 async def resolve_session_cookie() -> str:
     cookie = await find_browser_cookie_header()
-    if cookie:
+    if cookie is not None:
         return cookie
 
     raise ValueError(
@@ -113,7 +113,7 @@ async def capture_session_token_via_browser(
     def _on_request(request: Request) -> None:
         if token_future.done():
             return
-        value = request.headers.get(_SESSION_TOKEN_HEADER)
+        value = request.headers.get(_SESSION_TOKEN_HEADER, "")
         if value:
             token_future.set_result(value)
 
@@ -130,7 +130,7 @@ async def capture_session_token_via_browser(
 
 async def resolve_session_token(*, db: Path, cookie: str) -> str:
     stored = await load_session_token(db)
-    if stored:
+    if stored is not None:
         return stored
 
     try:

@@ -6,7 +6,7 @@ _ENV_TOKEN = "YNAB_PERSONAL_ACCESS_TOKEN"
 
 
 def resolve_token(token_override: str | None = None) -> str:
-    token = token_override or os.environ.get(_ENV_TOKEN)
+    token = token_override or os.environ.get(_ENV_TOKEN, "")
     if token:
         return token
 
