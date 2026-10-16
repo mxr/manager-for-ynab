@@ -566,7 +566,7 @@ async def test_read_session_cookie_value(tmp_path, cookies, expected):
 async def test_read_session_cookie_value_reads_uncheckpointed_wal(tmp_path):
     db_path = tmp_path / "cookies.sqlite"
     with closing(sqlite3.connect(db_path)) as con:
-        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA journal_mode=WAL").fetchall()
         con.execute("PRAGMA wal_autocheckpoint=0")
         con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
         con.execute(
