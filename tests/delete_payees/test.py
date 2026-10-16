@@ -24,21 +24,15 @@ from manager_for_ynab.delete_payees import _resolve_plan_id
 from manager_for_ynab.delete_payees import delete_payees
 from manager_for_ynab.delete_payees import run
 from manager_for_ynab.delete_payees._browser_session import (
-    _cookie_header_to_playwright_cookies,
-)
-from manager_for_ynab.delete_payees._browser_session import (
     _ensure_playwright_firefox_installed,
 )
-from manager_for_ynab.delete_payees._browser_session import _firefox_cookie_db_paths
-from manager_for_ynab.delete_payees._browser_session import _read_session_cookie_value
 from manager_for_ynab.delete_payees._browser_session import (
-    capture_session_token_via_browser,
+    capture_web_session_via_browser,
 )
-from manager_for_ynab.delete_payees._browser_session import find_browser_cookie_header
-from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
-from manager_for_ynab.delete_payees._browser_session import resolve_session_token
-from manager_for_ynab.delete_payees._session_token_store import load_session_token
-from manager_for_ynab.delete_payees._session_token_store import save_session_token
+from manager_for_ynab.delete_payees._browser_session import resolve_web_session
+from manager_for_ynab.delete_payees._session_token_store import WebSession
+from manager_for_ynab.delete_payees._session_token_store import load_web_session
+from manager_for_ynab.delete_payees._session_token_store import save_web_session
 from manager_for_ynab.delete_payees._ynab_sync_api import (
     delete_payees as delete_payees_batch_api,
 )
@@ -276,18 +270,14 @@ async def test_delete_payees_finds_unused_payees_when_ids_omitted(
 
 
 @patch(
-    "manager_for_ynab.delete_payees.resolve_session_token",
-    return_value="session-token-value",
-)
-@patch(
-    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+    "manager_for_ynab.delete_payees.resolve_web_session",
+    return_value=WebSession(cookie="cookie-value", token="session-token-value"),
 )
 @patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_batches_payees_in_one_request(
     delete_payees_batch_mock,
-    resolve_cookie_mock,
-    resolve_session_token_mock,
+    resolve_web_session_mock,
     db_path,
     session_token_db_path,
     capsys,
@@ -325,18 +315,14 @@ async def test_delete_payees_for_real_batches_payees_in_one_request(
 
 
 @patch(
-    "manager_for_ynab.delete_payees.resolve_session_token",
-    return_value="session-token-value",
-)
-@patch(
-    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+    "manager_for_ynab.delete_payees.resolve_web_session",
+    return_value=WebSession(cookie="cookie-value", token="session-token-value"),
 )
 @patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_splits_into_configured_batch_size(
     delete_payees_batch_mock,
-    resolve_cookie_mock,
-    resolve_session_token_mock,
+    resolve_web_session_mock,
     db_path,
     session_token_db_path,
     capsys,
@@ -426,12 +412,12 @@ async def test_delete_payees_for_real_raises_when_playwright_missing(
 
 
 @patch(
-    "manager_for_ynab.delete_payees.resolve_session_cookie",
-    side_effect=ValueError("no cookie"),
+    "manager_for_ynab.delete_payees.resolve_web_session",
+    side_effect=ValueError("no session"),
 )
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
-    resolve_cookie_mock, db_path, session_token_db_path
+    resolve_web_session_mock, db_path, session_token_db_path
 ):
     ret = await delete_payees(
         plan_id=None,
@@ -448,18 +434,14 @@ async def test_delete_payees_for_real_returns_one_when_session_auth_missing(
 
 
 @patch(
-    "manager_for_ynab.delete_payees.resolve_session_token",
-    return_value="session-token-value",
-)
-@patch(
-    "manager_for_ynab.delete_payees.resolve_session_cookie", return_value="cookie-value"
+    "manager_for_ynab.delete_payees.resolve_web_session",
+    return_value=WebSession(cookie="cookie-value", token="session-token-value"),
 )
 @patch("manager_for_ynab.delete_payees.delete_payees_batch", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_delete_payees_for_real_reports_client_error(
     delete_payees_batch_mock,
-    resolve_cookie_mock,
-    resolve_session_token_mock,
+    resolve_web_session_mock,
     db_path,
     session_token_db_path,
     capsys,
@@ -524,182 +506,79 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
     )
 
 
-def _create_cookie_db(path, cookies):
-    with sqlite3.connect(path) as con:
-        con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
-        con.executemany(
-            "INSERT INTO moz_cookies (host, name, value) VALUES (?, ?, ?)", cookies
+@pytest.mark.asyncio
+async def test_load_web_session_returns_none_without_db(session_token_db_path):
+    assert await load_web_session(session_token_db_path) is None
+
+
+@pytest.mark.asyncio
+async def test_load_web_session_ignores_legacy_token_only_db(session_token_db_path):
+    with sqlite3.connect(session_token_db_path) as con:
+        con.execute(
+            "CREATE TABLE session_token (id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
         )
+        con.execute("INSERT INTO session_token (id, value) VALUES (1, 'old-token')")
 
-
-@pytest.mark.parametrize(
-    ("cookies", "expected"),
-    [
-        pytest.param(
-            [
-                ("app.ynab.com", "_ynab_api_session", "abc"),
-                (".app.ynab.com", "_ynab_api_session", "wrong-host"),
-                ("app.ynab.com", "g_state", "def"),
-                ("example.com", "_ynab_api_session", "wrong-host"),
-            ],
-            "abc",
-            id="matches_exact_host_and_name",
-        ),
-        pytest.param(
-            [("example.com", "_ynab_api_session", "abc")],
-            None,
-            id="no_match_returns_none",
-        ),
-    ],
-)
-@pytest.mark.asyncio
-async def test_read_session_cookie_value(tmp_path, cookies, expected):
-    db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(db_path, cookies)
-
-    assert await _read_session_cookie_value(db_path) == expected
-
-
-@patch("manager_for_ynab.delete_payees._browser_session.Path.home")
-def test_firefox_cookie_db_paths_finds_macos_and_linux_profiles(home_mock, tmp_path):
-    home_mock.return_value = tmp_path
-    macos_profile = (
-        tmp_path / "Library" / "Application Support" / "Firefox" / "Profiles" / "abc"
-    )
-    macos_profile.mkdir(parents=True)
-    (macos_profile / "cookies.sqlite").touch()
-    linux_profile = tmp_path / ".mozilla" / "firefox" / "xyz"
-    linux_profile.mkdir(parents=True)
-    (linux_profile / "cookies.sqlite").touch()
-
-    paths = _firefox_cookie_db_paths()
-
-    assert paths == sorted(
-        [macos_profile / "cookies.sqlite", linux_profile / "cookies.sqlite"]
-    )
-
-
-@patch("manager_for_ynab.delete_payees._browser_session.Path.home")
-def test_firefox_cookie_db_paths_returns_empty_without_profile_dirs(
-    home_mock, tmp_path
-):
-    home_mock.return_value = tmp_path
-    assert _firefox_cookie_db_paths() == []
-
-
-@patch(
-    "manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths",
-    return_value=[],
-)
-@pytest.mark.asyncio
-async def test_find_browser_cookie_header_returns_none_without_profiles(
-    db_paths_mock, tmp_path
-):
-    assert await find_browser_cookie_header() is None
-
-
-@patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
-@pytest.mark.asyncio
-async def test_find_browser_cookie_header_returns_cookie_header(
-    db_paths_mock, tmp_path
-):
-    db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(db_path, [("app.ynab.com", "_ynab_api_session", "1")])
-    db_paths_mock.return_value = [db_path]
-
-    assert await find_browser_cookie_header() == "_ynab_api_session=1"
-
-
-@patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
-@pytest.mark.asyncio
-async def test_find_browser_cookie_header_skips_unreadable_db(db_paths_mock, tmp_path):
-    bad_db = tmp_path / "bad.sqlite"
-    bad_db.write_text("not a sqlite file")
-    good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "1")])
-    db_paths_mock.return_value = [bad_db, good_db]
-
-    assert await find_browser_cookie_header() == "_ynab_api_session=1"
-
-
-@patch("manager_for_ynab.delete_payees._browser_session._firefox_cookie_db_paths")
-@pytest.mark.asyncio
-async def test_find_browser_cookie_header_skips_db_with_no_matching_cookies(
-    db_paths_mock, tmp_path
-):
-    empty_db = tmp_path / "empty.sqlite"
-    _create_cookie_db(empty_db, [("example.com", "_ynab_api_session", "1")])
-    good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "2")])
-    db_paths_mock.return_value = [empty_db, good_db]
-
-    assert await find_browser_cookie_header() == "_ynab_api_session=2"
-
-
-@patch(
-    "manager_for_ynab.delete_payees._browser_session.find_browser_cookie_header",
-    return_value="from-browser",
-)
-@pytest.mark.asyncio
-async def test_resolve_session_cookie_reads_from_browser(find_cookie_header):
-    assert await resolve_session_cookie() == "from-browser"
-
-
-@patch(
-    "manager_for_ynab.delete_payees._browser_session.find_browser_cookie_header",
-    return_value=None,
-)
-@pytest.mark.asyncio
-async def test_resolve_session_cookie_raises_when_nothing_found(find_cookie_header):
-    with pytest.raises(ValueError) as excinfo:
-        await resolve_session_cookie()
-
-    assert "Firefox" in str(excinfo.value)
+    assert await load_web_session(session_token_db_path) is None
 
 
 @pytest.mark.asyncio
-async def test_resolve_session_token_uses_stored_token(
-    session_token_db_path,
-):
-    await save_session_token(session_token_db_path, "from-store")
+async def test_save_web_session_overwrites_previous(session_token_db_path):
+    await save_web_session(session_token_db_path, WebSession(cookie="c1", token="t1"))
+    await save_web_session(session_token_db_path, WebSession(cookie="c2", token="t2"))
 
-    assert (
-        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
-        == "from-store"
+    assert await load_web_session(session_token_db_path) == WebSession(
+        cookie="c2", token="t2"
     )
 
 
 @patch(
-    "manager_for_ynab.delete_payees._browser_session.capture_session_token_via_browser",
+    "manager_for_ynab.delete_payees._browser_session.capture_web_session_via_browser",
     new_callable=AsyncMock,
-    return_value="from-browser",
 )
 @pytest.mark.asyncio
-async def test_resolve_session_token_captures_and_persists_via_browser(
+async def test_resolve_web_session_uses_stored_session(
     capture_mock, session_token_db_path
 ):
-    result = await resolve_session_token(
-        db=session_token_db_path, cookie="cookie-value"
-    )
+    stored = WebSession(cookie="from-store", token="from-store")
+    await save_web_session(session_token_db_path, stored)
 
-    assert result == "from-browser"
-    assert await load_session_token(session_token_db_path) == "from-browser"
-    capture_mock.assert_awaited_once_with(cookie="cookie-value")
+    assert await resolve_web_session(db=session_token_db_path) == stored
+    capture_mock.assert_not_awaited()
 
 
 @patch(
-    "manager_for_ynab.delete_payees._browser_session.capture_session_token_via_browser",
+    "manager_for_ynab.delete_payees._browser_session.capture_web_session_via_browser",
+    new_callable=AsyncMock,
+    return_value=WebSession(cookie="from-browser", token="from-browser"),
+)
+@pytest.mark.asyncio
+async def test_resolve_web_session_captures_and_persists_via_browser(
+    capture_mock, session_token_db_path
+):
+    result = await resolve_web_session(db=session_token_db_path)
+
+    assert result == WebSession(cookie="from-browser", token="from-browser")
+    assert await load_web_session(session_token_db_path) == result
+    capture_mock.assert_awaited_once_with(
+        profile_dir=session_token_db_path.parent / "browser-profile"
+    )
+
+
+@patch(
+    "manager_for_ynab.delete_payees._browser_session.capture_web_session_via_browser",
     new_callable=AsyncMock,
     side_effect=TimeoutError,
 )
 @pytest.mark.asyncio
-async def test_resolve_session_token_raises_when_browser_capture_times_out(
+async def test_resolve_web_session_raises_when_browser_capture_times_out(
     capture_mock, session_token_db_path
 ):
     with pytest.raises(ValueError) as excinfo:
-        await resolve_session_token(db=session_token_db_path, cookie="cookie-value")
+        await resolve_web_session(db=session_token_db_path)
 
     assert "Timed out" in str(excinfo.value)
+    assert await load_web_session(session_token_db_path) is None
 
 
 @pytest.mark.asyncio
@@ -749,15 +628,6 @@ async def test_ensure_playwright_firefox_installed_when_missing(
     )
 
 
-def test_cookie_header_to_playwright_cookies():
-    cookies = _cookie_header_to_playwright_cookies("a=1; b=2")
-
-    assert cookies == [
-        {"name": "a", "value": "1", "domain": ".ynab.com", "path": "/"},
-        {"name": "b", "value": "2", "domain": ".ynab.com", "path": "/"},
-    ]
-
-
 class _AsyncContextManager:
     def __init__(self, value):
         self._value = value
@@ -769,89 +639,89 @@ class _AsyncContextManager:
         return False
 
 
-@patch(
-    "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
-    new_callable=AsyncMock,
-)
-@patch("playwright.async_api.async_playwright")
-@pytest.mark.asyncio
-async def test_capture_session_token_via_browser_returns_captured_token(
-    async_playwright_mock, ensure_firefox_mock
-):
-    page_mock = MagicMock()
-    captured_handlers: dict[str, Callable[[MagicMock], None]] = {}
-    page_mock.on = MagicMock(
-        side_effect=lambda event, handler: captured_handlers.__setitem__(event, handler)
-    )
-
-    async def _goto(url):
-        no_token_request = MagicMock()
-        no_token_request.headers.get.return_value = None
-        captured_handlers["request"](no_token_request)
-
-        token_request = MagicMock()
-        token_request.headers.get.return_value = "captured-token"
-        captured_handlers["request"](token_request)
-
-        captured_handlers["request"](token_request)
-
-    page_mock.goto = AsyncMock(side_effect=_goto)
-
-    context_mock = MagicMock()
-    context_mock.add_cookies = AsyncMock()
-    context_mock.new_page = AsyncMock(return_value=page_mock)
-
-    browser_mock = MagicMock()
-    browser_mock.new_context = AsyncMock(return_value=context_mock)
-
-    playwright_mock = MagicMock()
-    playwright_mock.firefox.launch = AsyncMock(
-        return_value=_AsyncContextManager(browser_mock)
-    )
-
-    async_playwright_mock.return_value = _AsyncContextManager(playwright_mock)
-
-    result = await capture_session_token_via_browser(cookie="a=1; b=2")
-
-    assert result == "captured-token"
-    context_mock.add_cookies.assert_awaited_once_with(
-        [
-            {"name": "a", "value": "1", "domain": ".ynab.com", "path": "/"},
-            {"name": "b", "value": "2", "domain": ".ynab.com", "path": "/"},
-        ]
-    )
-    page_mock.goto.assert_awaited_once_with("https://app.ynab.com/")
-
-
-@patch(
-    "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
-    new_callable=AsyncMock,
-)
-@patch("playwright.async_api.async_playwright")
-@pytest.mark.asyncio
-async def test_capture_session_token_via_browser_raises_on_timeout(
-    async_playwright_mock, ensure_firefox_mock
-):
+@pytest.fixture
+def browser_mocks():
     page_mock = MagicMock()
     page_mock.on = MagicMock()
     page_mock.goto = AsyncMock()
 
     context_mock = MagicMock()
-    context_mock.add_cookies = AsyncMock()
     context_mock.new_page = AsyncMock(return_value=page_mock)
-
-    browser_mock = MagicMock()
-    browser_mock.new_context = AsyncMock(return_value=context_mock)
-
-    playwright_mock = MagicMock()
-    playwright_mock.firefox.launch = AsyncMock(
-        return_value=_AsyncContextManager(browser_mock)
+    context_mock.cookies = AsyncMock(
+        return_value=[
+            {"name": "other", "value": "x"},
+            {"name": "_ynab_api_session", "value": "abc"},
+        ]
     )
 
-    async_playwright_mock.return_value = _AsyncContextManager(playwright_mock)
+    playwright_mock = MagicMock()
+    playwright_mock.firefox.launch_persistent_context = AsyncMock(
+        return_value=_AsyncContextManager(context_mock)
+    )
 
+    with (
+        patch(
+            "manager_for_ynab.delete_payees._browser_session._ensure_playwright_firefox_installed",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "playwright.async_api.async_playwright",
+            return_value=_AsyncContextManager(playwright_mock),
+        ),
+    ):
+        yield playwright_mock, context_mock, page_mock
+
+
+def _emit_requests_on_goto(page_mock, header_values):
+    captured_handlers: dict[str, Callable[[MagicMock], None]] = {}
+    page_mock.on.side_effect = lambda event, handler: captured_handlers.__setitem__(
+        event, handler
+    )
+
+    async def _goto(url):
+        for value in header_values:
+            request = MagicMock()
+            request.headers.get.return_value = value
+            captured_handlers["request"](request)
+
+    page_mock.goto.side_effect = _goto
+
+
+@pytest.mark.asyncio
+async def test_capture_web_session_via_browser_returns_cookie_and_token(
+    browser_mocks, tmp_path
+):
+    playwright_mock, context_mock, page_mock = browser_mocks
+    _emit_requests_on_goto(page_mock, [None, "captured-token", "later-token"])
+
+    result = await capture_web_session_via_browser(profile_dir=tmp_path)
+
+    assert result == WebSession(cookie="_ynab_api_session=abc", token="captured-token")
+    playwright_mock.firefox.launch_persistent_context.assert_awaited_once_with(
+        tmp_path, headless=False
+    )
+    page_mock.goto.assert_awaited_once_with("https://app.ynab.com/")
+    context_mock.cookies.assert_awaited_once_with("https://app.ynab.com/")
+
+
+@pytest.mark.asyncio
+async def test_capture_web_session_via_browser_raises_without_session_cookie(
+    browser_mocks, tmp_path
+):
+    _, context_mock, page_mock = browser_mocks
+    _emit_requests_on_goto(page_mock, ["captured-token"])
+    context_mock.cookies.return_value = [{"name": "other", "value": "x"}]
+
+    with pytest.raises(ValueError, match="_ynab_api_session"):
+        await capture_web_session_via_browser(profile_dir=tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_capture_web_session_via_browser_raises_on_timeout(
+    browser_mocks, tmp_path
+):
     with pytest.raises(TimeoutError):
-        await capture_session_token_via_browser(cookie="a=1", timeout=0)
+        await capture_web_session_via_browser(profile_dir=tmp_path, timeout=0)
 
 
 class _FakeResponse:

@@ -21,19 +21,20 @@ Like other tools you will need a personal access token for reading data:
 $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
 ```
 
-You will also need to log in to app.ynab.com in Firefox so the script can get the session cookie and token for
-interacting with the undocumented API:
+You will also need a logged-in app.ynab.com browser session for interacting with the undocumented API. The session
+cookie and `X-Session-Token` are resolved in this order:
 
-- **Session cookie**: read automatically from your Firefox cookie jar
-- **Session token**: Resolved in this order:
-  1. A previously-captured token cached in the SQLite DB at `--session-token-db` (defaults under `$XDG_DATA_HOME` or
-     `~/.local/share`).
-  2. Otherwise, installs Playwright's Firefox build if necessary, opens a Playwright-driven Firefox window, seeds it
-     with your already-valid session cookie so it loads app.ynab.com already logged in, reads the `X-Session-Token`
-     header off the first request that carries it, then caches it in `--session-token-db` for next time.
+1. A previously-captured cookie and token cached in the SQLite DB at `--session-token-db` (defaults under
+   `$XDG_DATA_HOME` or `~/.local/share`).
+2. Otherwise, installs Playwright's Firefox build if necessary and opens it with a dedicated browser profile kept in a
+   `browser-profile` directory next to `--session-token-db`. Log into app.ynab.com in that window the first time; later
+   captures reuse the saved login. It reads the `X-Session-Token` header off the first request that carries it and the
+   `_ynab_api_session` cookie from the profile, then caches both in `--session-token-db` for next time.
 
-Session data is only read when `--for-real` is passed. If the cached session token goes stale then delete the
-`--session-token-db` file to force recapture.
+The dedicated profile is separate from your own browser, so no permission to read another app's data is needed.
+
+Session data is only read when `--for-real` is passed. If the cached session goes stale then delete the
+`--session-token-db` file to force recapture. Delete the `browser-profile` directory too to log in again from scratch.
 
 Playwright is an optional dependency (the `delete-payees` extra) since it's only needed for `--for-real`. Install with:
 

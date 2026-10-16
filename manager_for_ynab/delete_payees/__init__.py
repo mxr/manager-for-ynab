@@ -17,8 +17,7 @@ from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
 from manager_for_ynab._auth import resolve_token
-from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
-from manager_for_ynab.delete_payees._browser_session import resolve_session_token
+from manager_for_ynab.delete_payees._browser_session import resolve_web_session
 from manager_for_ynab.delete_payees._session_token_store import (
     default_session_token_db_path,
 )
@@ -56,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Delete one or more payees. YNAB's public API has no payee-delete "
             "endpoint, so this calls the same undocumented sync endpoint "
-            "app.ynab.com's web UI uses, authenticated with your browser session "
+            "app.ynab.com's web UI uses, authenticated with a browser session "
             "instead of a personal access token."
         ),
     )
@@ -108,8 +107,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=default_session_token_db_path(),
         help=(
-            "Path to SQLite DB file used to cache the browser-captured "
-            "X-Session-Token, so it doesn't need to be recaptured every run."
+            "Path to SQLite DB file used to cache the browser-captured session "
+            "cookie and X-Session-Token, so they don't need to be recaptured every "
+            "run. The browser profile used to log in is kept next to it."
         ),
     )
     return parser
@@ -245,8 +245,7 @@ async def delete_payees(
         )
 
     try:
-        cookie = await resolve_session_cookie()
-        session_token = await resolve_session_token(db=session_token_db, cookie=cookie)
+        web_session = await resolve_web_session(db=session_token_db)
     except ValueError as err:
         print(err)
         return 1
@@ -258,8 +257,8 @@ async def delete_payees(
             try:
                 result = await delete_payees_batch(
                     session,
-                    cookie=cookie,
-                    session_token=session_token,
+                    cookie=web_session.cookie,
+                    session_token=web_session.token,
                     budget_version_id=resolved_plan_id,
                     payees=batch,
                     starting_device_knowledge=device_knowledge,
