@@ -4,7 +4,6 @@ import json
 import os
 import sqlite3
 import sys
-from contextlib import closing
 from typing import TYPE_CHECKING
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
@@ -557,25 +556,18 @@ def _create_cookie_db(path, cookies):
 @pytest.mark.asyncio
 async def test_read_session_cookie_value(tmp_path, cookies, expected):
     db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(db_path, cookies)
-
-    assert await _read_session_cookie_value(db_path) == expected
-
-
-@pytest.mark.asyncio
-async def test_read_session_cookie_value_reads_uncheckpointed_wal(tmp_path):
-    db_path = tmp_path / "cookies.sqlite"
-    with closing(sqlite3.connect(db_path)) as con:
-        con.execute("PRAGMA journal_mode=WAL").fetchall()
-        con.execute("PRAGMA wal_autocheckpoint=0")
-        con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
-        con.execute(
-            "INSERT INTO moz_cookies (host, name, value) VALUES ('app.ynab.com', '_ynab_api_session', 'abc')"
+    async with aiosqlite.connect(db_path) as con:
+        async with con.execute("PRAGMA journal_mode=WAL"):
+            pass
+        await con.execute("PRAGMA wal_autocheckpoint=0")
+        await con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
+        await con.executemany(
+            "INSERT INTO moz_cookies (host, name, value) VALUES (?, ?, ?)", cookies
         )
-        con.commit()
+        await con.commit()
 
         assert db_path.with_name("cookies.sqlite-wal").stat().st_size > 0
-        assert await _read_session_cookie_value(db_path) == "abc"
+        assert await _read_session_cookie_value(db_path) == expected
 
 
 @patch("manager_for_ynab.delete_payees._browser_session.Path.home")
