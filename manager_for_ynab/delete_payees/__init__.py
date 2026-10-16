@@ -16,7 +16,7 @@ from rich.table import Table
 from sqlite_export_for_ynab import default_db_path
 from sqlite_export_for_ynab import sync
 
-from manager_for_ynab._args import nonempty
+from manager_for_ynab._args import nonblank
 from manager_for_ynab._auth import resolve_token
 from manager_for_ynab.delete_payees._browser_session import resolve_session_cookie
 from manager_for_ynab.delete_payees._browser_session import resolve_session_token
@@ -63,14 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--plan-id",
-        type=nonempty,
+        type=nonblank,
         help="YNAB plan ID. Required if you have more than one plan.",
     )
     parser.add_argument(
         "--payee-ids",
         dest="payee_ids",
         action="append",
-        type=nonempty,
+        type=nonblank,
         default=[],
         help=(
             "Payee ID to delete. Repeat for multiple payees. If omitted, finds all "
