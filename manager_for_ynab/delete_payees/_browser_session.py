@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import sys
 import tempfile
@@ -28,25 +29,42 @@ _FIREFOX_USER_AGENT = (
 )
 
 
-def _firefox_cookie_db_paths() -> list[Path]:
+def _firefox_profile_roots() -> tuple[Path, ...]:
     home = Path.home()
-    profile_roots = (
+    return (
         home / "Library" / "Application Support" / "Firefox" / "Profiles",  # macOS
         home / ".mozilla" / "firefox",  # Linux
     )
+
+
+def _firefox_cookie_db_paths() -> list[Path]:
     return sorted(
         path
-        for root in profile_roots
+        for root in _firefox_profile_roots()
         if root.is_dir()
         for path in root.glob("*/cookies.sqlite")
     )
 
 
+def _is_unreadable_dir(path: Path) -> bool:
+    try:
+        os.listdir(path)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 async def _read_session_cookie_value(db_path: Path) -> str | None:
     # Firefox holds cookies.sqlite open while running, so copy it before reading.
+    # Recent writes (e.g. a fresh login) may only be in the WAL, so copy that too.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_copy = Path(tmp) / "cookies.sqlite"
         shutil.copy2(db_path, tmp_copy)
+        wal_path = db_path.with_name(f"{db_path.name}-wal")
+        if wal_path.exists():
+            shutil.copy2(wal_path, tmp_copy.with_name(f"{tmp_copy.name}-wal"))
         async with aiosqlite.connect(tmp_copy) as con:
             cur = await con.execute(
                 "SELECT value FROM moz_cookies "
@@ -71,6 +89,22 @@ async def resolve_session_cookie() -> str:
     cookie = await find_browser_cookie_header()
     if cookie is not None:
         return cookie
+
+    # Path.glob silently yields nothing for a dir we can't read (e.g. macOS
+    # blocking the terminal from Firefox's data), so check for that explicitly.
+    if unreadable := [
+        root for root in _firefox_profile_roots() if _is_unreadable_dir(root)
+    ]:
+        app = os.environ.get("TERM_PROGRAM", "your terminal app")
+        raise ValueError(
+            f"Permission denied reading Firefox profiles at {unreadable[0]}. Allow {app} to access data from Firefox in System Settings > Privacy & Security, then restart {app}."
+        )
+
+    if not _firefox_cookie_db_paths():
+        roots = " or ".join(str(root) for root in _firefox_profile_roots())
+        raise ValueError(
+            f"No Firefox profile with a cookies.sqlite found under {roots}. Install Firefox and log into app.ynab.com."
+        )
 
     raise ValueError(
         "Must be logged into app.ynab.com in Firefox so the session cookie can be "
