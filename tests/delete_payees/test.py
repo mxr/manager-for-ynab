@@ -557,8 +557,7 @@ def _create_cookie_db(path, cookies):
 async def test_read_session_cookie_value(tmp_path, cookies, expected):
     db_path = tmp_path / "cookies.sqlite"
     async with aiosqlite.connect(db_path) as con:
-        async with con.execute("PRAGMA journal_mode=WAL"):
-            pass
+        await con.execute_fetchall("PRAGMA journal_mode=WAL")
         await con.execute("PRAGMA wal_autocheckpoint=0")
         await con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
         await con.executemany(
