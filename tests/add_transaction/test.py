@@ -891,7 +891,7 @@ async def test_resolve_transaction_prompts_for_missing_values(
     resolved = await _resolve_transaction(
         db=db_path,
         plan_name=None,
-        account_names=None,
+        account_names=[],
         payee_name=None,
         category_group_name=None,
         category_name=None,
