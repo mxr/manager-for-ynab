@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 from contextlib import closing
@@ -664,10 +665,7 @@ async def test_resolve_session_cookie_reads_from_browser(find_cookie_header):
 
 @pytest.fixture
 def macos_profiles_dir(tmp_path):
-    path = tmp_path / "Library" / "Application Support" / "Firefox" / "Profiles"
-    yield path
-    if path.exists():
-        path.chmod(0o700)
+    return tmp_path / "Library" / "Application Support" / "Firefox" / "Profiles"
 
 
 @pytest.mark.parametrize(
@@ -689,17 +687,18 @@ def macos_profiles_dir(tmp_path):
     ],
 )
 @patch.dict("os.environ", {"TERM_PROGRAM": "ghostty"})
+@patch("manager_for_ynab.delete_payees._browser_session.os.listdir", wraps=os.listdir)
 @patch("manager_for_ynab.delete_payees._browser_session.Path.home")
 @pytest.mark.asyncio
 async def test_resolve_session_cookie_explains_why_nothing_found(
-    home_mock, tmp_path, macos_profiles_dir, setup, expected
+    home_mock, listdir_mock, tmp_path, macos_profiles_dir, setup, expected
 ):
     home_mock.return_value = tmp_path
     if setup is not None:
         (macos_profiles_dir / "abc").mkdir(parents=True)
         _create_cookie_db(macos_profiles_dir / "abc" / "cookies.sqlite", [])
     if setup == "unreadable":
-        macos_profiles_dir.chmod(0)
+        listdir_mock.side_effect = PermissionError
 
     with pytest.raises(ValueError) as excinfo:
         await resolve_session_cookie()

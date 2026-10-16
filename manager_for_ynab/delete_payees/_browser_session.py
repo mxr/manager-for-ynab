@@ -97,7 +97,7 @@ async def resolve_session_cookie() -> str:
     ]:
         app = os.environ.get("TERM_PROGRAM", "your terminal app")
         raise ValueError(
-            f"Permission denied reading Firefox profiles at {unreadable[0]}. Allow {app} to access data from Firefox in System Settings > Privacy & Security (or grant it Full Disk Access), then restart {app}."
+            f"Permission denied reading Firefox profiles at {unreadable[0]}. Allow {app} to access data from Firefox in System Settings > Privacy & Security, then restart {app}."
         )
 
     if not _firefox_cookie_db_paths():
