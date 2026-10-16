@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from contextlib import closing
 from typing import TYPE_CHECKING
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
@@ -560,6 +561,22 @@ async def test_read_session_cookie_value(tmp_path, cookies, expected):
     assert await _read_session_cookie_value(db_path) == expected
 
 
+@pytest.mark.asyncio
+async def test_read_session_cookie_value_reads_uncheckpointed_wal(tmp_path):
+    db_path = tmp_path / "cookies.sqlite"
+    with closing(sqlite3.connect(db_path)) as con:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA wal_autocheckpoint=0")
+        con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
+        con.execute(
+            "INSERT INTO moz_cookies (host, name, value) VALUES ('app.ynab.com', '_ynab_api_session', 'abc')"
+        )
+        con.commit()
+
+        assert db_path.with_name("cookies.sqlite-wal").stat().st_size > 0
+        assert await _read_session_cookie_value(db_path) == "abc"
+
+
 @patch("manager_for_ynab.delete_payees._browser_session.Path.home")
 def test_firefox_cookie_db_paths_finds_macos_and_linux_profiles(home_mock, tmp_path):
     home_mock.return_value = tmp_path
@@ -645,16 +662,51 @@ async def test_resolve_session_cookie_reads_from_browser(find_cookie_header):
     assert await resolve_session_cookie() == "from-browser"
 
 
-@patch(
-    "manager_for_ynab.delete_payees._browser_session.find_browser_cookie_header",
-    return_value=None,
+@pytest.fixture
+def macos_profiles_dir(tmp_path):
+    path = tmp_path / "Library" / "Application Support" / "Firefox" / "Profiles"
+    yield path
+    if path.exists():
+        path.chmod(0o700)
+
+
+@pytest.mark.parametrize(
+    ("setup", "expected"),
+    [
+        pytest.param(
+            None,
+            "No Firefox profile with a cookies.sqlite found under",
+            id="no_profiles",
+        ),
+        pytest.param(
+            "unreadable",
+            "Permission denied reading Firefox profiles at",
+            id="unreadable_profiles",
+        ),
+        pytest.param(
+            "logged_out", "Must be logged into app.ynab.com in Firefox", id="logged_out"
+        ),
+    ],
 )
+@patch.dict("os.environ", {"TERM_PROGRAM": "ghostty"})
+@patch("manager_for_ynab.delete_payees._browser_session.Path.home")
 @pytest.mark.asyncio
-async def test_resolve_session_cookie_raises_when_nothing_found(find_cookie_header):
+async def test_resolve_session_cookie_explains_why_nothing_found(
+    home_mock, tmp_path, macos_profiles_dir, setup, expected
+):
+    home_mock.return_value = tmp_path
+    if setup is not None:
+        (macos_profiles_dir / "abc").mkdir(parents=True)
+        _create_cookie_db(macos_profiles_dir / "abc" / "cookies.sqlite", [])
+    if setup == "unreadable":
+        macos_profiles_dir.chmod(0)
+
     with pytest.raises(ValueError) as excinfo:
         await resolve_session_cookie()
 
-    assert "Firefox" in str(excinfo.value)
+    assert expected in str(excinfo.value)
+    if setup == "unreadable":
+        assert "Allow ghostty to access data from Firefox" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
