@@ -15,7 +15,7 @@ from asyncio_for_ynab import PlansApi
 from asyncio_for_ynab import PlanSummaryResponse
 from asyncio_for_ynab import SaveMonthCategory
 
-from manager_for_ynab._args import nonempty
+from manager_for_ynab._args import nonblank
 from manager_for_ynab._auth import resolve_token
 
 if TYPE_CHECKING:
@@ -33,17 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--plan-id",
-        type=nonempty,
+        type=nonblank,
         help="YNAB plan ID. If omitted, uses the most recently updated one.",
     )
     parser.add_argument(
         "--category-group",
-        type=nonempty,
+        type=nonblank,
         help="Category group regex to scope the category lookup.",
     )
     parser.add_argument(
         "--category-name",
-        type=nonempty,
+        type=nonblank,
         required=True,
         help="Category name regex to update.",
     )
