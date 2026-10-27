@@ -29,7 +29,7 @@ $ export YNAB_PERSONAL_ACCESS_TOKEN="..."
 
 ### Quickstart
 
-Preview the transactions that would be reconciled for a single account in *single mode* (the default):
+Preview the transactions that would be reconciled for a single account in _single mode_ (the default):
 
 ```console
 $ manager-for-ynab reconciler --account-like 1234 --target 500.30
@@ -41,13 +41,13 @@ Run it again with `--for-real` to reconcile the account:
 $ manager-for-ynab reconciler --account-like 1234 --target 500.30 --for-real
 ```
 
-Process multiple accounts in one run with *batch mode*:
+Process multiple accounts in one run with _batch mode_:
 
 ```console
 $ manager-for-ynab reconciler --mode batch --account-target-pairs 'Checking=500' 'Credit=290' --for-real
 ```
 
-Prompt for the targets interactively with *interactive batch mode* (good for storing the list of account targets in your
+Prompt for the targets interactively with _interactive batch mode_ (good for storing the list of account targets in your
 history, without needing to delete the values when retrieving them):
 
 ```console
