@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import datetime
 import re
+import sys
 from typing import TYPE_CHECKING
 
 from asyncio_for_ynab import ApiClient
@@ -14,6 +15,7 @@ from asyncio_for_ynab import PatchMonthCategoryWrapper
 from asyncio_for_ynab import PlansApi
 from asyncio_for_ynab import PlanSummaryResponse
 from asyncio_for_ynab import SaveMonthCategory
+from rich.progress import Progress
 
 from manager_for_ynab._args import nonblank
 from manager_for_ynab._auth import resolve_token
@@ -188,15 +190,23 @@ async def _run_updates(
 ) -> None:
     semaphore = asyncio.Semaphore(5)
 
-    async def update_month(year: int, month: int) -> tuple[str, str | None]:
-        async with semaphore:
-            return await _update_month_category(
-                categories_api, plan_id, category_id, year, month
-            )
+    with Progress(disable=not sys.stderr.isatty()) as progress:
+        task_id = progress.add_task(
+            f"Updating {len(months)} month(s)", total=len(months)
+        )
 
-    results = await asyncio.gather(
-        *(update_month(year, month) for year, month in months)
-    )
+        async def update_month(year: int, month: int) -> tuple[str, str | None]:
+            async with semaphore:
+                result = await _update_month_category(
+                    categories_api, plan_id, category_id, year, month
+                )
+            progress.advance(task_id)
+            return result
+
+        results = await asyncio.gather(
+            *(update_month(year, month) for year, month in months)
+        )
+
     for month_str, err in results:
         if err is None:
             print(f"{month_str}: set planned to 0.")
