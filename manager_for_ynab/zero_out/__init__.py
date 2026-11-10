@@ -208,9 +208,7 @@ async def _run_updates(
         )
 
     for month_str, err in results:
-        if err is None:
-            print(f"{month_str}: set planned to 0.")
-        else:
+        if err is not None:
             print(f"Failed to update month {month_str}: {err}")
 
 
