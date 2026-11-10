@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from dataclasses import replace
 from datetime import date
@@ -57,14 +56,14 @@ _SEED_SQL = Path(__file__).with_name("seed.sql")
 _SEED_SHARED_PLANS_SQL = Path(__file__).with_name("seed-shared-plans.sql")
 
 
-def _create_add_transaction_db(path: Path, *extra_paths: Path) -> None:
-    with sqlite3.connect(path) as con:
-        execute_seed(con, _SEED_SQL, *extra_paths)
+async def _create_add_transaction_db(path: Path, *extra_paths: Path) -> None:
+    async with aiosqlite.connect(path) as con:
+        await execute_seed(con, _SEED_SQL, *extra_paths)
 
 
-def _create_empty_db(path: Path) -> None:
-    with sqlite3.connect(path) as con:
-        apply_ddl(con)
+async def _create_empty_db(path: Path) -> None:
+    async with aiosqlite.connect(path) as con:
+        await apply_ddl(con)
 
 
 @pytest.fixture
@@ -241,7 +240,7 @@ async def test_move_funds_moves_credit_card_payment_back_to_ready_to_assign(
     transactions_api_cls.return_value = AsyncMock()
     categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
         plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
@@ -387,7 +386,7 @@ async def test_move_funds_dry_run(
 @pytest.mark.asyncio
 async def test_add_transaction_no_sync_uses_existing_db(sync_mock, tmp_path, capsys):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     ret = await add_transaction(
         plan_name=None,
@@ -469,7 +468,7 @@ async def test_move_funds_reports_ready_to_assign_credit_card_payment(
     api_client_cls.return_value = AsyncMock()
     transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-positive.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
         plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
@@ -513,7 +512,7 @@ async def test_move_funds_reports_returned_credit_card_payment(
     transactions_api_cls.return_value = AsyncMock()
     categories_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-negative.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
         plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
@@ -578,7 +577,7 @@ async def test_move_funds_reports_returned_budget_delta(
     api_client_cls.return_value = AsyncMock()
     transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-credit-card-returned.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     resolved = replace(
         resolved_ready_to_assign_credit_card_transaction,
         plan=replace(resolved_ready_to_assign_credit_card_transaction.plan, id=PLAN_ID),
@@ -631,7 +630,7 @@ async def test_move_funds_funds_category_from_ready_to_assign(
     api_client_cls.return_value = AsyncMock()
     transactions_api_cls.return_value = AsyncMock()
     db_path = tmp_path / "add-transaction-category.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     fund_category_mock.return_value = 5000
 
@@ -678,7 +677,7 @@ async def test_sync_and_resolve_transaction_raises_when_transaction_resolution_f
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     with pytest.raises(ValueError, match="boom"):
         await sync_and_resolve_transaction(
@@ -706,7 +705,7 @@ async def test_sync_and_resolve_transaction_resolves_explicit_plan_and_category(
     sync_mock, tmp_path
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     resolved = await sync_and_resolve_transaction(
         plan_name="My Plan",
@@ -825,7 +824,7 @@ async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     with pytest.raises(RuntimeError, match="boom"):
         await sync_and_resolve_transaction(
@@ -851,7 +850,7 @@ async def test_sync_and_resolve_transaction_raises_when_runtime_error_is_raised(
 @pytest.mark.asyncio
 async def test_resolve_transaction_errors_when_no_plans(load_plans_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_plans_mock.return_value = {}
 
     with pytest.raises(RuntimeError, match="No plans found in this YNAB account."):
@@ -879,7 +878,7 @@ async def test_resolve_transaction_prompts_for_missing_values(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     choice_prompt_mock.side_effect = [
         "Checking",
         "Employer",
@@ -926,7 +925,7 @@ async def test_resolve_transaction_prompts_for_plan_when_multiple_plans(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_plans_mock.return_value = {"Plan A": "plan-a", "Plan B": "plan-b"}
     choice_prompt_mock.return_value = "Plan B"
     resolve_account_id_mock.return_value = "account-id"
@@ -965,7 +964,7 @@ async def test_resolve_transaction_allows_transfer_without_category(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_plans_mock.return_value = {"My Plan": "plan-id"}
     resolve_account_id_mock.return_value = "account-id"
     load_account_by_id_mock.return_value = add_transaction_module.ResolvedAccount(
@@ -1024,7 +1023,7 @@ def test_split_amount_across_accounts(amount, balances, expected):
 @pytest.mark.asyncio
 async def test_resolve_transaction_rejects_zero_amount(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     with pytest.raises(ValueError, match="Amount must not be 0."):
         await _resolve_transaction(
@@ -1045,7 +1044,7 @@ async def test_resolve_transaction_splits_amount_and_drops_unused_credit_card(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     resolved = await _resolve_transaction(
         db=db_path,
@@ -1068,7 +1067,7 @@ async def test_resolve_transaction_skips_credit_card_leg_when_cash_covers_amount
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     resolved = await _resolve_transaction(
         db=db_path,
@@ -1089,7 +1088,7 @@ async def test_resolve_transaction_skips_credit_card_leg_when_cash_covers_amount
 @pytest.mark.asyncio
 async def test_resolve_accounts_rejects_credit_card_not_listed_last(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1101,7 +1100,7 @@ async def test_resolve_accounts_rejects_credit_card_not_listed_last(tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_accounts_rejects_multiple_credit_cards(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1175,7 +1174,7 @@ async def test_resolve_transaction_rejects_category_for_transfer(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     matching_entry_mock.return_value = (CHECKING_ACCOUNT_ID, "Checking")
     resolve_payee_mock.return_value = ("payee-id", "Transfer", "transfer-account-id")
 
@@ -1222,7 +1221,7 @@ async def test_prompt_uses_prompt_session(prompt_session_cls):
 @pytest.mark.asyncio
 async def test_resolve_account_id_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     choice_prompt_mock.return_value = "Checking"
 
     async with aiosqlite.connect(db_path) as con:
@@ -1238,7 +1237,7 @@ async def test_resolve_account_id_errors_without_accounts(
     load_name_to_id_mock, tmp_path
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_name_to_id_mock.return_value = {}
 
     async with aiosqlite.connect(db_path) as con:
@@ -1251,7 +1250,7 @@ async def test_resolve_account_id_errors_without_accounts(
 @pytest.mark.asyncio
 async def test_resolve_category_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     choice_prompt_mock.return_value = "Inflow: Ready to Assign"
 
     async with aiosqlite.connect(db_path) as con:
@@ -1270,7 +1269,7 @@ async def test_resolve_category_errors_without_categories(
     load_categories_mock, tmp_path
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_categories_mock.return_value = {}
 
     async with aiosqlite.connect(db_path) as con:
@@ -1283,7 +1282,7 @@ async def test_resolve_category_errors_without_categories(
 @pytest.mark.asyncio
 async def test_resolve_payee_prompts_when_missing(choice_prompt_mock, tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     choice_prompt_mock.return_value = "Employer"
 
     async with aiosqlite.connect(db_path) as con:
@@ -1300,7 +1299,7 @@ async def test_resolve_payee_prompts_when_missing(choice_prompt_mock, tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_payee_returns_fuzzy_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1347,7 +1346,7 @@ async def test_resolve_payee_rejects_new_payee(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_payees_mock.return_value = [("Employer", "payee-id", None)]
     matching_entry_mock.side_effect = ValueError("No close match")
     closest_match_mock.return_value = closest_match
@@ -1372,7 +1371,7 @@ async def test_resolve_payee_allows_new_payee(
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
     load_payees_mock.return_value = [("Employer", "payee-id", None)]
     matching_entry_mock.side_effect = ValueError("No close match")
     closest_match_mock.return_value = ("payee-id", "Employer", False, 1)
@@ -1392,7 +1391,7 @@ async def test_resolve_payee_allows_new_payee(
 @pytest.mark.asyncio
 async def test_resolve_payee_returns_existing_transfer_payee(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1408,7 +1407,7 @@ async def test_resolve_payee_returns_existing_transfer_payee(tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_payee_errors_when_no_payees(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_empty_db(db_path)
+    await _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1419,7 +1418,7 @@ async def test_resolve_payee_errors_when_no_payees(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_entry_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_empty_db(db_path)
+    await _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1433,7 +1432,7 @@ async def test_matching_entry_raises_when_no_rows(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_entry_rejects_distant_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1447,7 +1446,7 @@ async def test_matching_entry_rejects_distant_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_entry_rejects_ambiguous_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1463,7 +1462,7 @@ async def test_matching_entry_rejects_ambiguous_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_plan_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_empty_db(db_path)
+    await _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1475,7 +1474,7 @@ async def test_matching_plan_raises_when_no_rows(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_plan_rejects_distant_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1487,7 +1486,7 @@ async def test_matching_plan_rejects_distant_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_plan_rejects_ambiguous_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path, _SEED_SHARED_PLANS_SQL)
+    await _create_add_transaction_db(db_path, _SEED_SHARED_PLANS_SQL)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1501,7 +1500,7 @@ async def test_matching_plan_rejects_ambiguous_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_category_raises_when_no_rows(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_empty_db(db_path)
+    await _create_empty_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1515,7 +1514,7 @@ async def test_matching_category_raises_when_no_rows(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_category_rejects_distant_match(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1529,7 +1528,7 @@ async def test_matching_category_rejects_distant_match(tmp_path):
 @pytest.mark.asyncio
 async def test_matching_category_disambiguates_with_category_group(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1553,7 +1552,7 @@ async def test_matching_category_disambiguates_with_category_group(tmp_path):
 @pytest.mark.asyncio
 async def test_load_account_by_id_errors_for_missing_account(tmp_path):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row
@@ -1566,7 +1565,7 @@ async def test_resolve_credit_card_payment_category_errors_for_missing_and_dupli
     tmp_path,
 ):
     db_path = tmp_path / "add-transaction.sqlite"
-    _create_add_transaction_db(db_path)
+    await _create_add_transaction_db(db_path)
 
     async with aiosqlite.connect(db_path) as con:
         con.row_factory = aiosqlite.Row

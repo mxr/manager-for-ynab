@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import date
 from datetime import datetime
 from decimal import Decimal
@@ -36,9 +35,9 @@ def test_today_returns_current_date():
 async def db(tmp_path: Path) -> Path:
     path = tmp_path / "db.sqlite"
 
-    with sqlite3.connect(path) as con:
-        apply_ddl(con)
-        con.executescript(_SEED_SQL.read_text())
+    async with aiosqlite.connect(path) as con:
+        await apply_ddl(con)
+        await con.executescript(_SEED_SQL.read_text())
     return path
 
 
