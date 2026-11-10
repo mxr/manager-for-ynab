@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
-from contextlib import closing
 from typing import Any
 from unittest.mock import call
 from unittest.mock import patch
@@ -23,10 +21,11 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
     raise AssertionError("TransactionsApi should not be constructed during dry-run")
 
 
-def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
-    with closing(sqlite3.connect(":memory:")) as con, con:
-        con.row_factory = sqlite3.Row
-        row = con.execute(
+@pytest.mark.asyncio
+async def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
+    async with aiosqlite.connect(":memory:") as con:
+        con.row_factory = aiosqlite.Row
+        cursor = await con.execute(
             """
             SELECT
                 'txn-1' AS id
@@ -38,8 +37,10 @@ def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
                 , 'cleared' AS cleared
                 , 'not-json' AS import_payee_name
             """
-        ).fetchone()
+        )
+        row = await cursor.fetchone()
 
+    assert row is not None
     txn = _transaction_from_row(row)
 
     assert txn == Transaction(

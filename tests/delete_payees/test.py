@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
-from contextlib import closing
 from typing import TYPE_CHECKING
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
@@ -15,6 +13,7 @@ from unittest.mock import patch
 import aiohttp
 import aiosqlite
 import pytest
+import pytest_asyncio
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,11 +51,11 @@ from testing.fixtures import execute_seed
 from testing.fixtures import seed_paths
 
 
-@pytest.fixture
-def db_path(request, tmp_path):
+@pytest_asyncio.fixture
+async def db_path(request, tmp_path):
     path = tmp_path / "delete-payees.sqlite"
-    with closing(sqlite3.connect(path)) as con, con:
-        execute_seed(con, *seed_paths(request))
+    async with aiosqlite.connect(path) as con:
+        await execute_seed(con, *seed_paths(request))
     return path
 
 
@@ -68,13 +67,11 @@ def session_token_db_path(tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_plan_id_raises_when_no_plans(tmp_path):
     path = tmp_path / "no-plans.sqlite"
-    with closing(sqlite3.connect(path)) as con, con:
-        apply_ddl(con)
-
-    async with aiosqlite.connect(path) as async_con:
-        async_con.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(path) as con:
+        await apply_ddl(con)
+        con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError) as excinfo:
-            await _resolve_plan_id(async_con, None)
+            await _resolve_plan_id(con, None)
 
     assert "No plans found in this YNAB account." in str(excinfo.value)
 
@@ -526,12 +523,13 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
     )
 
 
-def _create_cookie_db(path, cookies):
-    with closing(sqlite3.connect(path)) as con, con:
-        con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
-        con.executemany(
+async def _create_cookie_db(path, cookies):
+    async with aiosqlite.connect(path) as con:
+        await con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
+        await con.executemany(
             "INSERT INTO moz_cookies (host, name, value) VALUES (?, ?, ?)", cookies
         )
+        await con.commit()
 
 
 @pytest.mark.parametrize(
@@ -614,7 +612,7 @@ async def test_find_browser_cookie_header_returns_cookie_header(
     db_paths_mock, tmp_path
 ):
     db_path = tmp_path / "cookies.sqlite"
-    _create_cookie_db(db_path, [("app.ynab.com", "_ynab_api_session", "1")])
+    await _create_cookie_db(db_path, [("app.ynab.com", "_ynab_api_session", "1")])
     db_paths_mock.return_value = [db_path]
 
     assert await find_browser_cookie_header() == "_ynab_api_session=1"
@@ -626,7 +624,7 @@ async def test_find_browser_cookie_header_skips_unreadable_db(db_paths_mock, tmp
     bad_db = tmp_path / "bad.sqlite"
     bad_db.write_text("not a sqlite file")
     good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "1")])
+    await _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "1")])
     db_paths_mock.return_value = [bad_db, good_db]
 
     assert await find_browser_cookie_header() == "_ynab_api_session=1"
@@ -638,9 +636,9 @@ async def test_find_browser_cookie_header_skips_db_with_no_matching_cookies(
     db_paths_mock, tmp_path
 ):
     empty_db = tmp_path / "empty.sqlite"
-    _create_cookie_db(empty_db, [("example.com", "_ynab_api_session", "1")])
+    await _create_cookie_db(empty_db, [("example.com", "_ynab_api_session", "1")])
     good_db = tmp_path / "good.sqlite"
-    _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "2")])
+    await _create_cookie_db(good_db, [("app.ynab.com", "_ynab_api_session", "2")])
     db_paths_mock.return_value = [empty_db, good_db]
 
     assert await find_browser_cookie_header() == "_ynab_api_session=2"
@@ -688,7 +686,7 @@ async def test_resolve_session_cookie_explains_why_nothing_found(
     home_mock.return_value = tmp_path
     if setup is not None:
         (macos_profiles_dir / "abc").mkdir(parents=True)
-        _create_cookie_db(macos_profiles_dir / "abc" / "cookies.sqlite", [])
+        await _create_cookie_db(macos_profiles_dir / "abc" / "cookies.sqlite", [])
     if setup == "unreadable":
         listdir_mock.side_effect = PermissionError
 
