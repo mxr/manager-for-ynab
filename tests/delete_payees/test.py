@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import sys
+from contextlib import closing
 from typing import TYPE_CHECKING
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
@@ -54,7 +55,7 @@ from testing.fixtures import seed_paths
 @pytest.fixture
 def db_path(request, tmp_path):
     path = tmp_path / "delete-payees.sqlite"
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         execute_seed(con, *seed_paths(request))
     return path
 
@@ -67,13 +68,13 @@ def session_token_db_path(tmp_path):
 @pytest.mark.asyncio
 async def test_resolve_plan_id_raises_when_no_plans(tmp_path):
     path = tmp_path / "no-plans.sqlite"
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         apply_ddl(con)
 
-    async with aiosqlite.connect(path) as con:
-        con.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(path) as async_con:
+        async_con.row_factory = aiosqlite.Row
         with pytest.raises(RuntimeError) as excinfo:
-            await _resolve_plan_id(con, None)
+            await _resolve_plan_id(async_con, None)
 
     assert "No plans found in this YNAB account." in str(excinfo.value)
 
@@ -526,7 +527,7 @@ async def test_run_delegates_parsed_args(delete_payees_mock):
 
 
 def _create_cookie_db(path, cookies):
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         con.execute("CREATE TABLE moz_cookies (host TEXT, name TEXT, value TEXT)")
         con.executemany(
             "INSERT INTO moz_cookies (host, name, value) VALUES (?, ?, ?)", cookies

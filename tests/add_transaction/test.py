@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from contextlib import closing
 from dataclasses import replace
 from datetime import date
 from datetime import datetime
@@ -58,12 +59,12 @@ _SEED_SHARED_PLANS_SQL = Path(__file__).with_name("seed-shared-plans.sql")
 
 
 def _create_add_transaction_db(path: Path, *extra_paths: Path) -> None:
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         execute_seed(con, _SEED_SQL, *extra_paths)
 
 
 def _create_empty_db(path: Path) -> None:
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         apply_ddl(con)
 
 

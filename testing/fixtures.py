@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -68,7 +69,7 @@ def seed_paths(request: pytest.FixtureRequest, *default: Path) -> tuple[Path, ..
 @pytest.fixture()
 def db(request, tmpdir):
     path = tmpdir / "db.sqlite"
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         execute_seed(
             con,
             *seed_paths(

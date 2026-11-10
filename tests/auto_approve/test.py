@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from typing import Any
 from unittest.mock import call
 from unittest.mock import patch
@@ -23,7 +24,7 @@ def unexpected_transactions_api(*args: object, **kwargs: object) -> None:
 
 
 def test_transaction_from_row_keeps_pair_without_json_import_payee_name():
-    with sqlite3.connect(":memory:") as con:
+    with closing(sqlite3.connect(":memory:")) as con, con:
         con.row_factory = sqlite3.Row
         row = con.execute(
             """

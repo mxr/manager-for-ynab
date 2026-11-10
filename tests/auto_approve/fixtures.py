@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import patch
@@ -16,7 +17,7 @@ _SEED_TRANSACTIONS_SQL = Path(__file__).with_name("seed-transactions.sql")
 @pytest.fixture()
 def db(request, tmp_path):
     path = tmp_path / "db.sqlite"
-    with sqlite3.connect(path) as con:
+    with closing(sqlite3.connect(path)) as con, con:
         execute_seed(con, *seed_paths(request, _SEED_TRANSACTIONS_SQL))
     return path
 
