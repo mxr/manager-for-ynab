@@ -330,8 +330,7 @@ async def test_run_updates_limits_concurrency_to_five(categories_api, capsys):
     out, _ = capsys.readouterr()
     assert max_active == 5
     assert categories_api.update_month_category.call_count == 10
-    assert "2025-01: set planned to 0." in out
-    assert "2025-10: set planned to 0." in out
+    assert out == ""
 
 
 @pytest.mark.token_env("")
@@ -532,6 +531,6 @@ async def test_run_for_real_runs_updates(
     ynab_configuration.assert_called_once_with(access_token="token")
     ynab_api_client.assert_called_once_with(ynab_configuration.return_value)
     assert ynab_categories_api.update_month_category.call_count == 2
-    assert "2025-01: set planned to 0." in out
+    assert "set planned to 0" not in out
     assert "Failed to update month 2025-02:" in out
     assert "Done." in out
