@@ -1,20 +1,24 @@
 from __future__ import annotations
 
-import sqlite3
 from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 from uuid import uuid4
 
-import pytest
+import aiosqlite
+import pytest_asyncio
+
+if TYPE_CHECKING:
+    import pytest
 
 _DDL_SQL = (
     files("sqlite_export_for_ynab.ddl").joinpath("create-relations.sql").read_text()
 )
 
 
-def apply_ddl(con: sqlite3.Connection) -> None:
-    con.executescript(_DDL_SQL)
+async def apply_ddl(con: aiosqlite.Connection) -> None:
+    await con.executescript(_DDL_SQL)
 
 
 PLAN_ID_1 = str(uuid4())
@@ -50,12 +54,13 @@ def seed_sql(*extra_paths: Path) -> str:
     return "\n".join(path.read_text() for path in (_SEED_SQL, *extra_paths))
 
 
-def execute_seed(con: sqlite3.Connection, *extra_paths: Path) -> None:
-    apply_ddl(con)
+async def execute_seed(con: aiosqlite.Connection, *extra_paths: Path) -> None:
+    await apply_ddl(con)
     for statement in seed_sql(*extra_paths).split(";"):
         statement = statement.strip()
         if statement:
-            con.execute(statement, SEED_IDS)
+            await con.execute(statement, SEED_IDS)
+    await con.commit()
 
 
 def seed_paths(request: pytest.FixtureRequest, *default: Path) -> tuple[Path, ...]:
@@ -65,11 +70,11 @@ def seed_paths(request: pytest.FixtureRequest, *default: Path) -> tuple[Path, ..
     return tuple(request.path.with_name(name) for name in marker.args)
 
 
-@pytest.fixture()
-def db(request, tmpdir):
+@pytest_asyncio.fixture()
+async def db(request, tmpdir):
     path = tmpdir / "db.sqlite"
-    with sqlite3.connect(path) as con:
-        execute_seed(
+    async with aiosqlite.connect(path) as con:
+        await execute_seed(
             con,
             *seed_paths(
                 request,
