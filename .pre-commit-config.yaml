@@ -56,8 +56,8 @@ repos:
     - playwright
     - prompt-toolkit
     - pyecharts
-    - pytest
-    - pytest-asyncio
+    - pytest-asyncio>=1.4.1
+    - pytest>=9.2.0
     - rich>=12
     - sqlite-export-for-ynab~=3.0.2
     - types-setuptools
@@ -74,8 +74,8 @@ repos:
     - playwright
     - prompt-toolkit
     - pyecharts
-    - pytest
-    - pytest-asyncio
+    - pytest-asyncio>=1.4.1
+    - pytest>=9.2.0
     - rich>=12
     - sqlite-export-for-ynab~=3.0.2
     - types-setuptools
@@ -96,8 +96,8 @@ repos:
     - playwright
     - prompt-toolkit
     - pyecharts
-    - pytest
-    - pytest-asyncio
+    - pytest-asyncio>=1.4.1
+    - pytest>=9.2.0
     - rich>=12
     - sqlite-export-for-ynab~=3.0.2
     - types-setuptools
